@@ -1,0 +1,300 @@
+// Mori Pay data model.
+// All money columns are BigInt whole TZS. Balances are derived from LedgerEntry
+// rows; LedgerAccount.balance is a cached value kept in sync inside the same DB
+// transaction that writes entries.
+
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  active
+  pending
+  restricted
+}
+
+enum AccountTier {
+  Standard
+  Verified
+}
+
+model User {
+  id             String        @id @default(cuid())
+  phone          String        @unique
+  email          String?
+  fullName       String
+  firstName      String
+  dateOfBirth    DateTime?
+  memberId       String        @unique
+  status         UserStatus    @default(active)
+  tier           AccountTier   @default(Standard)
+  kycLevel       Int           @default(0)
+  nationalId     String?
+  pinHash        String?
+  pinUpdatedAt   DateTime?
+  pinFailedCount Int           @default(0)
+  pinLockedUntil DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  wallet                 Wallet?
+  devices                Device[]
+  refreshTokens          RefreshToken[]
+  transactions           Transaction[]
+  moneyRequests          MoneyRequest[]          @relation("Requester")
+  paymentMethods         SavedPaymentMethod[]
+  notifications          Notification[]
+  notificationPreference NotificationPreference?
+  auditLogs              AuditLog[]
+  limitUsages            LimitUsage[]
+  otpChallenges          OtpChallenge[]
+
+  @@index([phone])
+}
+
+model OtpChallenge {
+  id         String    @id @default(cuid())
+  phone      String
+  codeHash   String
+  purpose    String    @default("login")
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id])
+
+  @@index([phone, purpose])
+}
+
+model Device {
+  id            String         @id @default(cuid())
+  userId        String
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  platform      String
+  pushToken     String?
+  location      String?
+  lastActiveAt  DateTime       @default(now())
+  isCurrent     Boolean        @default(false)
+  createdAt     DateTime       @default(now())
+  refreshTokens RefreshToken[]
+
+  @@index([userId])
+}
+
+model RefreshToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String?
+  device    Device?   @relation(fields: [deviceId], references: [id])
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Wallet {
+  id             String          @id @default(cuid())
+  userId         String          @unique
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency       String          @default("TZS")
+  accountNumber  String          @unique
+  status         String          @default("active")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  ledgerAccounts LedgerAccount[]
+}
+
+model LedgerAccount {
+  id        String        @id @default(cuid())
+  walletId  String?
+  wallet    Wallet?       @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  kind      String
+  currency  String        @default("TZS")
+  balance   BigInt        @default(0)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  entries   LedgerEntry[]
+
+  @@unique([walletId, kind])
+  @@index([kind])
+}
+
+model LedgerEntry {
+  id              String        @id @default(cuid())
+  ledgerAccountId String
+  ledgerAccount   LedgerAccount @relation(fields: [ledgerAccountId], references: [id], onDelete: Cascade)
+  transactionId   String?
+  transaction     Transaction?  @relation(fields: [transactionId], references: [id])
+  direction       String
+  amount          BigInt
+  balanceAfter    BigInt
+  createdAt       DateTime      @default(now())
+
+  @@index([ledgerAccountId])
+  @@index([transactionId])
+}
+
+model Transaction {
+  id                 String         @id @default(cuid())
+  userId             String
+  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reference          String         @unique
+  type               String
+  status             String         @default("pending")
+  category           String
+  channel            String
+  direction          String
+  amount             BigInt
+  fee                BigInt         @default(0)
+  total              BigInt
+  currency           String         @default("TZS")
+  counterparty       String
+  counterpartyDetail String?
+  note               String?
+  internalReference  String?        @unique
+  provider           String?
+  providerRef        String?
+  providerStatus     String?
+  metadata           Json?
+  idempotencyKey     String?        @unique
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  settledAt          DateTime?
+  ledgerEntries      LedgerEntry[]
+  notifications      Notification[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model MoneyRequest {
+  id          String   @id @default(cuid())
+  requesterId String
+  requester   User     @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  payerPhone  String
+  amount      BigInt
+  note        String?
+  status      String   @default("pending")
+  reference   String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  expiresAt   DateTime?
+
+  @@index([requesterId])
+  @@index([payerPhone])
+}
+
+model Merchant {
+  id         String   @id @default(cuid())
+  name       String
+  identifier String   @unique
+  category   String
+  phone      String?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+}
+
+model SavedPaymentMethod {
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind             String
+  provider         String
+  identifier       String
+  network          String?
+  isDefault        Boolean  @default(false)
+  status           String   @default("Active")
+  providerMethodId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Notification {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind          String
+  title         String
+  body          String
+  read          Boolean      @default(false)
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+  createdAt     DateTime     @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model NotificationPreference {
+  id           String  @id @default(cuid())
+  userId       String  @unique
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Boolean @default(true)
+  moneyIn      Boolean @default(true)
+  moneyOut     Boolean @default(true)
+  marketing    Boolean @default(false)
+}
+
+model FeeRule {
+  id         String   @id @default(cuid())
+  type       String
+  channel    String?
+  flat       BigInt   @default(0)
+  percentage Float    @default(0)
+  minAmount  BigInt   @default(0)
+  maxAmount  BigInt?
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([type, channel])
+}
+
+model LimitUsage {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period String
+  date   DateTime
+  used   BigInt   @default(0)
+  limit  BigInt
+
+  @@unique([userId, period, date])
+}
+
+model StakabaWebhookEvent {
+  id                String    @id @default(cuid())
+  internalReference String
+  event             String
+  payload           Json
+  processedAt       DateTime?
+  error             String?
+  createdAt         DateTime  @default(now())
+
+  @@unique([internalReference, event])
+  @@index([internalReference])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String
+  ip        String?
+  userAgent String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}

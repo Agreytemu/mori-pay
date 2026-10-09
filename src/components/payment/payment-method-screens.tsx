@@ -1,0 +1,431 @@
+import { useState, type ComponentProps, type ReactNode } from 'react';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  TextInput,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+
+import { AppDialog } from '@/components/ui/app-dialog';
+import { AppIcon } from '@/components/ui/AppIcon';
+import { AppText } from '@/components/ui/AppText';
+import { Button } from '@/components/ui/button';
+import { PaymentMethodSelector } from '@/components/payment/payment-components';
+import { PAYMENT_METHOD_TYPES, type SavedPaymentMethod } from '@/data/mock-payment-methods';
+import {
+  removePaymentMethod,
+  savePaymentMethod,
+  setPaymentMethodDefault,
+  usePaymentMethods,
+} from '@/data/payment-method-store';
+import { useAppTheme } from '@/theme';
+
+type MethodKind = SavedPaymentMethod['kind'];
+type MethodFields = { provider: string; personName: string; identifier: string; expiry: string; cvv: string };
+
+const EMPTY_FIELDS: MethodFields = { provider: '', personName: '', identifier: '', expiry: '', cvv: '' };
+const PROVIDERS = ['M-Pesa', 'Airtel Money', 'Mixx by Yas'] as const;
+
+function methodIcon(kind: MethodKind) {
+  return kind === 'mobile-money' ? 'phone' : 'payments';
+}
+
+function kindLabel(kind: MethodKind) {
+  return kind === 'mobile-money' ? 'Mobile Money' : kind === 'bank' ? 'Bank Account' : 'Card';
+}
+
+function Header({ title, subtitle, onBack, right }: {
+  title: string;
+  subtitle?: string;
+  onBack: () => void;
+  right?: ReactNode;
+}) {
+  const { colors, radius } = useAppTheme();
+  return (
+    <View style={styles.header}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        onPress={onBack}
+        style={({ pressed }) => [
+          styles.headerButton,
+          { backgroundColor: pressed ? colors.surfacePressed : colors.surface, borderColor: colors.border, borderRadius: radius.circle },
+        ]}>
+        <AppIcon name="chevronLeft" size={19} color={colors.text} />
+      </Pressable>
+      <View style={styles.headerText}>
+        <AppText variant="title2">{title}</AppText>
+        {subtitle ? <AppText variant="caption" color={colors.textSecondary}>{subtitle}</AppText> : null}
+      </View>
+      {right ?? <View style={styles.headerButton} />}
+    </View>
+  );
+}
+
+function MethodTile({ item, onPress }: { item: SavedPaymentMethod; onPress: () => void }) {
+  const { colors, radius, space } = useAppTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${item.name}, ${item.identifier}${item.isDefault ? ', default' : ''}`}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.methodTile,
+        {
+          backgroundColor: pressed ? colors.surfacePressed : colors.surface,
+          borderColor: colors.border,
+          borderRadius: radius.lg,
+          padding: space.base,
+        },
+      ]}>
+      <View style={[styles.methodIcon, { backgroundColor: colors.primarySoft, borderRadius: radius.md }]}>
+        <AppIcon name={methodIcon(item.kind)} size={20} color={colors.primary} />
+      </View>
+      <View style={styles.methodCopy}>
+        <View style={styles.methodTitleRow}>
+          <AppText variant="bodyStrong" numberOfLines={1}>{item.name}</AppText>
+          {item.isDefault ? (
+            <View style={[styles.defaultBadge, { backgroundColor: colors.primarySoft }]}>
+              <AppText variant="caption" color={colors.primary}>Default</AppText>
+            </View>
+          ) : null}
+        </View>
+        <AppText variant="bodySmall" color={colors.textSecondary} numberOfLines={1}>
+          {kindLabel(item.kind)} · {item.identifier}
+        </AppText>
+      </View>
+      <AppIcon name="more" size={19} color={colors.textTertiary} />
+    </Pressable>
+  );
+}
+
+export function PaymentMethodsScreen() {
+  const router = useRouter();
+  const methods = usePaymentMethods();
+  const { colors, space } = useAppTheme();
+
+  return (
+    <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { padding: space.base, gap: space.lg }]}
+        showsVerticalScrollIndicator={false}>
+        <Header title="Payment Methods" subtitle="Manage your saved ways to pay" onBack={() => router.back()} />
+        <View style={styles.intro}>
+          <AppText variant="bodySmall" color={colors.textSecondary}>
+            These are mock methods only; no payment provider or persistent payment-data storage is connected.
+          </AppText>
+        </View>
+        <View style={styles.sectionHeading}>
+          <AppText variant="bodySmallStrong">Saved methods</AppText>
+          <AppText variant="caption" color={colors.textTertiary}>{methods.length} {methods.length === 1 ? 'method' : 'methods'}</AppText>
+        </View>
+        {methods.length ? (
+          <View style={styles.methodList}>
+            {methods.map((item) => (
+              <MethodTile
+                key={item.id}
+                item={item}
+                onPress={() => router.push({ pathname: '/payment-methods/[id]', params: { id: item.id } })}
+              />
+            ))}
+          </View>
+        ) : (
+          <View style={[styles.emptyState, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}>
+            <View style={[styles.emptyIcon, { backgroundColor: colors.primarySoft }]}>
+              <AppIcon name="payments" size={24} color={colors.primary} />
+            </View>
+            <AppText variant="bodyStrong">No payment methods yet</AppText>
+            <AppText variant="bodySmall" color={colors.textSecondary} align="center">
+              Add a mobile wallet, bank account, or card to get started.
+            </AppText>
+          </View>
+        )}
+        <Button label="Add payment method" icon="plus" onPress={() => router.push('/payment-methods/add')} />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ id?: string }>();
+  const methods = usePaymentMethods();
+  const original = methods.find((item) => item.id === params.id);
+  const [kind, setKind] = useState<MethodKind>(original?.kind ?? 'mobile-money');
+  const [fields, setFields] = useState<MethodFields>(() => ({
+    ...EMPTY_FIELDS,
+    provider: original?.provider ?? '',
+    personName: original?.name ?? '',
+  }));
+  const [isDefault, setIsDefault] = useState(original?.isDefault ?? methods.length === 0);
+  const [errors, setErrors] = useState<string[]>([]);
+  const { colors, space } = useAppTheme();
+
+  const setField = (key: keyof MethodFields, value: string) => setFields((current) => ({ ...current, [key]: value }));
+
+  const submit = () => {
+    const missing: string[] = [];
+    if (kind === 'mobile-money') {
+      if (!fields.provider) missing.push('Choose a mobile money provider.');
+      if (fields.identifier.replace(/\D/g, '').length < 9) missing.push('Enter a valid phone number.');
+    } else if (kind === 'bank') {
+      if (!fields.provider.trim()) missing.push('Enter a bank name.');
+      if (!fields.personName.trim()) missing.push('Enter the account name.');
+      if (fields.identifier.replace(/\D/g, '').length < 6) missing.push('Enter a valid account number.');
+    } else {
+      if (!fields.personName.trim()) missing.push('Enter the cardholder name.');
+      if (fields.identifier.replace(/\D/g, '').length < 12) missing.push('Enter a valid card number.');
+      const expiry = /^(\d{2})\/\d{2}$/.exec(fields.expiry);
+      if (!expiry || Number(expiry[1]) < 1 || Number(expiry[1]) > 12) {
+        missing.push('Enter a valid expiry date in MM/YY.');
+      }
+      if (!/^\d{3,4}$/.test(fields.cvv)) missing.push('Enter a valid CVV.');
+    }
+    setErrors(missing);
+    if (missing.length) return;
+
+    const lastFour = fields.identifier.replace(/\D/g, '').slice(-4);
+    const provider = kind === 'card' ? 'Card' : fields.provider.trim();
+    const name = kind === 'mobile-money'
+      ? provider
+      : kind === 'bank'
+        ? `${provider} account`
+        : fields.personName.trim();
+    savePaymentMethod({
+      id: edit && original ? original.id : `method-${Date.now()}`,
+      kind,
+      name,
+      provider,
+      identifier: `•••• ${lastFour}`,
+      addedDate: original?.addedDate ?? new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
+      status: 'Active',
+      isDefault,
+    });
+    setFields(EMPTY_FIELDS);
+    router.back();
+  };
+
+  const updateField = (key: keyof MethodFields) => (value: string) => setField(key, value);
+
+  return (
+    <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      <KeyboardAvoidingView style={styles.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={[styles.content, { padding: space.base, gap: space.lg }]}
+          showsVerticalScrollIndicator={false}>
+          <Header
+            title={edit ? 'Edit Payment Method' : 'Add Payment Method'}
+            subtitle="Choose a method type"
+            onBack={() => router.back()}
+          />
+          <PaymentMethodSelector
+            methods={PAYMENT_METHOD_TYPES}
+            selectedId={kind}
+            onSelect={(method) => { setKind(method.id); setErrors([]); }}
+          />
+          <View style={styles.form}>
+            {kind === 'mobile-money' ? (
+              <>
+                <AppText variant="bodySmallStrong">Provider</AppText>
+                <View style={styles.providerOptions}>
+                  {PROVIDERS.map((provider) => (
+                    <ChoiceChip key={provider} label={provider} selected={fields.provider === provider} onPress={() => setField('provider', provider)} />
+                  ))}
+                </View>
+                <FormField label="Phone number" placeholder="+255 7XX XXX XXX" value={fields.identifier} onChangeText={updateField('identifier')} keyboardType="phone-pad" />
+              </>
+            ) : kind === 'bank' ? (
+              <>
+                <FormField label="Bank name" placeholder="e.g. NMB Bank" value={fields.provider} onChangeText={updateField('provider')} />
+                <FormField label="Account name" placeholder="Name on the account" value={fields.personName} onChangeText={updateField('personName')} />
+                <FormField label="Account number" placeholder="Enter account number" value={fields.identifier} onChangeText={updateField('identifier')} keyboardType="number-pad" />
+              </>
+            ) : (
+              <>
+                <FormField label="Cardholder name" placeholder="Name on card" value={fields.personName} onChangeText={updateField('personName')} />
+                <FormField label="Card number" placeholder="Card number" value={fields.identifier} onChangeText={updateField('identifier')} keyboardType="number-pad" />
+                <View style={styles.inlineFields}>
+                  <View style={styles.inlineField}><FormField label="Expiry date" placeholder="MM/YY" value={fields.expiry} onChangeText={updateField('expiry')} /></View>
+                  <View style={styles.inlineField}><FormField label="CVV" placeholder="CVV" value={fields.cvv} onChangeText={updateField('cvv')} keyboardType="number-pad" secureTextEntry /></View>
+                </View>
+              </>
+            )}
+          </View>
+          <View style={[styles.defaultRow, { borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 14 }]}>
+            <View style={styles.defaultCopy}>
+              <AppText variant="bodyStrong">Set as default</AppText>
+              <AppText variant="caption" color={colors.textSecondary}>Use this method first when paying</AppText>
+            </View>
+            <Switch value={isDefault} onValueChange={setIsDefault} trackColor={{ true: colors.primary }} />
+          </View>
+          {errors.length ? (
+            <View style={[styles.errorBox, { backgroundColor: colors.errorSoft }]}>
+              {errors.map((error) => <AppText key={error} variant="caption" color={colors.error}>{error}</AppText>)}
+            </View>
+          ) : null}
+          <AppText variant="caption" color={colors.textTertiary}>
+            Demo only: sensitive number and security fields are used for validation and are not saved.
+          </AppText>
+          <Button label={edit ? 'Save changes' : 'Add payment method'} onPress={submit} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+export function PaymentMethodDetailsScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ id?: string }>();
+  const methods = usePaymentMethods();
+  const item = methods.find((method) => method.id === params.id);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const { colors, space } = useAppTheme();
+
+  if (!item) {
+    return (
+      <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
+        <View style={[styles.content, { padding: space.base, gap: space.lg }]}>
+          <Header title="Payment Method" onBack={() => router.back()} />
+          <AppText variant="body" color={colors.textSecondary}>This payment method is no longer available.</AppText>
+          <Button label="Back to payment methods" onPress={() => router.replace('/payment-methods')} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const kindName = kindLabel(item.kind);
+  return (
+    <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      <ScrollView contentContainerStyle={[styles.content, { padding: space.base, gap: space.lg }]} showsVerticalScrollIndicator={false}>
+        <Header title="Payment Method" subtitle="Method details" onBack={() => router.back()} />
+        <View style={[styles.detailHero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <View style={[styles.detailIcon, { backgroundColor: colors.primarySoft }]}>
+            <AppIcon name={methodIcon(item.kind)} size={24} color={colors.primary} />
+          </View>
+          <AppText variant="title3" align="center">{item.name}</AppText>
+          <AppText variant="bodySmall" color={colors.textSecondary}>{item.identifier}</AppText>
+          <View style={styles.badges}>
+            <View style={[styles.defaultBadge, { backgroundColor: colors.successSoft }]}>
+              <AppText variant="caption" color={colors.success}>{item.status}</AppText>
+            </View>
+            {item.isDefault ? <View style={[styles.defaultBadge, { backgroundColor: colors.primarySoft }]}><AppText variant="caption" color={colors.primary}>Default</AppText></View> : null}
+          </View>
+        </View>
+        <View style={[styles.detailList, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <DetailRow label="Method type" value={kindName} />
+          <DetailRow label={item.kind === 'mobile-money' ? 'Provider' : item.kind === 'bank' ? 'Bank' : 'Network'} value={item.provider} />
+          <DetailRow label="Identifier" value={item.identifier} />
+          <DetailRow label="Status" value={item.status} />
+          <DetailRow label="Added" value={item.addedDate} last />
+        </View>
+        {!item.isDefault ? <Button label="Set as default" icon="check" onPress={() => setPaymentMethodDefault(item.id)} /> : null}
+        <Button
+          label="Edit method"
+          icon="edit"
+          variant="secondary"
+          onPress={() => router.push({ pathname: '/payment-methods/edit/[id]', params: { id: item.id } })}
+        />
+        <Button label="Remove method" icon="logout" variant="danger" onPress={() => setConfirmRemove(true)} />
+      </ScrollView>
+      <AppDialog
+        visible={confirmRemove}
+        title="Remove payment method?"
+        message={`Remove ${item.name} ending in ${item.identifier.slice(-4)} from your saved methods?`}
+        onClose={() => setConfirmRemove(false)}
+        confirmLabel="Remove"
+        confirmDestructive
+        dismissLabel="Keep method"
+        onConfirm={() => { removePaymentMethod(item.id); setConfirmRemove(false); router.replace('/payment-methods'); }}
+      />
+    </SafeAreaView>
+  );
+}
+
+function FormField({
+  label,
+  ...props
+}: { label: string } & ComponentProps<typeof TextInput>) {
+  const { colors, radius } = useAppTheme();
+  return (
+    <View style={styles.field}>
+      <AppText variant="bodySmallStrong">{label}</AppText>
+      <TextInput
+        placeholderTextColor={colors.textTertiary}
+        autoCapitalize="words"
+        style={[styles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md }]}
+        {...props}
+      />
+    </View>
+  );
+}
+
+function ChoiceChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+  const { colors, radius } = useAppTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.choiceChip,
+        {
+          backgroundColor: selected ? colors.primarySoft : pressed ? colors.surfacePressed : colors.surface,
+          borderColor: selected ? colors.primary : colors.border,
+          borderRadius: radius.pill,
+        },
+      ]}>
+      <AppText variant="caption" color={selected ? colors.primary : colors.text}>{label}</AppText>
+    </Pressable>
+  );
+}
+
+function DetailRow({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
+  const { colors } = useAppTheme();
+  return (
+    <View style={[styles.detailRow, !last && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth }]}>
+      <AppText variant="bodySmall" color={colors.textSecondary}>{label}</AppText>
+      <AppText variant="bodySmallStrong" align="right" style={styles.detailValue}>{value}</AppText>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  safeArea: { flex: 1 },
+  content: { width: '100%', maxWidth: 560, alignSelf: 'center', paddingBottom: 30 },
+  header: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerButton: { width: 42, height: 42, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  headerText: { flex: 1, gap: 1 },
+  intro: { maxWidth: 440 },
+  sectionHeading: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  methodList: { gap: 10 },
+  methodTile: { borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 76 },
+  methodIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  methodCopy: { flex: 1, gap: 5 },
+  methodTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  defaultBadge: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
+  emptyState: { borderWidth: 1, borderStyle: 'dashed', borderRadius: 18, padding: 24, alignItems: 'center', gap: 10 },
+  emptyIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
+  form: { gap: 14 },
+  field: { gap: 7, flex: 1 },
+  input: { minHeight: 50, borderWidth: 1, paddingHorizontal: 14, fontSize: 16 },
+  providerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  choiceChip: { minHeight: 38, paddingHorizontal: 12, borderWidth: 1, justifyContent: 'center' },
+  inlineFields: { flexDirection: 'row', gap: 12 },
+  inlineField: { flex: 1 },
+  defaultRow: { minHeight: 66, padding: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  defaultCopy: { flex: 1, gap: 3 },
+  errorBox: { padding: 12, borderRadius: 12, gap: 5 },
+  detailHero: { borderWidth: 1, borderRadius: 20, padding: 24, alignItems: 'center', gap: 9 },
+  detailIcon: { width: 56, height: 56, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginBottom: 3 },
+  badges: { flexDirection: 'row', gap: 8, marginTop: 3 },
+  detailList: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 14 },
+  detailRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  detailValue: { flex: 1 },
+});

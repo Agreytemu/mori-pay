@@ -1,10 +1,16 @@
 {
-  "name": "lipa-na-agreytemu",
+  "name": "mori-pay",
   "main": "expo-router/entry",
   "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "server"
+  ],
   "dependencies": {
     "@expo/ui": "~57.0.21",
     "expo": "~57.0.26",
+    "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.20",
     "expo-device": "~57.0.2",
     "expo-font": "~57.0.4",
@@ -29,6 +35,8 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~57.0.2",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -37,7 +45,12 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
-  },
-  "private": true
+    "lint": "expo lint",
+    "typecheck": "tsc --noEmit",
+    "server:dev": "npm run start:dev --workspace @mori-pay/server",
+    "server:build": "npm run build --workspace @mori-pay/server",
+    "server:lint": "npm run lint --workspace @mori-pay/server",
+    "server:typecheck": "npm run typecheck --workspace @mori-pay/server",
+    "server:test": "npm run test --workspace @mori-pay/server"
+  }
 }

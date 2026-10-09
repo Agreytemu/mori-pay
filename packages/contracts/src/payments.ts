@@ -1,0 +1,68 @@
+import type { Amount, Currency } from './money';
+import type { Transaction } from './transaction';
+
+/** Internal (wallet-to-wallet, merchant and request) money movement. */
+
+export type RecipientLookup = {
+  found: boolean;
+  phoneNumber: string;
+  fullName?: string;
+  firstName?: string;
+};
+
+export type TransferPreview = {
+  recipient: RecipientLookup & { found: true };
+  amount: Amount;
+  fee: Amount;
+  total: Amount;
+  currency: Currency;
+};
+
+export type SendMoneyResult = {
+  transaction: Transaction;
+  recipientName: string;
+  fee: Amount;
+};
+
+export type Merchant = {
+  id: string;
+  name: string;
+  identifier: string;
+  category: string;
+  phoneNumber?: string;
+};
+
+export type PayMerchantResult = {
+  transaction: Transaction;
+  merchantName: string;
+  fee: Amount;
+};
+
+export type MoneyRequestStatus = 'pending' | 'paid' | 'cancelled' | 'expired';
+
+export type MoneyRequestDirection = 'incoming' | 'outgoing';
+
+export type MoneyRequest = {
+  id: string;
+  reference: string;
+  amount: Amount;
+  currency: Currency;
+  note?: string;
+  payerPhone: string;
+  payerName?: string;
+  requesterName: string;
+  status: MoneyRequestStatus;
+  direction: MoneyRequestDirection;
+  createdAt: string;
+  expiresAt?: string;
+};
+
+export type RequestMoneyResult = {
+  request: MoneyRequest;
+};
+
+export type PayRequestResult = {
+  request: MoneyRequest;
+  transaction: Transaction;
+  fee: Amount;
+};

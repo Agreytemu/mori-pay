@@ -1,56 +1,670 @@
-# Welcome to your Expo app 👋
+﻿# Mori Pay
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+A modern mobile-first wallet and payments experience for everyday money movement, built with Expo, NestJS, Prisma, and PostgreSQL.
 
-## Get started
+Mori Pay combines a polished consumer finance interface with a production-minded backend designed around secure wallet operations, transaction ledgers, OTP-based sign-in, PIN protection, and typed API contracts across the stack.
 
-1. Install dependencies
+<p align="center">
+  <img src="https://img.shields.io/badge/Expo-57.0-000020?logo=expo&logoColor=white" alt="Expo 57" />
+  <img src="https://img.shields.io/badge/React%20Native-0.86-61DAFB?logo=react&logoColor=white" alt="React Native 0.86" />
+  <img src="https://img.shields.io/badge/NestJS-12-E0234E?logo=nestjs&logoColor=white" alt="NestJS 12" />
+  <img src="https://img.shields.io/badge/PostgreSQL-16-316192?logo=postgresql&logoColor=white" alt="PostgreSQL" />
+  <img src="https://img.shields.io/badge/Prisma-7-2D3748?logo=prisma&logoColor=white" alt="Prisma 7" />
+</p>
 
-   ```bash
-   npm install
-   ```
+## Why Mori Pay
 
-2. Start the app
+This repository is not a starter app; it is structured like a real fintech product:
 
-   ```bash
-   npx expo start
-   ```
+- Mobile wallet flows for balance visibility, deposits, withdrawals, and transfers
+- Secure account lifecycle with phone-based auth, OTP challenges, and PIN controls
+- Money movement backed by a ledger-first architecture with explicit transaction records
+- Shared contract layer to keep the mobile app and backend aligned
+- API-first foundation with Swagger docs, environment validation, and throttling
+- Designed to scale cleanly from prototype to production finance workflows
 
-In the output, you'll find options to open the app in a
+## Product overview
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+Mori Pay is built around a simple principle: every monetary change is traceable, valid, and explainable. The system models wallet balances, transaction entries, and account restrictions explicitly rather than relying on ad hoc state.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+This makes it suitable for:
 
-## Get a fresh project
+- personal wallet and account management
+- merchant or bill payments
+- payout and request flows
+- PIN-protected account security
+- trusted-device and session handling
+- future integrations with providers like Stakaba, SMS gateways, and KYC/AML flows
 
-When you're ready, run:
+## Stack
 
-```bash
-npm run reset-project
+### Mobile app
+
+- Expo SDK 57
+- React Native 0.86
+- Expo Router
+- TypeScript
+- React Native Safe Area, theming, reusable UI primitives
+
+### Backend
+
+- NestJS
+- Prisma ORM
+- PostgreSQL
+- Swagger docs
+- Pino structured logging
+- Request throttling and validation
+
+### Shared contracts
+
+- Typed domain models for auth, wallet, payments, transactions, and API responses
+- Local package used by both app and server layers
+
+## Repository structure
+
+```text
+mori-lipa/
+â”œâ”€â”€ src/                          # Expo/React Native mobile app
+â”‚   â”œâ”€â”€ app/                      # file-based routes and screens
+â”‚   â”œâ”€â”€ components/               # reusable UI and feature components
+â”‚   â”œâ”€â”€ data/                     # mock/store data for UI development
+â”‚   â”œâ”€â”€ theme/                   # color system, tokens, and design config
+â”‚   â”œâ”€â”€ utils/                   # formatting and helpers
+â”‚   â””â”€â”€ ...
+â”œâ”€â”€ server/                       # NestJS API
+â”‚   â”œâ”€â”€ src/                     # application modules and services
+â”‚   â”œâ”€â”€ prisma/                  # Prisma schema and migrations
+â”‚   â”œâ”€â”€ .env.example             # environment template
+â”‚   â””â”€â”€ package.json             # server scripts/deps
+â”œâ”€â”€ packages/
+â”‚   â””â”€â”€ contracts/               # shared TypeScript contracts
+â”œâ”€â”€ app.json                     # Expo app config
+â”œâ”€â”€ package.json                 # root app scripts and workspace setup
+â”œâ”€â”€ tsconfig.json                # app TypeScript config
+â”œâ”€â”€ README.md                    # project documentation
+â”œâ”€â”€ LICENSE                      # project license
+â”œâ”€â”€ .gitignore
+â”œâ”€â”€ .npmrc
+â”œâ”€â”€ .vscode/                    # editor config
+â””â”€â”€ ...
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+## Core capabilities
 
-### Other setup steps
+### Wallet and account flows
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+- wallet dashboard with account balance card
+- deposit and withdrawal screens
+- payment method management
+- profile and account security settings
+- notification center and trusted devices
 
-## Learn more
+### Security and identity
 
-To learn more about developing your project with Expo, look at the following resources:
+- OTP-based login flow with expiry and retry controls
+- PIN hashing and lockout support at the schema level
+- trusted device tracking
+- session-based architecture with refresh token support
+- secure backend defaults with Helmet, validation, and CORS configuration
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+### Financial data model
 
-## Join the community
+The server schema is organized around real wallet primitives:
 
-Join our community of developers creating universal apps.
+- User and account membership
+- Wallet and ledger accounts
+- Ledger entries as immutable transaction history
+- Transaction objects with categories, direction, fees, and provider metadata
+- Money requests and saved payment methods
+- Notifications, audits, and limit usage tracking
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+This ledger-based model is a strong foundation for reconciliation, reporting, and future accounting controls.
+
+## Getting started
+
+### Prerequisites
+
+Before you begin, make sure the following are installed:
+
+- Node.js 20+ or 22+
+- npm 10+
+- PostgreSQL 14+ or 16+
+- Optional: Docker for local PostgreSQL if you prefer containerized setup
+
+### Install dependencies
+
+From the repository root:
+
+```bash
+npm install
+```
+
+This workspace also includes the backend package, so root scripts can launch both the app and the API.
+
+### Environment setup
+
+Create a backend environment file:
+
+```bash
+cp server/.env.example server/.env
+```
+
+Then update the values in `server/.env`, especially:
+
+```env
+DATABASE_URL="postgresql://user:pass@host:5432/mori_pay?schema=public"
+JWT_ACCESS_SECRET="your-access-secret"
+JWT_REFRESH_SECRET="your-refresh-secret"
+LOG_LEVEL=debug
+PORT=4000
+```
+
+For local development, the project includes a sample configuration with placeholders and comments in `server/.env.example`.
+
+### Database setup
+
+From the `server` directory:
+
+```bash
+cd server
+npx prisma generate
+npx prisma migrate dev
+```
+
+If you want to open Prisma Studio:
+
+```bash
+npm run prisma:studio
+```
+
+## Running the app
+
+### Start the Expo app
+
+```bash
+npm start
+```
+
+Or explicitly:
+
+```bash
+npx expo start
+```
+
+For platform-specific launch:
+
+```bash
+npm run android
+npm run ios
+npm run web
+```
+
+### Start the API server
+
+```bash
+npm run server:dev
+```
+
+This runs the NestJS API in watch mode. By default, the app exposes:
+
+- API base: `http://localhost:4000/api`
+- Swagger Docs: `http://localhost:4000/docs`
+- Health checks: `http://localhost:4000/health`
+
+## Deployment
+
+This project has two deployable parts:
+
+1. the Expo mobile app
+2. the NestJS API + PostgreSQL database
+
+Each part should be deployed separately, with the app pointing to the deployed API URL.
+
+### 1) Deploy the Expo app
+
+The mobile app is best deployed through Expo Application Services (EAS).
+
+#### Install EAS CLI
+
+```bash
+npm install -g eas-cli
+```
+
+Or use npx:
+
+```bash
+npx eas-cli@latest --help
+```
+
+#### Log in
+
+```bash
+npx eas-cli@latest login
+```
+
+#### Initialize EAS
+
+```bash
+npx eas-cli@latest init
+```
+
+This creates the EAS configuration used for build profiles and app metadata.
+
+#### Configure app identifiers
+
+Update the project values in `app.json` and create the Android/iOS app identifiers in your Expo/EAS project settings.
+
+Typical required configuration:
+
+- app name and slug
+- bundle identifiers for Android/iOS
+- icon/splash metadata
+- deep link scheme (`lipanaagreytemu` in this repo)
+- environment configuration for production settings
+
+#### Create build profiles
+
+Example `eas.json` profile structure:
+
+```json
+{
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
+```
+
+Use:
+
+```bash
+npx eas-cli@latest build --platform android --profile preview
+npx eas-cli@latest build --platform ios --profile production
+```
+
+#### OTA updates with EAS Update
+
+After a build, you can ship JavaScript updates without re-submitting the app:
+
+```bash
+npx eas-cli@latest update --branch production --message "wallet hotfix"
+```
+
+For production builds, use a real API base URL in app config or environment settings rather than a localhost URL.
+
+#### Recommended mobile production settings
+
+- API URL should point to the deployed backend, not local development host
+- disable debug-only flows in production builds
+- set secure app names and correct bundle identifiers
+- store build secrets in EAS environment variables when needed
+
+### 2) Deploy the API backend
+
+The backend is a NestJS app and should be deployed as a Node.js service.
+
+Common deployment targets:
+
+- Render
+- Railway
+- Fly.io
+- DigitalOcean App Platform
+- AWS ECS / EC2
+- VPS with PM2 or Docker
+
+#### Render deployment
+
+Render is one of the easiest ways to deploy the API.
+
+1. Create a new Web Service in Render.
+2. Connect the GitHub repository.
+3. Set the root directory to `server`.
+4. Use the following build and start commands:
+
+```bash
+npm install
+npm run build
+```
+
+Start command:
+
+```bash
+npm run start:prod
+```
+
+5. Add environment variables in the Render dashboard:
+
+```env
+NODE_ENV=production
+PORT=10000
+APP_NAME="Mori Pay API"
+LOG_LEVEL=info
+CORS_ORIGINS="https://yourmobileapp.com"
+DATABASE_URL="postgresql://user:pass@host:5432/mori_pay?schema=public"
+JWT_ACCESS_SECRET="strong-random-access-secret"
+JWT_REFRESH_SECRET="strong-random-refresh-secret"
+JWT_ACCESS_TTL=15m
+JWT_REFRESH_TTL=30d
+OTP_TTL_SECONDS=300
+OTP_MAX_ATTEMPTS=5
+STAKABA_BASE_URL="https://api.stakaba.com"
+STAKABA_API_KEY="your-live-key"
+SMS_PROVIDER="beem"
+```
+
+6. Deploy the service and confirm `/health` and `/docs` are reachable.
+
+#### Railway deployment
+
+Railway is a simple option for a Node API plus PostgreSQL.
+
+1. Create a new Railway project.
+2. Add a PostgreSQL service.
+3. Add a Node.js service from the repository.
+4. Set the service root to `server`.
+5. Set the start command:
+
+```bash
+npm run start:prod
+```
+
+6. Configure the service variables:
+
+```env
+NODE_ENV=production
+PORT=8080
+APP_NAME="Mori Pay API"
+LOG_LEVEL=info
+CORS_ORIGINS="https://yourmobileapp.com"
+DATABASE_URL="postgresql://postgres:password@host:port/railway?schema=public"
+JWT_ACCESS_SECRET="strong-random-access-secret"
+JWT_REFRESH_SECRET="strong-random-refresh-secret"
+JWT_ACCESS_TTL=15m
+JWT_REFRESH_TTL=30d
+OTP_TTL_SECONDS=300
+OTP_MAX_ATTEMPTS=5
+STAKABA_BASE_URL="https://api.stakaba.com"
+STAKABA_API_KEY="your-live-key"
+SMS_PROVIDER="beem"
+```
+
+7. Railway can provision the DB URL automatically; copy that value into `DATABASE_URL`.
+
+#### Docker deployment
+
+If you prefer self-hosting or a container-based workflow, use Docker.
+
+Create a `Dockerfile` in the `server` directory:
+
+```dockerfile
+FROM node:20-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+EXPOSE 4000
+CMD ["npm", "run", "start:prod"]
+```
+
+Then build and run:
+
+```bash
+docker build -t mori-pay-api ./server
+docker run -p 4000:4000 --env-file ./server/.env mori-pay-api
+```
+
+For production, prefer a managed database instead of running Postgres in the same container unless you explicitly want a single-node setup.
+
+#### Recommended production environment
+#### Recommended production environment
+
+Set these values in your hosting platform environment variables:
+
+```env
+NODE_ENV=production
+PORT=4000
+APP_NAME="Mori Pay API"
+LOG_LEVEL=info
+CORS_ORIGINS="https://yourmobileapp.com,https://admin.example.com"
+DATABASE_URL="postgresql://user:pass@host:5432/mori_pay?schema=public"
+JWT_ACCESS_SECRET="strong-random-access-secret"
+JWT_REFRESH_SECRET="strong-random-refresh-secret"
+JWT_ACCESS_TTL=15m
+JWT_REFRESH_TTL=30d
+OTP_TTL_SECONDS=300
+OTP_MAX_ATTEMPTS=5
+STAKABA_BASE_URL="https://api.stakaba.com"
+STAKABA_API_KEY="your-live-key"
+SMS_PROVIDER="beem"
+```
+
+#### Build the server
+
+```bash
+cd server
+npm install
+npm run build
+```
+
+#### Run in production
+
+```bash
+cd server
+npm run start:prod
+```
+
+If deploying on a platform that uses a build and start command, use:
+
+- build: `npm run build`
+- start: `node dist/main.js`
+
+#### Health and docs checks
+
+Once deployed, the service should expose:
+
+- `/health` for uptime and health checks
+- `/docs` for Swagger API documentation
+- `/api` base route for API traffic
+
+### 3) Deploy PostgreSQL
+
+The database is a critical dependency. Use a managed PostgreSQL service if possible.
+
+Recommended providers:
+
+- Supabase
+- Neon
+- Render Postgres
+- Railway Postgres
+- AWS RDS
+- DigitalOcean Managed Database
+
+#### Database setup steps
+
+1. Create a PostgreSQL database
+2. Set the database connection URL in `server/.env` or hosting env variables
+3. Run Prisma migration after deployment
+
+```bash
+cd server
+npx prisma generate
+npx prisma migrate deploy
+```
+
+If the provider supports it, also set a backup strategy and enable SSL connections.
+
+### 4) Connect the app to the deployed backend
+
+Set the production base URL in the mobile app, such as:
+
+```ts
+const API_BASE_URL = 'https://api.yourdomain.com/api';
+```
+
+Then ensure the app uses this URL in production builds instead of development endpoints.
+
+Use environment files or app config for this separation so you do not accidentally point the production app to localhost.
+
+### 5) Production deployment checklist
+
+Before going live, confirm the following:
+
+- `DATABASE_URL` points to the real production database
+- JWT secrets are strong and unique
+- CORS origins include only the actual domains you use
+- `NODE_ENV=production`
+- API and Swagger endpoints are reachable
+- EAS build and app identifiers are set correctly
+- app uses production API URL, not local development host
+- SSL/HTTPS is enabled everywhere
+- backups and monitoring are configured
+
+### 6) Simple deployment flow
+
+For a typical setup:
+
+1. Deploy PostgreSQL
+2. Deploy backend to Render/Railway/VPS
+3. Run Prisma migrations
+4. Verify `/health` and `/docs`
+5. Configure production API URL in mobile app
+6. Build the Expo app with EAS
+7. Submit to stores or distribute via internal app builds
+
+### 7) Best-practice deployment architecture
+
+A clean production setup looks like this:
+
+```text
+Mobile app (Expo) -> API (NestJS) -> PostgreSQL
+                           -> optional SMS provider
+                           -> optional Stakaba provider
+```
+
+This separation keeps the mobile client lightweight while the backend remains the source of truth for wallets, transactions, security, and business logic.
+
+## Scripts
+
+### Root workspace
+
+```bash
+npm start                 # expo start
+npm run android           # launch Android
+npm run ios               # launch iOS
+npm run web               # launch web
+npm run lint              # Expo lint
+npm run typecheck         # TypeScript validation
+npm run server:dev        # NestJS dev server
+npm run server:build      # compile server
+npm run server:lint       # server linting
+npm run server:typecheck  # server typecheck
+npm run server:test       # backend tests
+```
+
+### Server package
+
+```bash
+cd server
+npm run build
+npm run start
+npm run start:dev
+npm run start:debug
+npm run lint
+npm run typecheck
+npm run test
+npm run prisma:generate
+npm run prisma:migrate
+npm run prisma:deploy
+npm run prisma:studio
+```
+
+## Architecture notes
+
+This monorepo is intentionally split to keep concerns clean:
+
+- `src/` is the end-user app layer
+- `server/` is the backend authority for business logic and persistence
+- `packages/contracts/` defines robust shared types used across both sides
+
+That separation makes the project easier to evolve as the product grows, while keeping the mobile client and backend in sync through shared contracts instead of loosely duplicated models.
+
+## API and developer workflow
+
+The server includes:
+
+- global validation with `ValidationPipe`
+- CORS configuration
+- Helmet security middleware
+- request ID tracing
+- Swagger/OpenAPI setup
+- request throttling
+- centralized exception handling
+- structured logger configuration with pino
+
+This gives the project a more production-like skeleton than a typical starter app, and it aligns with the expectations of a real service-backed fintech product.
+
+## Development conventions
+
+- Prefer typed interfaces over loose JSON structures
+- Treat money as integer-based TZS amounts; never use floating point for balances or transaction totals
+- Keep business logic in the server, not the mobile app
+- Use the shared contracts package for API data alignment
+- Favor explicit ledger and transaction records for all financial mutations
+
+## Roadmap
+
+Planned evolution for the project includes:
+
+- OTP login and registration completion flow
+- real payment provider integration
+- wallet funding and payout orchestration
+- enhanced KYC and risk controls
+- transaction filtering and reporting
+- push notifications and device sync
+- production deployment pipeline
+- automated quality gates and CI checks
+
+## Contributing
+
+Contributions are welcome. A good contribution usually includes:
+
+1. a focused change with clear intent
+2. type-safe implementation
+3. validation via the relevant lint or TypeScript checks
+4. a concise summary of the user-facing impact
+
+Before submitting a patch:
+
+```bash
+npm run lint
+npm run typecheck
+npm run server:typecheck
+```
+
+## License
+
+This project is licensed under the MIT license. See [LICENSE](LICENSE) for details.
+
+## Project status
+
+Mori Pay is in active product-oriented development and is structured as a real-world fintech application starter with a mobile client, typed API contracts, and production-minded backend architecture.
+
+If you're building a wallet, mobile-money, or payments product, this repo is designed to give you a stronger foundation than a plain starter template.
+
+
+

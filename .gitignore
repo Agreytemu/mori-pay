@@ -41,3 +41,20 @@ example
 # generated native folders
 /ios
 /android
+
+# monorepo: backend build output
+server/dist/
+server/dist-test/
+server/coverage/
+server/.env
+server/src/generated/
+
+# env files (keep examples committed)
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+logs/
+

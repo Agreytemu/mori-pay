@@ -34,14 +34,14 @@ export default function TabTwoScreen() {
 
   return (
     <ScrollView
-      style={[styles.scrollView, { backgroundColor: theme.background }]}
+      style={[styles.scrollView, { backgroundColor: theme.colors.background }]}
       contentInset={insets}
       contentContainerStyle={[styles.contentContainer, contentPlatformStyle]}>
       <ThemedView style={styles.container}>
         <ThemedView style={styles.titleContainer}>
           <ThemedText type="subtitle">Explore</ThemedText>
           <ThemedText style={styles.centerText} themeColor="textSecondary">
-            This starter app includes example{'\n'}code to help you get started.
+            agreyalbert{'\n'}most powerfuuly creator y .
           </ThemedText>
 
           <ExternalLink href="https://docs.expo.dev" asChild>
@@ -49,7 +49,7 @@ export default function TabTwoScreen() {
               <ThemedView type="backgroundElement" style={styles.linkButton}>
                 <ThemedText type="link">Expo documentation</ThemedText>
                 <SymbolView
-                  tintColor={theme.text}
+                  tintColor={theme.colors.text}
                   name={{ ios: 'arrow.up.right.square', android: 'link', web: 'link' }}
                   size={12}
                 />
