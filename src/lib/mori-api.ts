@@ -3,6 +3,8 @@ import type {
   AuthSession,
   AuthTokens,
   AuthUser,
+  AccountProfile,
+  AppNotification,
   ChangePinInput,
   Merchant,
   MoneyRequest,
@@ -20,6 +22,12 @@ import type {
   RequestMoneyInput,
   RequestMoneyResult,
   RequestOtpInput,
+  NotificationPreference,
+  SavedPaymentMethod,
+  TrustedDevice,
+  UpdateAccountProfileInput,
+  UpdateNotificationPreferencesInput,
+  SavePaymentMethodInput,
   SendMoneyInput,
   SendMoneyResult,
   SetPinInput,
@@ -76,6 +84,77 @@ export function refreshTokens(input: RefreshTokenInput): Promise<AuthTokens> {
 
 export function fetchMe(): Promise<{ user: AuthUser; wallet: WalletAccount }> {
   return request<{ user: AuthUser; wallet: WalletAccount }>('/auth/me');
+}
+
+export function getAccountProfile(): Promise<AccountProfile> {
+  return request<AccountProfile>('/account/profile');
+}
+
+export function updateAccountProfile(input: UpdateAccountProfileInput): Promise<AccountProfile> {
+  return request<AccountProfile>('/account/profile', { method: 'PATCH', body: input });
+}
+
+export function listTrustedDevices(): Promise<TrustedDevice[]> {
+  return request<TrustedDevice[]>('/account/devices');
+}
+
+export function removeTrustedDevice(id: string): Promise<void> {
+  return request<void>(`/account/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function listSavedPaymentMethods(): Promise<SavedPaymentMethod[]> {
+  return request<SavedPaymentMethod[]>('/account/payment-methods');
+}
+
+export function savePaymentMethod(input: SavePaymentMethodInput): Promise<SavedPaymentMethod> {
+  return request<SavedPaymentMethod>('/account/payment-methods', { method: 'POST', body: input });
+}
+
+export function updateSavedPaymentMethod(
+  id: string,
+  input: SavePaymentMethodInput
+): Promise<SavedPaymentMethod> {
+  return request<SavedPaymentMethod>(`/account/payment-methods/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: input,
+  });
+}
+
+export function removeSavedPaymentMethod(id: string): Promise<void> {
+  return request<void>(`/account/payment-methods/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function listNotifications(): Promise<AppNotification[]> {
+  return request<AppNotification[]>('/account/notifications');
+}
+
+export function markNotificationRead(id: string): Promise<void> {
+  return request<void>(`/account/notifications/${encodeURIComponent(id)}/read`, { method: 'PATCH' });
+}
+
+export function markAllNotificationsRead(): Promise<void> {
+  return request<void>('/account/notifications/read-all', { method: 'PATCH' });
+}
+
+export function deleteNotification(id: string): Promise<void> {
+  return request<void>(`/account/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function clearNotifications(): Promise<void> {
+  return request<void>('/account/notifications', { method: 'DELETE' });
+}
+
+export function getNotificationPreferences(): Promise<NotificationPreference> {
+  return request<NotificationPreference>('/account/notification-preferences');
+}
+
+export function updateNotificationPreferences(
+  input: UpdateNotificationPreferencesInput
+): Promise<NotificationPreference> {
+  return request<NotificationPreference>('/account/notification-preferences', {
+    method: 'PATCH',
+    body: input,
+  });
 }
 
 export function fetchPinStatus(): Promise<PinStatus> {

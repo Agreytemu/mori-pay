@@ -1,6 +1,14 @@
-import type { AuthUser, Transaction as ApiTransaction, WalletAccount } from '@mori-pay/contracts';
+import type {
+  AccountProfile,
+  AuthUser,
+  SavedPaymentMethod as ApiSavedPaymentMethod,
+  Transaction as ApiTransaction,
+  WalletAccount,
+} from '@mori-pay/contracts';
 
 import { APP_NAME } from '@/config/app';
+import type { SavedPaymentMethod } from '@/data/mock-payment-methods';
+import type { UserProfile } from '@/data/profile';
 import type { WalletAccountData, WalletAccountStatus, WalletActivity } from '@/data/wallet-account';
 import type { IconName } from '@/constants/icons';
 import type { Transaction as UiTransaction } from '@/types/transaction';
@@ -59,4 +67,41 @@ export function userStatusToAccountStatus(status: AuthUser['status']): WalletAcc
   if (status === 'pending') return 'pending';
   if (status === 'restricted') return 'limited';
   return 'active';
+}
+
+export function toUserProfile(profile: AccountProfile): UserProfile {
+  return {
+    id: profile.id,
+    memberId: profile.memberId,
+    fullName: profile.fullName,
+    phone: profile.phoneNumber,
+    email: profile.email ?? '',
+    dateOfBirth: profile.dateOfBirth ?? '',
+    status:
+      profile.status === 'restricted'
+        ? 'restricted'
+        : profile.tier === 'Verified'
+          ? 'verified'
+          : 'pending',
+    tier: profile.tier,
+    joinedAt: profile.memberSince,
+  };
+}
+
+export function toSavedPaymentMethod(method: ApiSavedPaymentMethod): SavedPaymentMethod {
+  const identifier = `•••• ${method.lastFour}`;
+  return {
+    id: method.id,
+    kind: method.kind,
+    name: method.kind === 'mobile-money'
+      ? method.provider
+      : method.kind === 'bank'
+        ? `${method.provider} account`
+        : method.provider,
+    provider: method.provider,
+    identifier,
+    addedDate: formatDate(method.createdAt),
+    status: method.status === 'Pending' ? 'Pending' : 'Active',
+    isDefault: method.isDefault,
+  };
 }

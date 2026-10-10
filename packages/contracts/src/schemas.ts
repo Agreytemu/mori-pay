@@ -59,6 +59,35 @@ export const registerSchema = z.object({
     .optional(),
 });
 
+const dateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must use YYYY-MM-DD')
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, 'Date must be a valid calendar date');
+
+export const updateAccountProfileSchema = z.object({
+  fullName: z.string().trim().min(2).max(120),
+  email: emailSchema.nullable(),
+  dateOfBirth: dateOnlySchema.nullable(),
+});
+
+export const savePaymentMethodSchema = z.object({
+  kind: z.enum(['mobile-money', 'bank', 'card']),
+  provider: z.string().trim().min(1).max(80),
+  lastFour: z.string().regex(/^\d{4}$/, 'Only the last four digits are accepted'),
+  isDefault: z.boolean().optional(),
+});
+
+export const updateNotificationPreferencesSchema = z.object({
+  transactions: z.boolean().optional(),
+  moneyIn: z.boolean().optional(),
+  moneyOut: z.boolean().optional(),
+  marketing: z.boolean().optional(),
+  securityAlerts: z.boolean().optional(),
+}).refine((value) => Object.keys(value).length > 0, 'At least one preference is required');
+
 export const refreshTokenSchema = z.object({
   refreshToken: z.string().min(1),
 });
@@ -177,6 +206,9 @@ export const ablinerWebhookSchema = z.object({
 export type RequestOtpInput = z.infer<typeof requestOtpSchema>;
 export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;
 export type RegisterInput = z.infer<typeof registerSchema>;
+export type UpdateAccountProfileInput = z.infer<typeof updateAccountProfileSchema>;
+export type SavePaymentMethodInput = z.infer<typeof savePaymentMethodSchema>;
+export type UpdateNotificationPreferencesInput = z.infer<typeof updateNotificationPreferencesSchema>;
 export type RefreshTokenInput = z.infer<typeof refreshTokenSchema>;
 export type SetPinInput = z.infer<typeof setPinSchema>;
 export type ChangePinInput = z.infer<typeof changePinSchema>;

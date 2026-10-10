@@ -7,6 +7,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 
 import { AppConfigModule } from './config/config.module.js';
+import { AccountModule } from './account/account.module.js';
 import { validateEnv } from './config/env.validation.js';
 import { AblinerModule } from './abliner/abliner.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -66,6 +67,7 @@ const isProduction = process.env.NODE_ENV === 'production';
       },
     ]),
     AppConfigModule,
+    AccountModule,
     PrismaModule,
     LedgerModule,
     PaymentsModule,

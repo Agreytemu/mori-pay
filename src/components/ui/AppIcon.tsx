@@ -4,6 +4,7 @@ import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 
 import { ICONS, type IconName } from '@/constants/icons';
 import { useAppTheme } from '@/theme';
+import { AndroidMaterialIcon } from './android-material-icon';
 
 export type AppIconWeight = 'regular' | 'medium' | 'semibold';
 
@@ -39,6 +40,7 @@ const WEB_PATHS: Partial<Record<IconName, string[]>> = {
   chevronRight: ['m9 18 6-6-6-6'],
   chevronLeft: ['m15 18-6-6 6-6'],
   chevronDown: ['m6 9 6 6 6-6'],
+  externalLink: ['M14 4h6v6', 'M20 4 11 13', 'M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6'],
   close: ['m6 6 12 12', 'M18 6 6 18'],
   eye: ['M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z', 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z'],
   eyeOff: ['m3 3 18 18', 'M10.6 6.2A10.5 10.5 0 0 1 12 6c6.5 0 10 6 10 6a16 16 0 0 1-3.2 3.8', 'M6.2 6.2C3.5 8 2 12 2 12s3.5 6 10 6c1.4 0 2.7-.3 3.8-.8'],
@@ -75,6 +77,17 @@ export function AppIcon({
 }: AppIconProps) {
   const { colors } = useAppTheme();
   const icon = ICONS[name];
+
+  if (Platform.OS === 'android') {
+    return (
+      <AndroidMaterialIcon
+        name={icon.android}
+        size={size}
+        color={color ?? colors.text}
+        style={style}
+      />
+    );
+  }
 
   if (Platform.OS === 'web') {
     const paths = WEB_PATHS[name] ?? ['M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Z'];

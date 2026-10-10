@@ -25,7 +25,6 @@ import {
   ProfileHeader,
   ProfileMenuItem,
   ProfileSection,
-  SecurityActivityRow,
   SecurityStatus,
   SettingsToggle,
   StatusBanner,
@@ -34,26 +33,14 @@ import { AccountInfoRow } from '@/components/wallet/wallet-components';
 import { ABOUT_COPY, APP } from '@/constants/app';
 import {
   APP_LANGUAGES,
-  MOCK_CURRENT_PIN,
   MOCK_FAQS,
   MOCK_LEGAL_SECTIONS,
   MOCK_REPORT_CATEGORIES,
-  MOCK_SECURITY_ACTIVITY,
   MOCK_SUPPORT_CATEGORIES,
-  type AppLanguage,
   type FaqCategory,
   type ReportCategory,
 } from '@/data/profile';
-import {
-  removeDevice,
-  setBiometricsEnabled,
-  setLanguage,
-  setLoginAlertsEnabled,
-  setNotificationPreference,
-  updateProfile,
-  useProfileState,
-  type EditableProfileFields,
-} from '@/data/profile-store';
+import { useProfileState, type EditableProfileFields } from '@/data/profile-store';
 import { useSession } from '@/lib/session';
 import { changePin, verifyPin } from '@/lib/mori-api';
 import { radius, spacing, useAppTheme, type ThemePreference } from '@/theme';
@@ -108,8 +95,8 @@ function CheckMark({ visible }: { visible: boolean }) {
 export function ProfileScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
-  const { profile, security, devices, language, preferences } = useProfileState();
-  const { signOut } = useSession();
+  const { profile, devices, language, preferences } = useProfileState();
+  const { signOut, accountDataError, reloadAccountData } = useSession();
   const { preference } = useAppTheme();
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
@@ -132,6 +119,14 @@ export function ProfileScreen() {
           }
         />
       }>
+      {accountDataError ? (
+        <StatusBanner
+          tone="error"
+          title="Could not load account data"
+          message={accountDataError.message}
+          onDismiss={() => void reloadAccountData()}
+        />
+      ) : null}
       <ProfileHeader profile={profile} />
 
       <ProfileSection title="Account">
@@ -175,16 +170,17 @@ export function ProfileScreen() {
         <ProfileMenuItem
           icon="pin"
           label="Change PIN"
-          description="Update your 4-digit PIN"
+          description="Update your 6-digit PIN"
           onPress={() => router.push('/account/change-pin')}
           showDivider
         />
         <SettingsToggle
           icon="biometrics"
           label="Biometric authentication"
-          description="Unlock with your fingerprint"
-          value={security.biometricsEnabled}
-          onValueChange={setBiometricsEnabled}
+          description="Biometric sign-in is not available yet."
+          value={false}
+          disabled
+          onValueChange={() => {}}
           showDivider
         />
         <ProfileMenuItem
@@ -322,14 +318,15 @@ function validateProfile(draft: EditableProfileFields): ProfileErrors {
     errors.phone = 'Enter a valid phone number, e.g. +255712345678.';
   }
 
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(draft.email.trim())) {
+  if (draft.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(draft.email.trim())) {
     errors.email = 'Enter a valid email address.';
   }
 
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(draft.dateOfBirth.trim());
-  if (!match) {
+  const dateOfBirth = draft.dateOfBirth.trim();
+  const match = dateOfBirth ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateOfBirth) : null;
+  if (dateOfBirth && !match) {
     errors.dateOfBirth = 'Use the format YYYY-MM-DD.';
-  } else {
+  } else if (match) {
     const [, year, month, day] = match;
     const birth = new Date(Number(year), Number(month) - 1, Number(day));
     const isRealDate =
@@ -351,11 +348,15 @@ function validateProfile(draft: EditableProfileFields): ProfileErrors {
 export function PersonalInformationScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
+  const { updateProfile } = useSession();
   const { profile } = useProfileState();
 
   const [editing, setEditing] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [draftDirty, setDraftDirty] = useState(false);
   const [draft, setDraft] = useState<EditableProfileFields>({
     fullName: profile.fullName,
     phone: profile.phone,
@@ -363,11 +364,20 @@ export function PersonalInformationScreen() {
     dateOfBirth: profile.dateOfBirth,
   });
 
-  const errors = useMemo(() => validateProfile(draft), [draft]);
+  const profileDraft: EditableProfileFields = {
+    fullName: profile.fullName,
+    phone: profile.phone,
+    email: profile.email,
+    dateOfBirth: profile.dateOfBirth,
+  };
+  const currentDraft = draftDirty ? draft : profileDraft;
+  const errors = useMemo(() => validateProfile(currentDraft), [currentDraft]);
   const hasErrors = Object.keys(errors).length > 0;
 
-  const update = (key: keyof EditableProfileFields) => (value: string) =>
-    setDraft((current) => ({ ...current, [key]: value }));
+  const update = (key: keyof EditableProfileFields) => (value: string) => {
+    setDraft((current) => ({ ...(draftDirty ? current : profileDraft), [key]: value }));
+    setDraftDirty(true);
+  };
 
   const cancel = () => {
     setDraft({
@@ -377,21 +387,30 @@ export function PersonalInformationScreen() {
       dateOfBirth: profile.dateOfBirth,
     });
     setSubmitted(false);
+    setDraftDirty(false);
     setEditing(false);
   };
 
-  const save = () => {
+  const save = async () => {
     setSubmitted(true);
     if (hasErrors) return;
-    updateProfile({
-      fullName: draft.fullName.trim(),
-      phone: draft.phone.replace(/\D/g, ''),
-      email: draft.email.trim(),
-      dateOfBirth: draft.dateOfBirth.trim(),
-    });
-    setEditing(false);
-    setSubmitted(false);
-    setSaved(true);
+    setBusy(true);
+    setSaveError(null);
+    try {
+      await updateProfile({
+        fullName: currentDraft.fullName.trim(),
+        email: currentDraft.email.trim() || null,
+        dateOfBirth: currentDraft.dateOfBirth.trim() || null,
+      });
+      setDraftDirty(false);
+      setEditing(false);
+      setSubmitted(false);
+      setSaved(true);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not save profile changes.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -412,10 +431,11 @@ export function PersonalInformationScreen() {
         <StatusBanner
           tone="success"
           title="Profile updated"
-          message="Saved on this device only — nothing was sent to a server."
+          message="Your profile changes were saved to your account."
           onDismiss={() => setSaved(false)}
         />
       ) : null}
+      {saveError ? <StatusBanner tone="error" title="Could not save profile" message={saveError} /> : null}
 
       {!editing ? (
         <>
@@ -446,8 +466,7 @@ export function PersonalInformationScreen() {
           />
 
           <AppText variant="caption" color={colors.textTertiary}>
-            Editing is local to this build: the member ID, status and date of birth are shown for
-            reference and cannot be changed here.
+            Your mobile number is verified and cannot be changed here. Contact support if it needs to be updated.
           </AppText>
         </>
       ) : (
@@ -455,7 +474,7 @@ export function PersonalInformationScreen() {
           <View style={styles.form}>
             <ProfileField
               label="Full name"
-              value={draft.fullName}
+              value={currentDraft.fullName}
               onChangeText={update('fullName')}
               autoCapitalize="words"
               autoComplete="name"
@@ -464,8 +483,9 @@ export function PersonalInformationScreen() {
             />
             <ProfileField
               label="Phone number"
-              value={draft.phone}
+              value={currentDraft.phone}
               onChangeText={update('phone')}
+              editable={false}
               keyboardType="phone-pad"
               autoComplete="tel"
               placeholder="+255712345678"
@@ -474,7 +494,7 @@ export function PersonalInformationScreen() {
             />
             <ProfileField
               label="Email"
-              value={draft.email}
+              value={currentDraft.email}
               onChangeText={update('email')}
               keyboardType="email-address"
               autoCapitalize="none"
@@ -484,7 +504,7 @@ export function PersonalInformationScreen() {
             />
             <ProfileField
               label="Date of birth"
-              value={draft.dateOfBirth}
+              value={currentDraft.dateOfBirth}
               onChangeText={update('dateOfBirth')}
               keyboardType="numbers-and-punctuation"
               placeholder="1996-04-18"
@@ -502,7 +522,7 @@ export function PersonalInformationScreen() {
           ) : null}
 
           <View style={styles.actions}>
-            <PrimaryButton label="Save changes" block disabled={submitted && hasErrors} onPress={save} />
+            <PrimaryButton label="Save changes" block loading={busy} disabled={submitted && hasErrors} onPress={() => void save()} />
             <SecondaryButton label="Cancel" block onPress={cancel} />
           </View>
         </>
@@ -515,7 +535,10 @@ export function PersonalInformationScreen() {
 
 export function SecurityScreen() {
   const router = useRouter();
+  const { colors } = useAppTheme();
   const { security, devices, pinUpdatedAt } = useProfileState();
+  const { updateNotificationPreferences } = useSession();
+  const [preferenceError, setPreferenceError] = useState<string | null>(null);
 
   const protections = [
     security.biometricsEnabled ? 'Biometrics on' : 'Biometrics off',
@@ -541,14 +564,6 @@ export function SecurityScreen() {
           onPress={() => router.push('/account/change-pin')}
           showDivider
         />
-        <SettingsToggle
-          icon="biometrics"
-          label="Biometric authentication"
-          description="Use your fingerprint to unlock the app. The sensor is not read in this release."
-          value={security.biometricsEnabled}
-          onValueChange={setBiometricsEnabled}
-          showDivider
-        />
         <ProfileMenuItem
           icon="devices"
           label="Trusted devices"
@@ -562,33 +577,39 @@ export function SecurityScreen() {
       </ProfileSection>
 
       <ProfileSection title="Alerts">
+        {preferenceError ? (
+          <AppText variant="caption" color={colors.error}>{preferenceError}</AppText>
+        ) : null}
         <SettingsToggle
           icon="notification"
           label="Login and security alerts"
           description="Get notified when a new device signs in or your PIN changes"
           value={security.loginAlertsEnabled}
-          onValueChange={setLoginAlertsEnabled}
+          onValueChange={(value) => {
+            setPreferenceError(null);
+            void updateNotificationPreferences({ securityAlerts: value }).catch((error: unknown) =>
+              setPreferenceError(error instanceof Error ? error.message : 'Could not save notification preferences.')
+            );
+          }}
         />
       </ProfileSection>
 
-      <ProfileSection title="PIN" subtitle="Demo only">
+      <ProfileSection title="PIN">
         <ProfileMenuItem
           icon="pin"
-          label="Current PIN"
-          value="•••• •••• ••••"
-          description={`This prototype accepts ${MOCK_CURRENT_PIN} so the change-PIN flow can be tested. No PIN is stored by the app.`}
+          label="PIN protection"
+          value={pinUpdatedAt ? 'Set' : 'Not set'}
+          description={
+            pinUpdatedAt
+              ? `Last updated ${formatRelativeTime(pinUpdatedAt)}`
+              : 'Set a PIN to protect payments and withdrawals.'
+          }
         />
       </ProfileSection>
 
-      <ProfileSection title="Last security activity">
-        {MOCK_SECURITY_ACTIVITY.map((activity, index) => (
-          <SecurityActivityRow
-            key={activity.id}
-            activity={activity}
-            showDivider={index < MOCK_SECURITY_ACTIVITY.length - 1}
-          />
-        ))}
-      </ProfileSection>
+      <AppText variant="caption" color={colors.textTertiary}>
+        Security activity history is not available yet.
+      </AppText>
     </Screen>
   );
 }
@@ -773,7 +794,10 @@ export function TrustedDevicesScreen() {
   const router = useRouter();
   const { colors, radius } = useAppTheme();
   const { devices } = useProfileState();
+  const { removeDevice } = useSession();
   const [pending, setPending] = useState<{ id: string; name: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
   return (
     <Screen header={<ScreenHeader title="Trusted devices" subtitle={`${devices.length} signed in`} onBack={() => router.back()} />}>
@@ -809,8 +833,10 @@ export function TrustedDevicesScreen() {
       )}
 
       <AppText variant="caption" color={colors.textTertiary}>
-        This list is stored on the device only. Real device management arrives with account services.
+        These signed-in devices are linked to your account.
       </AppText>
+
+      {error ? <StatusBanner tone="error" title="Could not remove device" message={error} /> : null}
 
       <ConfirmationDialog
         visible={pending !== null}
@@ -820,8 +846,15 @@ export function TrustedDevicesScreen() {
         destructive
         onClose={() => setPending(null)}
         onConfirm={() => {
-          if (pending) removeDevice(pending.id);
-          setPending(null);
+          if (!pending || busy) return;
+          setBusy(true);
+          setError(null);
+          void removeDevice(pending.id)
+            .then(() => setPending(null))
+            .catch((removeError: unknown) => {
+              setError(removeError instanceof Error ? removeError.message : 'Could not remove device.');
+            })
+            .finally(() => setBusy(false));
         }}
       />
     </Screen>
@@ -834,8 +867,33 @@ export function SettingsScreen() {
   const router = useRouter();
   const { preference, setPreference, colors } = useAppTheme();
   const { language, preferences } = useProfileState();
+  const { updateNotificationPreferences } = useSession();
 
   const [preferenceMessage, setPreferenceMessage] = useState<string | null>(null);
+  const [preferenceError, setPreferenceError] = useState<string | null>(null);
+
+  const saveNotificationPreference = async (
+    key: 'payments' | 'transactions' | 'securityAlerts' | 'promotions',
+    value: boolean
+  ) => {
+    setPreferenceMessage(null);
+    setPreferenceError(null);
+    try {
+      if (key === 'payments') {
+        await updateNotificationPreferences({ moneyIn: value, moneyOut: value });
+      } else if (key === 'transactions') {
+        await updateNotificationPreferences({ transactions: value });
+      } else if (key === 'securityAlerts') {
+        await updateNotificationPreferences({ securityAlerts: value });
+      } else {
+        await updateNotificationPreferences({ marketing: value });
+      }
+    } catch (error) {
+      setPreferenceError(
+        error instanceof Error ? error.message : 'Could not save notification preferences.'
+      );
+    }
+  };
 
   return (
     <Screen header={<ScreenHeader title="Settings" subtitle="Appearance, language and alerts" onBack={() => router.back()} />}>
@@ -868,19 +926,23 @@ export function SettingsScreen() {
           onDismiss={() => setPreferenceMessage(null)}
         />
       ) : null}
+      {preferenceError ? (
+        <StatusBanner
+          tone="error"
+          title="Could not save settings"
+          message={preferenceError}
+          onDismiss={() => setPreferenceError(null)}
+        />
+      ) : null}
 
       <ProfileSection title="Language" subtitle={APP_LANGUAGES[language]}>
-        {(Object.keys(APP_LANGUAGES) as AppLanguage[]).map((code, index, list) => (
-          <ProfileMenuItem
-            key={code}
-            icon="language"
-            label={APP_LANGUAGES[code]}
-            description={code === 'en' ? 'Default' : 'Coming soon — no translation files in this release'}
-            showDivider={index < list.length - 1}
-            onPress={() => setLanguage(code)}
-            accessory={<CheckMark visible={language === code} />}
-          />
-        ))}
+        <ProfileMenuItem
+          icon="language"
+          label={APP_LANGUAGES.en}
+          description="Only English is available in this release."
+          accessory={<CheckMark visible={language === 'en'} />}
+          disabled
+        />
       </ProfileSection>
 
       <ProfileSection title="Notifications">
@@ -889,7 +951,7 @@ export function SettingsScreen() {
           label="Payment notifications"
           description="Sent and received payment alerts"
           value={preferences.payments}
-          onValueChange={(value) => setNotificationPreference('payments', value)}
+          onValueChange={(value) => void saveNotificationPreference('payments', value)}
           showDivider
         />
         <SettingsToggle
@@ -897,7 +959,7 @@ export function SettingsScreen() {
           label="Transaction notifications"
           description="Every movement in your transaction list"
           value={preferences.transactions}
-          onValueChange={(value) => setNotificationPreference('transactions', value)}
+          onValueChange={(value) => void saveNotificationPreference('transactions', value)}
           showDivider
         />
         <SettingsToggle
@@ -905,7 +967,7 @@ export function SettingsScreen() {
           label="Security alerts"
           description="New devices, PIN changes and login attempts"
           value={preferences.securityAlerts}
-          onValueChange={(value) => setNotificationPreference('securityAlerts', value)}
+          onValueChange={(value) => void saveNotificationPreference('securityAlerts', value)}
           showDivider
         />
         <SettingsToggle
@@ -913,7 +975,7 @@ export function SettingsScreen() {
           label="Promotional notifications"
           description="Product news and offers. Off by default."
           value={preferences.promotions}
-          onValueChange={(value) => setNotificationPreference('promotions', value)}
+          onValueChange={(value) => void saveNotificationPreference('promotions', value)}
         />
       </ProfileSection>
 

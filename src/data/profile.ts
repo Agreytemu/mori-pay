@@ -117,7 +117,6 @@ export const MOCK_SECURITY: SecuritySettings = {
  * "wrong current PIN" and "updated" states. It is never persisted and never
  * authorises anything.
  */
-export const MOCK_CURRENT_PIN = '4821';
 
 export const MOCK_TRUSTED_DEVICES: readonly TrustedDevice[] = [
   {

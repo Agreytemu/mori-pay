@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -465,6 +465,11 @@ export default function PaymentsScreen() {
         description="Ask someone to send the amount they owe."
         icon="request"
         onPress={() => openFlow('request')}
+      />
+      <Button
+        label="View money requests"
+        variant="secondary"
+        onPress={() => router.push('/money-requests' as Href)}
       />
       <FlowOverviewCard
         title="Pay"

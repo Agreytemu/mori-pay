@@ -245,6 +245,7 @@ model NotificationPreference {
   moneyIn      Boolean @default(true)
   moneyOut     Boolean @default(true)
   marketing    Boolean @default(false)
+  securityAlerts Boolean @default(true)
 }
 
 model FeeRule {
