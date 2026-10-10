@@ -1,4 +1,8 @@
-﻿# Mori Pay
+<p align="center">
+  <img src="./assets/images/mori%20pay%20official%20logo.png" alt="Mori Pay official logo" width="360" />
+</p>
+
+# Mori Pay
 
 A modern mobile-first wallet and payments experience for everyday money movement, built with Expo, NestJS, Prisma, and PostgreSQL.
 
@@ -665,6 +669,5 @@ This project is licensed under the MIT license. See [LICENSE](LICENSE) for detai
 Mori Pay is in active product-oriented development and is structured as a real-world fintech application starter with a mobile client, typed API contracts, and production-minded backend architecture.
 
 If you're building a wallet, mobile-money, or payments product, this repo is designed to give you a stronger foundation than a plain starter template.
-
 
 
