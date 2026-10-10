@@ -67,7 +67,7 @@ export class SettlementService {
         where: { id: transaction.id, status: 'pending' },
         data: {
           status: 'completed',
-          providerStatus: 'SUCCESS',
+          providerStatus: 'completed',
           settledAt: new Date(),
         },
       });
@@ -101,7 +101,7 @@ export class SettlementService {
   async failDeposit(transaction: Transaction): Promise<void> {
     await this.prisma.transaction.updateMany({
       where: { id: transaction.id, status: 'pending' },
-      data: { status: 'failed', providerStatus: 'FAILED' },
+      data: { status: 'failed', providerStatus: 'failed' },
     });
   }
 
@@ -112,7 +112,7 @@ export class SettlementService {
         where: { id: transaction.id, status: 'processing' },
         data: {
           status: 'completed',
-          providerStatus: 'SUCCESS',
+          providerStatus: 'completed',
           settledAt: new Date(),
         },
       });
@@ -150,7 +150,7 @@ export class SettlementService {
     await this.prisma.$transaction(async (client) => {
       const claimed = await client.transaction.updateMany({
         where: { id: transaction.id, status: 'processing' },
-        data: { status: 'failed', providerStatus: 'FAILED' },
+        data: { status: 'failed', providerStatus: 'failed' },
       });
       if (claimed.count === 0) return;
 

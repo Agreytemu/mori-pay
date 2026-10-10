@@ -20,11 +20,17 @@ export const envSchema = z.object({
   OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
 
-  STAKABA_BASE_URL: z.string().url().default('https://api.stakaba.com'),
-  STAKABA_API_KEY: z.string().default(''),
-  STAKABA_WEBHOOK_SECRET: z.string().optional(),
+  ABLINER_BASE_URL: z.string().url().default('https://abliner.net'),
+  ABLINER_API_KEY: z.string().default(''),
+  ABLINER_WEBHOOK_SECRET: z.string().optional(),
+  /** Public HTTPS endpoint Abliner POSTs transaction events to. */
+  ABLINER_CALLBACK_URL: z
+    .string()
+    .default('http://localhost:4000/api/v1/webhooks/abliner'),
+  /** Approved Abliner Sender ID for outbound SMS (optional). */
+  ABLINER_SMS_SENDER_ID: z.string().optional(),
 
-  SMS_PROVIDER: z.enum(['console', 'beem', 'nextsms']).default('console'),
+  SMS_PROVIDER: z.enum(['console', 'abliner', 'beem', 'nextsms']).default('console'),
   SMS_API_KEY: z.string().optional(),
 
   LOG_LEVEL: z

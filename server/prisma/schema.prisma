@@ -273,17 +273,18 @@ model LimitUsage {
   @@unique([userId, period, date])
 }
 
-model StakabaWebhookEvent {
-  id                String    @id @default(cuid())
-  internalReference String
-  event             String
-  payload           Json
-  processedAt       DateTime?
-  error             String?
-  createdAt         DateTime  @default(now())
+model AblinerWebhookEvent {
+  id                   String    @id @default(cuid())
+  /** Abliner event id (also `x-webhook-id`); unique per delivery/retry. */
+  eventId              String    @unique
+  event                String
+  transactionReference String
+  payload              Json
+  processedAt          DateTime?
+  error                String?
+  createdAt            DateTime  @default(now())
 
-  @@unique([internalReference, event])
-  @@index([internalReference])
+  @@index([transactionReference])
 }
 
 model AuditLog {

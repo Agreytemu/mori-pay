@@ -1,4 +1,4 @@
-/** Shared API envelope and error contract (mirrors Stakaba's error shape). */
+/** Shared API envelope and error contract. */
 
 export type ApiErrorCode =
   | 'VALIDATION_ERROR'

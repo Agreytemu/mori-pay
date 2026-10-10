@@ -4,23 +4,47 @@ import * as Clipboard from 'expo-clipboard';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AccountCard, AccountInfoRow, WalletAction, WalletActivityItem } from '@/components/wallet/wallet-components';
+import {
+  AccountCard,
+  AccountInfoRow,
+  WalletAction,
+  WalletActivityItem,
+} from '@/components/wallet/wallet-components';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
 import { SectionHeader } from '@/components/ui/SectionHeader';
-import { WALLET_ACCOUNT, WALLET_ACTIVITY } from '@/data/wallet-account';
+import { toWalletActivity, toWalletData, userStatusToAccountStatus } from '@/lib/adapters';
+import { listTransactions } from '@/lib/mori-api';
+import { useSession } from '@/lib/session';
+import { useAsync } from '@/lib/use-async';
 import { useAppTheme } from '@/theme';
 
 export function WalletScreen({ isTab = false }: { isTab?: boolean }) {
   const router = useRouter();
   const { colors, space, radius } = useAppTheme();
+  const { user, wallet } = useSession();
+
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
 
+  const activity = useAsync(
+    async () => {
+      const result = await listTransactions({ limit: 5 });
+      return result.items.map(toWalletActivity);
+    },
+    [],
+    { enabled: user !== null }
+  );
+
+  const account = wallet
+    ? toWalletData(wallet, userStatusToAccountStatus(user?.status ?? 'active'))
+    : null;
+
   const copyAccountNumber = async () => {
+    if (!account) return;
     try {
-      await Clipboard.setStringAsync(WALLET_ACCOUNT.accountNumber);
+      await Clipboard.setStringAsync(account.accountNumber);
       setDialog({ title: 'Copied', message: 'Account number copied to clipboard.' });
     } catch (error) {
       setDialog({
@@ -65,55 +89,63 @@ export function WalletScreen({ isTab = false }: { isTab?: boolean }) {
           <View style={{ width: 42 }} />
         </View>
 
-        <AccountCard
-          account={WALLET_ACCOUNT}
-          visible={balanceVisible}
-          onToggleVisibility={() => setBalanceVisible((visible) => !visible)}
-          onPress={() => setBalanceVisible((visible) => !visible)}
-        />
-
-        <View style={styles.actionsSection}>
-          <SectionHeader title="Wallet actions" />
-          <View style={styles.actionRow}>
-            <WalletAction label="Deposit" icon="deposit" onPress={() => router.push('/wallet/deposit')} />
-            <WalletAction label="Withdraw" icon="withdraw" onPress={() => router.push('/wallet/withdraw')} />
-            <WalletAction
-              label="Send"
-              icon="send"
-              onPress={() => router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'send' } })}
+        {account ? (
+          <>
+            <AccountCard
+              account={account}
+              visible={balanceVisible}
+              onToggleVisibility={() => setBalanceVisible((visible) => !visible)}
+              onPress={() => setBalanceVisible((visible) => !visible)}
             />
-            <WalletAction
-              label="Receive"
-              icon="receive"
-              onPress={() => router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'receive' } })}
-            />
-          </View>
-        </View>
 
-        <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
-          <SectionHeader title="Account information" />
-          <AccountInfoRow
-            label="Account number"
-            value={WALLET_ACCOUNT.accountNumber}
-            icon="copy"
-            onPress={copyAccountNumber}
-          />
-          <AccountInfoRow label="Phone number" value={WALLET_ACCOUNT.phoneNumber} icon="phone" />
-          <AccountInfoRow label="Account type" value={WALLET_ACCOUNT.accountType} icon="wallet" />
-          <AccountInfoRow label="Date opened" value={WALLET_ACCOUNT.openedDate} icon="transactions" />
-          <AccountInfoRow label="Status" value="Active" icon="success" />
-        </View>
+            <View style={styles.actionsSection}>
+              <SectionHeader title="Wallet actions" />
+              <View style={styles.actionRow}>
+                <WalletAction label="Deposit" icon="deposit" onPress={() => router.push('/wallet/deposit')} />
+                <WalletAction label="Withdraw" icon="withdraw" onPress={() => router.push('/wallet/withdraw')} />
+                <WalletAction
+                  label="Send"
+                  icon="send"
+                  onPress={() => router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'send' } })}
+                />
+                <WalletAction
+                  label="Receive"
+                  icon="receive"
+                  onPress={() => router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'receive' } })}
+                />
+              </View>
+            </View>
 
-        <View style={styles.activitySection}>
-          <SectionHeader
-            title="Wallet activity"
-            actionLabel="View all"
-            onActionPress={() => router.push('/(tabs)/transactions')}
-          />
-          <View style={styles.activityList}>
-            {WALLET_ACTIVITY.map((item) => <WalletActivityItem key={item.id} item={item} />)}
-          </View>
-        </View>
+            <View style={[styles.infoCard, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
+              <SectionHeader title="Account information" />
+              <AccountInfoRow label="Account number" value={account.accountNumber} icon="copy" onPress={copyAccountNumber} />
+              <AccountInfoRow label="Phone number" value={account.phoneNumber} icon="phone" />
+              <AccountInfoRow label="Account type" value={account.accountType} icon="wallet" />
+              <AccountInfoRow label="Date opened" value={account.openedDate} icon="transactions" />
+              <AccountInfoRow label="Status" value={account.status === 'active' ? 'Active' : account.status} icon="success" />
+            </View>
+
+            <View style={styles.activitySection}>
+              <SectionHeader
+                title="Wallet activity"
+                actionLabel="View all"
+                onActionPress={() => router.push('/(tabs)/transactions')}
+              />
+              <View style={styles.activityList}>
+                {(activity.data ?? []).map((transaction) => (
+                  <WalletActivityItem key={transaction.id} item={transaction} />
+                ))}
+                {!activity.loading && activity.error ? (
+                  <AppText variant="caption" color={colors.error}>Could not load recent activity.</AppText>
+                ) : null}
+              </View>
+            </View>
+          </>
+        ) : (
+          <AppText variant="bodySmall" color={colors.textSecondary}>
+            Loading your wallet…
+          </AppText>
+        )}
       </ScrollView>
       <AppDialog
         visible={dialog !== null}

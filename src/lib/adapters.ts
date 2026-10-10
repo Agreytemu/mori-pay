@@ -1,0 +1,62 @@
+import type { AuthUser, Transaction as ApiTransaction, WalletAccount } from '@mori-pay/contracts';
+
+import { APP_NAME } from '@/config/app';
+import type { WalletAccountData, WalletAccountStatus, WalletActivity } from '@/data/wallet-account';
+import type { IconName } from '@/constants/icons';
+import type { Transaction as UiTransaction } from '@/types/transaction';
+import { formatDate, formatPhone } from '@/utils/format';
+
+/**
+ * Maps API/domain objects from `@mori-pay/contracts` onto the shapes the
+ * existing UI components already consume, so screens can wire up the real
+ * backend without rewriting presentational code.
+ */
+
+const ACTIVITY_ICON: Record<ApiTransaction['type'], IconName> = {
+  send: 'send',
+  receive: 'receive',
+  payment: 'pay',
+  request: 'request',
+  deposit: 'deposit',
+  withdrawal: 'withdraw',
+};
+
+export function toWalletData(wallet: WalletAccount, status: WalletAccountStatus): WalletAccountData {
+  return {
+    brand: APP_NAME,
+    accountType: 'Personal account',
+    availableBalance: wallet.balance.available,
+    currency: 'TZS',
+    accountNumber: wallet.accountNumber,
+    phoneNumber: formatPhone(wallet.phoneNumber),
+    openedDate: formatDate(wallet.memberSince),
+    status,
+  };
+}
+
+/** Narrows the contract transaction to the UI model (channel union, etc.). */
+export function toUiTransaction(tx: ApiTransaction): UiTransaction {
+  return {
+    ...tx,
+    channel: tx.channel === 'card' ? 'mobileMoney' : tx.channel,
+  };
+}
+
+export function toWalletActivity(tx: ApiTransaction): WalletActivity {
+  const credit = tx.direction === 'credit';
+  return {
+    id: tx.id,
+    description: tx.note || tx.counterparty,
+    date: formatDate(tx.createdAt),
+    amount: tx.amount,
+    direction: credit ? 'credit' : 'debit',
+    status: tx.status === 'completed' ? 'Completed' : 'Pending',
+    icon: ACTIVITY_ICON[tx.type],
+  };
+}
+
+export function userStatusToAccountStatus(status: AuthUser['status']): WalletAccountStatus {
+  if (status === 'pending') return 'pending';
+  if (status === 'restricted') return 'limited';
+  return 'active';
+}

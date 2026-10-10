@@ -11,21 +11,62 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { QuickActionRow } from '@/components/ui/QuickAction';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { TransactionItem } from '@/components/ui/TransactionItem';
-import { HOME_ACTIONS, getMockHomeData } from '@/data/mock-home';
-import { WALLET_ACCOUNT } from '@/data/wallet-account';
+import type { IconName } from '@/constants/icons';
+import { toUiTransaction, toWalletData, userStatusToAccountStatus } from '@/lib/adapters';
+import { listTransactions } from '@/lib/mori-api';
+import { useSession } from '@/lib/session';
+import { useAsync } from '@/lib/use-async';
 import { useAppTheme } from '@/theme';
 import { formatDateTime, greetingFor } from '@/utils/format';
+import { TRANSACTION_TYPE_LABEL } from '@/types';
+
+const ACTIONS: { icon: IconName; label: string; onPress?: () => void }[] = [
+  { icon: 'send', label: 'Send' },
+  { icon: 'receive', label: 'Receive' },
+  { icon: 'pay', label: 'Pay' },
+  { icon: 'request', label: 'Request' },
+];
 
 export default function HomeScreen() {
   const { colors, space, radius } = useAppTheme();
   const router = useRouter();
+  const { user, wallet } = useSession();
+
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
-  const data = useMemo(() => getMockHomeData(), []);
-  const greeting = greetingFor();
 
-  const showComingSoon = (feature: string) =>
-    setDialog({ title: feature, message: 'This feature will be available soon.' });
+  const recent = useAsync(
+    async () => {
+      const result = await listTransactions({ limit: 4 });
+      return result.items.map(toUiTransaction);
+    },
+    [],
+    { enabled: user !== null }
+  );
+
+  const greeting = greetingFor();
+  const recentItems = recent.data ?? [];
+  const account = wallet
+    ? toWalletData(wallet, userStatusToAccountStatus(user?.status ?? 'active'))
+    : null;
+  const displayName = user?.firstName ?? user?.fullName ?? 'there';
+
+  const actions = useMemo(
+    () =>
+      ACTIONS.map((action) => ({
+        ...action,
+        onPress: () => {
+          if (action.label === 'Send') {
+            router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'send' } });
+          } else if (action.label === 'Receive') {
+            router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'receive' } });
+          } else {
+            router.push('/(tabs)/payments');
+          }
+        },
+      })),
+    [router]
+  );
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
@@ -47,7 +88,7 @@ export default function HomeScreen() {
               {greeting},
             </AppText>
             <AppText variant="title3" numberOfLines={1}>
-              {data.user.displayName}
+              {displayName}
             </AppText>
           </View>
 
@@ -69,7 +110,7 @@ export default function HomeScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Open profile"
-            onPress={() => showComingSoon('Profile')}
+            onPress={() => router.push('/(tabs)/profile')}
             style={({ pressed }) => [
               styles.avatar,
               {
@@ -81,54 +122,60 @@ export default function HomeScreen() {
               pressed && styles.pressed,
             ]}>
             <AppText variant="bodySmallStrong" color={colors.primary}>
-              {data.user.displayName.slice(0, 1).toUpperCase()}
+              {(displayName ?? '?').slice(0, 1).toUpperCase()}
             </AppText>
           </Pressable>
         </View>
 
-        <AccountCard
-          account={WALLET_ACCOUNT}
-          visible={balanceVisible}
-          onToggleVisibility={() => setBalanceVisible((visible) => !visible)}
-          onPress={() => router.push('/wallet')}
-        />
+        {account ? (
+          <AccountCard
+            account={account}
+            visible={balanceVisible}
+            onToggleVisibility={() => setBalanceVisible((visible) => !visible)}
+            onPress={() => router.push('/wallet')}
+          />
+        ) : (
+          <AppText variant="bodySmall" color={colors.textSecondary}>
+            Loading your wallet…
+          </AppText>
+        )}
 
         <View style={styles.section}>
           <SectionHeader title="Move money" />
-          <QuickActionRow
-            actions={HOME_ACTIONS.map((action) => ({
-              ...action,
-              onPress: () => showComingSoon(action.label),
-            }))}
-            gap={space.xs}
-          />
+          <QuickActionRow actions={actions} gap={space.xs} />
         </View>
 
         <View style={styles.section}>
           <SectionHeader
             title="Recent activity"
             actionLabel="View all"
-            onActionPress={() => showComingSoon('Transactions')}
+            onActionPress={() => router.push('/(tabs)/transactions')}
           />
-          {data.transactions.length > 0 ? (
+          {recentItems.length > 0 ? (
             <View style={styles.activityList}>
-              {data.transactions.map((transaction, index) => (
+              {recentItems.map((transaction, index) => (
                 <TransactionItem
                   key={transaction.id}
                   transaction={transaction}
-                  title={transaction.note || transaction.typeLabel}
+                  title={transaction.note || TRANSACTION_TYPE_LABEL[transaction.type]}
                   onPress={() =>
                     setDialog({
-                      title: transaction.note || transaction.typeLabel,
+                      title: transaction.note || TRANSACTION_TYPE_LABEL[transaction.type],
                       message: `${transaction.counterparty}\n${formatDateTime(
                         transaction.createdAt
                       )}`,
                     })
                   }
-                  isLast={index === data.transactions.length - 1}
+                  isLast={index === recentItems.length - 1}
                 />
               ))}
             </View>
+          ) : recent.loading ? (
+            <EmptyState
+              icon="transactions"
+              title="Loading activity…"
+              description="Fetching your recent transactions."
+            />
           ) : (
             <EmptyState
               icon="emptyInbox"

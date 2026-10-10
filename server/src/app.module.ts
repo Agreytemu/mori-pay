@@ -8,6 +8,7 @@ import { LoggerModule } from 'nestjs-pino';
 
 import { AppConfigModule } from './config/config.module.js';
 import { validateEnv } from './config/env.validation.js';
+import { AblinerModule } from './abliner/abliner.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { HealthModule } from './health/health.module.js';
 import { LedgerModule } from './ledger/ledger.module.js';
@@ -16,7 +17,6 @@ import { PaymentsModule } from './payments/payments.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RequestsModule } from './requests/requests.module.js';
 import { SettlementModule } from './settlement/settlement.module.js';
-import { StakabaModule } from './stakaba/stakaba.module.js';
 import { TopUpsModule } from './topups/topups.module.js';
 import { TransfersModule } from './transfers/transfers.module.js';
 import { WalletModule } from './wallet/wallet.module.js';
@@ -70,7 +70,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     LedgerModule,
     PaymentsModule,
     SettlementModule,
-    StakabaModule,
+    AblinerModule,
     AuthModule,
     WalletModule,
     TransfersModule,

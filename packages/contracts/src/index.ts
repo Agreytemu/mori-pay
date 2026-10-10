@@ -4,5 +4,5 @@ export * from './account';
 export * from './payments';
 export * from './api';
 export * from './auth';
-export * from './stakaba';
+export * from './abliner';
 export * from './schemas';

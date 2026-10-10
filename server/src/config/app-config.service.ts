@@ -65,11 +65,13 @@ export class AppConfigService {
     };
   }
 
-  get stakaba() {
+  get abliner() {
     return {
-      baseUrl: this.get('STAKABA_BASE_URL'),
-      apiKey: this.get('STAKABA_API_KEY'),
-      webhookSecret: this.get('STAKABA_WEBHOOK_SECRET'),
+      baseUrl: this.get('ABLINER_BASE_URL'),
+      apiKey: this.get('ABLINER_API_KEY'),
+      webhookSecret: this.get('ABLINER_WEBHOOK_SECRET'),
+      callbackUrl: this.get('ABLINER_CALLBACK_URL'),
+      smsSenderId: this.get('ABLINER_SMS_SENDER_ID'),
     };
   }
 

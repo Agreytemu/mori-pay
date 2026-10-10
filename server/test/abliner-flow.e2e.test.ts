@@ -9,11 +9,11 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { AppModule } from '../src/app.module.js';
+import { AblinerClient } from '../src/abliner/abliner.client.js';
 import { TokenService } from '../src/auth/token.service.js';
 import { API_PREFIX } from '../src/common/constants.js';
 import { LedgerService, SYSTEM_LEDGER_ACCOUNTS } from '../src/ledger/ledger.service.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
-import { StakabaClient } from '../src/stakaba/stakaba.client.js';
 import { LEDGER_ACCOUNT_AVAILABLE, type UserWithWallet } from '../src/wallet/wallet.mapper.js';
 
 async function isDatabaseReachable(): Promise<boolean> {
@@ -47,49 +47,58 @@ const suffix = Date.now().toString().slice(-8);
 const PIN = '654321';
 
 /** Deterministic stand-in for the real provider, so tests never hit the network. */
-class FakeStakabaClient {
-  verificationStatus: 'SUCCESS' | 'FAILED' = 'SUCCESS';
+class FakeAblinerClient {
+  verificationStatus: 'completed' | 'failed' | 'pending' = 'completed';
   private seq = 0;
 
-  createCollection(): Promise<{ internalReference: string }> {
-    return Promise.resolve({ internalReference: `STK-COL-${++this.seq}-${suffix}` });
-  }
-
-  createCardPayment(): Promise<{ checkoutUrl: string; internalReference: string }> {
+  createDeposit(request: { method: string; amount: number }): Promise<unknown> {
     return Promise.resolve({
-      checkoutUrl: 'https://pay.stakaba.test/checkout',
-      internalReference: `STK-CARD-${++this.seq}-${suffix}`,
+      id: `ABL-${request.method.toUpperCase()}-${++this.seq}-${suffix}`,
+      type: 'deposit',
+      flow: request.method === 'card' ? 'hosted_page' : 'push',
+      status: 'pending',
+      amount: request.amount,
+      currency: 'TZS',
+      method: request.method,
+      payment_url:
+        request.method === 'card' ? 'https://abliner.test/checkout' : null,
+      reference: `ABLREF${this.seq}${suffix}`,
+      customer_reference: null,
+      message: 'Mobile money push sent.',
     });
   }
 
-  createPayout(request: { amount: number }): Promise<{
-    disbursement: { id: string; status: string; amount: number; currency: string };
-  }> {
+  createWithdrawal(request: { amount: number }): Promise<unknown> {
     return Promise.resolve({
-      disbursement: {
-        id: `STK-PAY-${++this.seq}-${suffix}`,
-        status: 'processing',
-        amount: request.amount,
-        currency: 'TZS',
-      },
+      id: `ABL-PAY-${++this.seq}-${suffix}`,
+      status: 'processing',
+      amount: request.amount,
+      currency: 'TZS',
     });
   }
 
-  getTransaction(internalReference: string): Promise<{
-    internalReference: string;
-    status: 'SUCCESS' | 'FAILED' | 'PENDING';
-    type: 'COLLECTION' | 'CARD' | 'PAYOUT';
-    grossAmount: number;
-    stakabaFee: number;
-    netAmount: number;
-  }> {
+  previewWithdrawal(_method: string, amount: number): Promise<unknown> {
     return Promise.resolve({
-      internalReference,
+      amount_tzs: amount,
+      fee_tzs: 0,
+      total_debited_tzs: amount,
+    });
+  }
+
+  lookupPhone(phone: string): Promise<unknown> {
+    return Promise.resolve({ phone, name: 'NEEMA JOSEPH', network: 'vodacom' });
+  }
+
+  getTransaction(id: string): Promise<unknown> {
+    return Promise.resolve({
+      id,
+      type: 'deposit',
+      amount: 0,
+      currency: 'TZS',
       status: this.verificationStatus,
-      type: 'COLLECTION',
-      grossAmount: 0,
-      stakabaFee: 0,
-      netAmount: 0,
+      reference: id,
+      customer_reference: null,
+      created_at: new Date().toISOString(),
     });
   }
 }
@@ -102,7 +111,7 @@ describe(
     let prisma: PrismaService;
     let ledger: LedgerService;
     let tokens: TokenService;
-    let fake: FakeStakabaClient;
+    let fake: FakeAblinerClient;
     let user: UserWithWallet;
     let token: string;
     const phone = `255${suffix}1`;
@@ -121,28 +130,42 @@ describe(
         orderBy: { createdAt: 'desc' },
       });
 
-    const fireWebhook = (internalReference: string, type: 'COLLECTION' | 'PAYOUT') =>
+    const fireWebhook = (
+      reference: string,
+      type: 'deposit' | 'withdrawal',
+      status: 'completed' | 'failed',
+    ) =>
       request(app.getHttpServer())
-        .post(`/${API_PREFIX}/webhooks/stakaba`)
+        .post(`/${API_PREFIX}/webhooks/abliner`)
         .send({
-          event: 'transaction.success',
-          internalReference,
-          status: 'SUCCESS',
-          type,
-          grossAmount: 0,
-          stakabaFee: 0,
-          netAmount: 0,
-          currency: 'TZS',
-          mobileNumber: phone,
-          network: 'Mpesa',
-          providerReference: internalReference,
+          id: `evt_${reference}_${status}`,
+          event:
+            type === 'deposit'
+              ? status === 'completed'
+                ? 'transaction.completed'
+                : 'transaction.failed'
+              : status === 'completed'
+                ? 'withdrawal.completed'
+                : 'withdrawal.failed',
+          created_at: new Date().toISOString(),
+          data: {
+            id: reference,
+            type,
+            method: 'mobile',
+            amount: 0,
+            currency: 'TZS',
+            status,
+            reference,
+            customer_reference: null,
+            provider_reference: null,
+          },
         });
 
     before(async () => {
-      fake = new FakeStakabaClient();
+      fake = new FakeAblinerClient();
 
       const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-        .overrideProvider(StakabaClient)
+        .overrideProvider(AblinerClient)
         .useValue(fake)
         .compile();
 
@@ -212,7 +235,7 @@ describe(
       const transaction = await latestTransaction('deposit');
       assert.equal(await balance(), 100_000);
 
-      await fireWebhook(transaction.internalReference as string, 'COLLECTION').expect(200);
+      await fireWebhook(transaction.internalReference as string, 'deposit', 'completed').expect(200);
       assert.equal(await balance(), 110_000);
 
       const settled = await prisma.transaction.findUniqueOrThrow({
@@ -221,14 +244,25 @@ describe(
       assert.equal(settled.status, 'completed');
     });
 
+    it('returns a checkout URL for card top-ups', async () => {
+      const init = await request(app.getHttpServer())
+        .post(`/${API_PREFIX}/topups/card`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ amount: 5_000, customerName: 'Neema Joseph', customerPhone: phone })
+        .expect(200);
+
+      assert.equal(init.body.checkoutUrl, 'https://abliner.test/checkout');
+      assert.equal(init.body.transaction.status, 'pending');
+    });
+
     it('ignores a duplicate webhook', async () => {
       const transaction = await latestTransaction('deposit');
-      await fireWebhook(transaction.internalReference as string, 'COLLECTION').expect(200);
+      await fireWebhook(transaction.internalReference as string, 'deposit', 'completed').expect(200);
       assert.equal(await balance(), 110_000);
     });
 
     it('marks a failed top-up without crediting', async () => {
-      fake.verificationStatus = 'FAILED';
+      fake.verificationStatus = 'failed';
 
       await request(app.getHttpServer())
         .post(`/${API_PREFIX}/topups/mobile-money`)
@@ -237,7 +271,7 @@ describe(
         .expect(200);
 
       const transaction = await latestTransaction('deposit');
-      await fireWebhook(transaction.internalReference as string, 'COLLECTION').expect(200);
+      await fireWebhook(transaction.internalReference as string, 'deposit', 'failed').expect(200);
 
       const settled = await prisma.transaction.findUniqueOrThrow({
         where: { id: transaction.id },
@@ -245,7 +279,7 @@ describe(
       assert.equal(settled.status, 'failed');
       assert.equal(await balance(), 110_000);
 
-      fake.verificationStatus = 'SUCCESS';
+      fake.verificationStatus = 'completed';
     });
 
     it('holds withdrawal funds, then settles on success', async () => {
@@ -256,10 +290,11 @@ describe(
         .expect(201);
 
       assert.equal(withdrawal.body.transaction.status, 'processing');
+      assert.equal(withdrawal.body.fee, 0);
       assert.equal(await balance(), 90_000);
 
       const transaction = await latestTransaction('withdrawal');
-      await fireWebhook(transaction.internalReference as string, 'PAYOUT').expect(200);
+      await fireWebhook(transaction.internalReference as string, 'withdrawal', 'completed').expect(200);
 
       assert.equal(await balance(), 90_000);
       const clearing = await ledger.getSystemAccount(SYSTEM_LEDGER_ACCOUNTS.clearing);
@@ -269,21 +304,56 @@ describe(
       assert.equal(clearingRow.balance, 0n);
     });
 
+    it('reconciles a pending withdrawal on read', async () => {
+      fake.verificationStatus = 'completed';
+
+      const created = await request(app.getHttpServer())
+        .post(`/${API_PREFIX}/withdrawals`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ amount: 10_000, phoneNumber: phone, network: 'Mpesa', pin: PIN })
+        .expect(201);
+
+      assert.equal(await balance(), 80_000);
+
+      const read = await request(app.getHttpServer())
+        .get(`/${API_PREFIX}/wallet/transactions/${created.body.transaction.id}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+
+      assert.equal(read.body.status, 'completed');
+      assert.equal(await balance(), 80_000);
+    });
+
     it('returns held funds when a payout fails', async () => {
-      fake.verificationStatus = 'FAILED';
+      fake.verificationStatus = 'failed';
 
       await request(app.getHttpServer())
         .post(`/${API_PREFIX}/withdrawals`)
         .set('Authorization', `Bearer ${token}`)
         .send({ amount: 10_000, phoneNumber: phone, network: 'Mpesa', pin: PIN })
         .expect(201);
-      assert.equal(await balance(), 80_000);
+      assert.equal(await balance(), 70_000);
 
       const transaction = await latestTransaction('withdrawal');
-      await fireWebhook(transaction.internalReference as string, 'PAYOUT').expect(200);
+      await fireWebhook(transaction.internalReference as string, 'withdrawal', 'failed').expect(200);
 
-      assert.equal(await balance(), 90_000);
-      fake.verificationStatus = 'SUCCESS';
+      assert.equal(await balance(), 80_000);
+      fake.verificationStatus = 'completed';
+    });
+
+    it('quotes a withdrawal fee and looks up a recipient', async () => {
+      const quote = await request(app.getHttpServer())
+        .get(`/${API_PREFIX}/withdrawals/preview?amount=50000`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      assert.equal(quote.body.amount, 50_000);
+      assert.equal(typeof quote.body.total, 'number');
+
+      const lookup = await request(app.getHttpServer())
+        .get(`/${API_PREFIX}/withdrawals/lookup?phone=${phone}`)
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      assert.equal(lookup.body.name, 'NEEMA JOSEPH');
     });
 
     it('rejects a withdrawal above the available balance', async () => {

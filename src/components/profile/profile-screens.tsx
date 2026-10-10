@@ -50,11 +50,12 @@ import {
   setLanguage,
   setLoginAlertsEnabled,
   setNotificationPreference,
-  signOut,
   updateProfile,
   useProfileState,
   type EditableProfileFields,
 } from '@/data/profile-store';
+import { useSession } from '@/lib/session';
+import { changePin, verifyPin } from '@/lib/mori-api';
 import { radius, spacing, useAppTheme, type ThemePreference } from '@/theme';
 import { formatDate, formatRelativeTime, initialsOf } from '@/utils/format';
 
@@ -108,6 +109,7 @@ export function ProfileScreen() {
   const router = useRouter();
   const { colors } = useAppTheme();
   const { profile, security, devices, language, preferences } = useProfileState();
+  const { signOut } = useSession();
   const { preference } = useAppTheme();
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
@@ -284,16 +286,18 @@ export function ProfileScreen() {
         destructive
         onClose={() => setConfirmLogout(false)}
         onConfirm={() => {
-          signOut();
           setConfirmLogout(false);
-          setSignedOut(true);
+          void (async () => {
+            await signOut();
+            setSignedOut(true);
+          })();
         }}
       />
 
       <ConfirmationDialog
         visible={signedOut}
         title="Signed out"
-        message="This is a UI prototype: no session was ended and no data left the device. Connect an auth service to signOut() to make this real."
+        message="You have been signed out of this device. Sign in again with your mobile number when you need to use the app."
         confirmLabel="Close"
         onClose={() => setSignedOut(false)}
         onConfirm={() => setSignedOut(false)}
@@ -591,8 +595,9 @@ export function SecurityScreen() {
 
 /* -------------------------------------------------------------- change pin */
 
-const PIN_LENGTH = 4;
-const SEQUENTIAL_PINS = ['0123', '1234', '2345', '3456', '4321', '3210', '9876', '6789'];
+const PIN_LENGTH = 6;
+const SEQUENTIAL_PINS = ['012345', '123456', '234567', '345678', '456789', '987654', '876543', '654321', '765432']; 
+const REPEATED_RE = new RegExp(`^(\\d)\\1{${PIN_LENGTH - 1}}$`);
 
 type PinStep = 'current' | 'new' | 'confirm' | 'success';
 
@@ -600,40 +605,46 @@ const PIN_STEPS: Record<Exclude<PinStep, 'success'>, { eyebrow: string; title: s
   current: {
     eyebrow: 'STEP 1 OF 3',
     title: 'Enter your current PIN',
-    hint: `Four digits. Use ${MOCK_CURRENT_PIN} in this prototype.`,
+    hint: 'Six digits. Your current PIN is required to continue.',
   },
   new: {
     eyebrow: 'STEP 2 OF 3',
     title: 'Choose a new PIN',
-    hint: 'Avoid repeated digits like 1111 and sequences like 1234.',
+    hint: 'Avoid repeated digits like 111111 and sequences like 123456.',
   },
   confirm: {
     eyebrow: 'STEP 3 OF 3',
     title: 'Confirm your new PIN',
-    hint: 'Enter the same four digits again.',
+    hint: 'Enter the same six digits again.',
   },
 };
 
 export function ChangePinScreen() {
   const router = useRouter();
   const { colors, radius } = useAppTheme();
+  const { setPin: pushPinStatus } = useSession();
   const [step, setStep] = useState<PinStep>('current');
   const [entry, setEntry] = useState('');
   const [revealed, setRevealed] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
 
-  const submit = (pin: string) => {
+  const submit = async (pin: string) => {
     if (step === 'current') {
-      if (pin === MOCK_CURRENT_PIN) {
+      setBusy(true);
+      setError(null);
+      try {
+        await verifyPin({ pin });
         setCurrentPin(pin);
         setStep('new');
-        setError(null);
-      } else {
-        setError(`That PIN is not correct. This prototype expects ${MOCK_CURRENT_PIN}.`);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Incorrect PIN.');
+      } finally {
+        setBusy(false);
+        setEntry('');
       }
-      setEntry('');
       return;
     }
 
@@ -643,7 +654,7 @@ export function ChangePinScreen() {
         setEntry('');
         return;
       }
-      if (new RegExp(`^(\\d)\\1{${PIN_LENGTH - 1}}$`).test(pin) || SEQUENTIAL_PINS.includes(pin)) {
+      if (REPEATED_RE.test(pin) || SEQUENTIAL_PINS.includes(pin)) {
         setError('That PIN is too easy to guess. Pick a less obvious combination.');
         setEntry('');
         return;
@@ -655,21 +666,34 @@ export function ChangePinScreen() {
       return;
     }
 
-    if (pin === newPin) {
-      setStep('success');
-      setError(null);
-      setEntry('');
-    } else {
+    if (pin !== newPin) {
       setError('The PINs do not match. Start the last step again.');
       setEntry('');
+      return;
+    }
+
+    setBusy(true);
+    setError(null);
+    setEntry('');
+    try {
+      const status = await changePin({ currentPin, newPin: pin });
+      pushPinStatus(status);
+      setStep('success');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update your PIN.');
+      setStep('current');
+      setCurrentPin('');
+      setNewPin('');
+    } finally {
+      setBusy(false);
     }
   };
 
   const handleDigit = (digit: string) => {
-    if (entry.length >= PIN_LENGTH || step === 'success') return;
+    if (busy || entry.length >= PIN_LENGTH || step === 'success') return;
     const next = entry + digit;
     setEntry(next);
-    if (next.length === PIN_LENGTH) submit(next);
+    if (next.length === PIN_LENGTH) void submit(next);
   };
 
   const copy = step === 'success' ? null : PIN_STEPS[step];
@@ -702,8 +726,7 @@ export function ChangePinScreen() {
               PIN updated
             </AppText>
             <AppText variant="bodySmall" color={colors.textSecondary} align="center">
-              Your new PIN is active on this device. The app never stores the PIN itself — a real auth
-              service will handle this once it is connected.
+              Your new PIN is active. You will use it to pay and to cash out.
             </AppText>
             <PrimaryButton label="Done" block onPress={() => router.back()} />
           </View>
@@ -735,7 +758,7 @@ export function ChangePinScreen() {
             ) : null}
 
             <View style={styles.keypadHolder}>
-              <PinKeypad onDigit={handleDigit} onBackspace={() => setEntry((value) => value.slice(0, -1))} />
+              <PinKeypad onDigit={handleDigit} onBackspace={() => setEntry((value) => value.slice(0, -1))} disabled={busy} />
             </View>
           </>
         )}

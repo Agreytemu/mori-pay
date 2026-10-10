@@ -11,16 +11,18 @@ import {
 import { ApiExcludeController } from '@nestjs/swagger';
 import type { Request } from 'express';
 
-import { stakabaWebhookSchema, type StakabaWebhookInput } from '@mori-pay/contracts';
+import { ablinerWebhookSchema, type AblinerWebhookInput } from '@mori-pay/contracts';
 
+import {
+  ABLINER_EVENT_ID_HEADER,
+  ABLINER_SIGNATURE_HEADER,
+  ABLINER_TIMESTAMP_HEADER,
+  AblinerWebhookSignatureService,
+} from '../abliner/webhook-signature.service.js';
 import { Public } from '../common/decorators/public.decorator.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import {
-  STAKABA_SIGNATURE_HEADER,
-  WebhookSignatureService,
-} from '../stakaba/webhook-signature.service.js';
 import { ReconciliationService } from './reconciliation.service.js';
 
 @ApiExcludeController()
@@ -28,34 +30,41 @@ import { ReconciliationService } from './reconciliation.service.js';
 export class WebhooksController {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly signature: WebhookSignatureService,
+    private readonly signature: AblinerWebhookSignatureService,
     private readonly reconciliation: ReconciliationService,
   ) {}
 
   @Public()
-  @Post('stakaba')
+  @Post('abliner')
   @HttpCode(HttpStatus.OK)
-  async stakaba(
+  async abliner(
     @Req() request: RawBodyRequest<Request>,
-    @Body(new ZodValidationPipe(stakabaWebhookSchema)) payload: StakabaWebhookInput,
+    @Body(new ZodValidationPipe(ablinerWebhookSchema))
+    payload: AblinerWebhookInput,
   ): Promise<{ received: true }> {
-    const header = request.headers[STAKABA_SIGNATURE_HEADER];
-    const signature = Array.isArray(header) ? header[0] : header;
+    const header = (name: string): string | undefined => {
+      const value = request.headers[name];
+      return Array.isArray(value) ? value[0] : value;
+    };
 
-    if (!this.signature.verify(request.rawBody, signature)) {
+    if (
+      !this.signature.verify(
+        request.rawBody,
+        header(ABLINER_SIGNATURE_HEADER),
+        header(ABLINER_TIMESTAMP_HEADER),
+      )
+    ) {
       throw new UnauthorizedException('Invalid webhook signature');
     }
 
-    const event = await this.prisma.stakabaWebhookEvent.upsert({
-      where: {
-        internalReference_event: {
-          internalReference: payload.internalReference,
-          event: payload.event,
-        },
-      },
+    const eventId = payload.id || header(ABLINER_EVENT_ID_HEADER) || payload.data.id;
+
+    const event = await this.prisma.ablinerWebhookEvent.upsert({
+      where: { eventId },
       create: {
-        internalReference: payload.internalReference,
+        eventId,
         event: payload.event,
+        transactionReference: payload.data.id,
         payload: payload as unknown as Prisma.InputJsonValue,
       },
       update: { payload: payload as unknown as Prisma.InputJsonValue },
@@ -63,12 +72,12 @@ export class WebhooksController {
 
     try {
       await this.reconciliation.process(payload);
-      await this.prisma.stakabaWebhookEvent.update({
+      await this.prisma.ablinerWebhookEvent.update({
         where: { id: event.id },
         data: { processedAt: new Date(), error: null },
       });
     } catch (error) {
-      await this.prisma.stakabaWebhookEvent.update({
+      await this.prisma.ablinerWebhookEvent.update({
         where: { id: event.id },
         data: { error: error instanceof Error ? error.message : String(error) },
       });

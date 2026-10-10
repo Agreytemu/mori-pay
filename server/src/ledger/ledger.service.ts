@@ -28,7 +28,7 @@ export const SYSTEM_LEDGER_ACCOUNTS = {
   external: 'external',
   /** Fees retained by Mori Pay. */
   fees: 'fees',
-  /** Stakaba settlement in-flight. */
+  /** Abliner settlement in-flight. */
   clearing: 'clearing',
   /** Funds collected from merchant payments, awaiting settlement. */
   merchant: 'merchant_settlement',

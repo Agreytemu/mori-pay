@@ -2,7 +2,7 @@
  * Money primitives.
  *
  * All TZS amounts are whole integers (the currency has no minor unit in
- * practice, and Stakaba requires whole numbers). Never use floating point
+ * practice, and Abliner requires whole numbers). Never use floating point
  * arithmetic on amounts.
  */
 

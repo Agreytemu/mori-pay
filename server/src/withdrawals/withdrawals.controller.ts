@@ -1,16 +1,23 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import {
+  recipientLookupSchema,
+  withdrawalPreviewQuerySchema,
   withdrawalSchema,
+  type RecipientLookupInput,
   type WithdrawalInput,
+  type WithdrawalPreviewQuery,
   type WithdrawalResult,
 } from '@mori-pay/contracts';
 
 import type { AuthenticatedUser } from '../auth/auth.types.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
-import { WithdrawalsService } from './withdrawals.service.js';
+import {
+  WithdrawalsService,
+  type RecipientLookupResult,
+} from './withdrawals.service.js';
 
 @ApiTags('withdrawals')
 @ApiBearerAuth()
@@ -24,5 +31,27 @@ export class WithdrawalsController {
     @Body(new ZodValidationPipe(withdrawalSchema)) input: WithdrawalInput,
   ): Promise<WithdrawalResult> {
     return this.withdrawals.create(user.userId, input);
+  }
+
+  @Get('preview')
+  async preview(
+    @Query(new ZodValidationPipe(withdrawalPreviewQuerySchema))
+    query: WithdrawalPreviewQuery,
+  ): Promise<{ amount: number; fee: number; total: number }> {
+    const amount = BigInt(query.amount);
+    const fee = await this.withdrawals.resolveFee(amount);
+    return {
+      amount: Number(amount),
+      fee: Number(fee),
+      total: Number(amount + fee),
+    };
+  }
+
+  @Get('lookup')
+  lookup(
+    @Query(new ZodValidationPipe(recipientLookupSchema))
+    query: RecipientLookupInput,
+  ): Promise<RecipientLookupResult> {
+    return this.withdrawals.lookupRecipient(query.phone);
   }
 }

@@ -242,16 +242,17 @@ CREATE TABLE "LimitUsage" (
 );
 
 -- CreateTable
-CREATE TABLE "StakabaWebhookEvent" (
+CREATE TABLE "AblinerWebhookEvent" (
     "id" TEXT NOT NULL,
-    "internalReference" TEXT NOT NULL,
+    "eventId" TEXT NOT NULL,
     "event" TEXT NOT NULL,
+    "transactionReference" TEXT NOT NULL,
     "payload" JSONB NOT NULL,
     "processedAt" TIMESTAMP(3),
     "error" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
-    CONSTRAINT "StakabaWebhookEvent_pkey" PRIMARY KEY ("id")
+    CONSTRAINT "AblinerWebhookEvent_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -349,10 +350,10 @@ CREATE INDEX "FeeRule_type_channel_idx" ON "FeeRule"("type", "channel");
 CREATE UNIQUE INDEX "LimitUsage_userId_period_date_key" ON "LimitUsage"("userId", "period", "date");
 
 -- CreateIndex
-CREATE INDEX "StakabaWebhookEvent_internalReference_idx" ON "StakabaWebhookEvent"("internalReference");
+CREATE INDEX "AblinerWebhookEvent_transactionReference_idx" ON "AblinerWebhookEvent"("transactionReference");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "StakabaWebhookEvent_internalReference_event_key" ON "StakabaWebhookEvent"("internalReference", "event");
+CREATE UNIQUE INDEX "AblinerWebhookEvent_eventId_key" ON "AblinerWebhookEvent"("eventId");
 
 -- CreateIndex
 CREATE INDEX "AuditLog_userId_idx" ON "AuditLog"("userId");

@@ -211,7 +211,7 @@ npm run server:dev
 
 This runs the NestJS API in watch mode. By default, the app exposes:
 
-- API base: `http://localhost:4000/api`
+- API base: `http://localhost:4000/api/v1`
 - Swagger Docs: `http://localhost:4000/docs`
 - Health checks: `http://localhost:4000/health`
 
@@ -313,6 +313,7 @@ For production builds, use a real API base URL in app config or environment sett
 #### Recommended mobile production settings
 
 - API URL should point to the deployed backend, not local development host
+- Set it via `app.json` → `expo.extra.apiUrl` or `EXPO_PUBLIC_API_URL` (see section 4)
 - disable debug-only flows in production builds
 - set secure app names and correct bundle identifiers
 - store build secrets in EAS environment variables when needed
@@ -514,15 +515,27 @@ If the provider supports it, also set a backup strategy and enable SSL connectio
 
 ### 4) Connect the app to the deployed backend
 
-Set the production base URL in the mobile app, such as:
+The app resolves its API base URL in `src/lib/api.ts` with this precedence:
 
-```ts
-const API_BASE_URL = 'https://api.yourdomain.com/api';
+1. `EXPO_PUBLIC_API_URL` environment variable (per-environment, Expo inline)
+2. `app.json` → `expo.extra.apiUrl`
+3. Fallback: `http://localhost:4000/api/v1` (local development)
+
+So for production, either set the value in `app.json`:
+
+```json
+{ "expo": { "extra": { "apiUrl": "https://api.yourdomain.com/api/v1" } } }
 ```
 
-Then ensure the app uses this URL in production builds instead of development endpoints.
+or provide `EXPO_PUBLIC_API_URL` when building/starting (e.g. `.env.production`):
 
-Use environment files or app config for this separation so you do not accidentally point the production app to localhost.
+```
+EXPO_PUBLIC_API_URL=https://api.yourdomain.com/api/v1
+```
+
+The server mounts the REST API under the `/api/v1` prefix, so the base URL must
+include that prefix. Use environment files or app config for this separation so
+you do not accidentally point the production app to localhost.
 
 ### 5) Production deployment checklist
 

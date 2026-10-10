@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { STAKABA_NETWORKS } from './stakaba';
+import { MOBILE_NETWORKS } from './abliner';
 
 /** Canonical route/phone/amount validators shared by the API and the app. */
 
@@ -30,7 +30,7 @@ export const amountSchema = z
   .positive('Amount must be positive')
   .min(500, 'Minimum amount is 500 TZS');
 
-export const stakabaNetworkSchema = z.enum(STAKABA_NETWORKS);
+export const mobileNetworkSchema = z.enum(MOBILE_NETWORKS);
 
 export const deviceInfoSchema = z.object({
   name: z.string().min(1).max(120),
@@ -111,17 +111,26 @@ export const recipientLookupSchema = z.object({
   phone: tzPhoneSchema,
 });
 
+export const withdrawalPreviewQuerySchema = z.object({
+  amount: z.coerce
+    .number()
+    .int('Amount must be a whole number')
+    .positive('Amount must be positive')
+    .min(500, 'Minimum amount is 500 TZS'),
+});
+
 export const topupMobileMoneySchema = z.object({
   amount: amountSchema,
   mobileNumber: tzPhoneSchema,
-  network: stakabaNetworkSchema,
+  /** Display-only operator hint; Abliner routes the rail automatically. */
+  network: mobileNetworkSchema.optional(),
 });
 
 export const topupCardSchema = z.object({
   amount: amountSchema,
-  customerEmail: emailSchema,
-  customerName: z.string().min(1).max(120),
-  customerPhone: tzPhoneSchema,
+  customerEmail: emailSchema.optional(),
+  customerName: z.string().min(1).max(120).optional(),
+  customerPhone: tzPhoneSchema.optional(),
   billingAddress: z.string().max(200).optional(),
   postalCode: z.string().max(20).optional(),
 });
@@ -129,26 +138,40 @@ export const topupCardSchema = z.object({
 export const withdrawalSchema = z.object({
   amount: amountSchema,
   phoneNumber: tzPhoneSchema,
-  network: stakabaNetworkSchema,
+  /** Display-only operator hint; Abliner routes the rail automatically. */
+  network: mobileNetworkSchema.optional(),
   accountName: z.string().max(120).optional(),
   pin: pinSchema,
   idempotencyKey: z.string().min(1).max(120).optional(),
 });
 
-export const stakabaWebhookSchema = z.object({
-  event: z.enum(['transaction.success', 'transaction.failed']),
-  internalReference: z.string().min(1),
-  status: z.enum(['SUCCESS', 'FAILED']),
-  type: z.enum(['COLLECTION', 'PAYOUT', 'CARD']),
-  grossAmount: z.number(),
-  stakabaFee: z.number(),
-  netAmount: z.number(),
-  currency: z.literal('TZS'),
-  mobileNumber: z.string().optional(),
-  network: z.string().optional(),
-  providerReference: z.string().optional(),
-  createdAt: z.string().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+export const ablinerWebhookSchema = z.object({
+  id: z.string().min(1),
+  event: z.enum([
+    'transaction.completed',
+    'transaction.failed',
+    'withdrawal.completed',
+    'withdrawal.failed',
+    'checkout.paid',
+  ]),
+  created_at: z.string().optional(),
+  data: z.object({
+    id: z.string().min(1),
+    type: z.enum(['deposit', 'withdrawal', 'checkout']),
+    method: z.string().nullish(),
+    amount: z.number(),
+    amount_cents: z.number().optional(),
+    currency: z.string(),
+    status: z.enum(['pending', 'completed', 'failed']),
+    reference: z.string(),
+    customer_reference: z.string().nullish(),
+    provider_reference: z.string().nullish(),
+    recipient: z.string().nullish(),
+    completed_at: z.string().nullish(),
+    payer_account: z.string().optional(),
+    payer_name: z.string().optional(),
+    paid_at: z.string().optional(),
+  }),
 });
 
 export type RequestOtpInput = z.infer<typeof requestOtpSchema>;
@@ -165,7 +188,8 @@ export type RequestMoneyInput = z.infer<typeof requestMoneySchema>;
 export type PayRequestInput = z.infer<typeof payRequestSchema>;
 export type PayMerchantInput = z.infer<typeof payMerchantSchema>;
 export type RecipientLookupInput = z.infer<typeof recipientLookupSchema>;
+export type WithdrawalPreviewQuery = z.infer<typeof withdrawalPreviewQuerySchema>;
 export type TopupMobileMoneyInput = z.infer<typeof topupMobileMoneySchema>;
 export type TopupCardInput = z.infer<typeof topupCardSchema>;
 export type WithdrawalInput = z.infer<typeof withdrawalSchema>;
-export type StakabaWebhookInput = z.infer<typeof stakabaWebhookSchema>;
+export type AblinerWebhookInput = z.infer<typeof ablinerWebhookSchema>;
