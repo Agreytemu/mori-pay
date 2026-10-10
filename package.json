@@ -50,6 +50,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
+    "start:prod": "npm run start:prod --workspace @mori-pay/server",
+    "prisma:deploy": "npm run prisma:deploy --workspace @mori-pay/server",
     "server:dev": "npm run start:dev --workspace @mori-pay/server",
     "server:build": "npm run build --workspace @mori-pay/server",
     "server:lint": "npm run lint --workspace @mori-pay/server",
