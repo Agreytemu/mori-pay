@@ -10,6 +10,7 @@ import { AblinerClient } from '../abliner/abliner.client.js';
 import { AuthService } from '../auth/auth.service.js';
 import { generateReference } from '../common/crypto.js';
 import { InsufficientFundsError } from '../common/errors.js';
+import { createTransactionNotification } from '../account/notification-writer.js';
 import { FeesService } from '../payments/fees.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SettlementService } from '../settlement/settlement.service.js';
@@ -130,6 +131,7 @@ export class WithdrawalsService {
         },
       });
 
+      await createTransactionNotification(client, transaction);
       await this.settlement.postWithdrawalHold(transaction, client);
       return transaction;
     });

@@ -43,19 +43,41 @@ export class RequestsService {
 
     const payer = await this.prisma.user.findUnique({
       where: { phone: input.payerPhone },
-      select: { fullName: true },
+      select: { id: true, fullName: true },
     });
 
-    const request = await this.prisma.moneyRequest.create({
-      data: {
-        requesterId: userId,
-        payerPhone: input.payerPhone,
-        amount: BigInt(input.amount),
-        note: input.note ?? null,
-        reference: generateReference('REQ'),
-        status: 'pending',
-        expiresAt: new Date(Date.now() + REQUEST_TTL_DAYS * 86_400_000),
-      },
+    const amount = BigInt(input.amount);
+    const request = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.moneyRequest.create({
+        data: {
+          requesterId: userId,
+          payerPhone: input.payerPhone,
+          amount,
+          note: input.note ?? null,
+          reference: generateReference('REQ'),
+          status: 'pending',
+          expiresAt: new Date(Date.now() + REQUEST_TTL_DAYS * 86_400_000),
+        },
+      });
+
+      if (payer) {
+        const preferences = await tx.notificationPreference.findUnique({
+          where: { userId: payer.id },
+          select: { transactions: true },
+        });
+        if (preferences?.transactions ?? true) {
+          await tx.notification.create({
+            data: {
+              userId: payer.id,
+              kind: 'request',
+              title: 'Money requested',
+              body: `${requester.fullName} requested ${amount.toString()} TZS${input.note ? `: ${input.note}` : '.'}`,
+            },
+          });
+        }
+      }
+
+      return created;
     });
 
     return {

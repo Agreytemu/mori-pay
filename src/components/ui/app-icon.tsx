@@ -1,7 +1,8 @@
 import { SymbolView } from 'expo-symbols';
-import { type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, type StyleProp, type ViewStyle } from 'react-native';
 
 import { appIcons, iconWeights, useAppTheme, type AppIconName, type AppIconWeight } from '@/theme';
+import { AndroidMaterialIcon } from './android-material-icon';
 
 export type AppIconProps = {
   name: AppIconName;
@@ -20,6 +21,17 @@ export type AppIconProps = {
  */
 export function AppIcon({ name, size = 22, color, weight = 'regular', style }: AppIconProps) {
   const { colors } = useAppTheme();
+
+  if (Platform.OS === 'android') {
+    return (
+      <AndroidMaterialIcon
+        name={appIcons[name].android}
+        size={size}
+        color={color ?? colors.textSecondary}
+        style={style}
+      />
+    );
+  }
 
   return (
     <SymbolView

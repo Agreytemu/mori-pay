@@ -15,7 +15,7 @@ export type PaymentMerchant = {
 };
 
 export type PaymentMethod = {
-  id: string;
+  id: 'mobile-money' | 'bank' | 'card';
   name: string;
   description: string;
   icon: 'wallet' | 'payments' | 'phone';

@@ -11,6 +11,7 @@ import {
 } from '../ledger/ledger.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { createTransactionNotification } from '../account/notification-writer.js';
 import {
   LEDGER_ACCOUNT_AVAILABLE,
   toTransaction,
@@ -93,8 +94,9 @@ export class PaymentsService {
           metadata: { recipientUserId: input.to.id },
         },
       });
+      await createTransactionNotification(tx, senderTransaction);
 
-      await tx.transaction.create({
+      const receiverTransaction = await tx.transaction.create({
         data: {
           userId: input.to.id,
           reference: generateReference('RCV'),
@@ -116,6 +118,7 @@ export class PaymentsService {
           },
         },
       });
+      await createTransactionNotification(tx, receiverTransaction);
 
       const legs: LedgerLeg[] = [
         { ledgerAccountId: fromAccountId, direction: 'debit', amount: total },
@@ -177,6 +180,7 @@ export class PaymentsService {
           metadata: input.metadata ?? undefined,
         },
       });
+      await createTransactionNotification(tx, payerTransaction);
 
       const systemAccount = await this.ledger.getSystemAccount(input.system, tx);
       const legs: LedgerLeg[] = [

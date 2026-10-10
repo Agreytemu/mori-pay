@@ -1,5 +1,6 @@
 import { useState, type ComponentProps, type ReactNode } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -107,7 +108,7 @@ function MethodTile({ item, onPress }: { item: SavedPaymentMethod; onPress: () =
 
 export function PaymentMethodsScreen() {
   const router = useRouter();
-  const methods = usePaymentMethods();
+  const { methods, loading, error } = usePaymentMethods();
   const { colors, space } = useAppTheme();
 
   return (
@@ -118,14 +119,17 @@ export function PaymentMethodsScreen() {
         <Header title="Payment Methods" subtitle="Manage your saved ways to pay" onBack={() => router.back()} />
         <View style={styles.intro}>
           <AppText variant="bodySmall" color={colors.textSecondary}>
-            These are mock methods only; no payment provider or persistent payment-data storage is connected.
+            Saved payment details are securely limited to provider information and the last four digits.
           </AppText>
         </View>
+        {error ? <AppText variant="bodySmall" color={colors.error}>{error.message}</AppText> : null}
         <View style={styles.sectionHeading}>
           <AppText variant="bodySmallStrong">Saved methods</AppText>
           <AppText variant="caption" color={colors.textTertiary}>{methods.length} {methods.length === 1 ? 'method' : 'methods'}</AppText>
         </View>
-        {methods.length ? (
+        {loading ? (
+          <AppText variant="bodySmall" color={colors.textSecondary}>Loading saved methods…</AppText>
+        ) : methods.length ? (
           <View style={styles.methodList}>
             {methods.map((item) => (
               <MethodTile
@@ -155,7 +159,7 @@ export function PaymentMethodsScreen() {
 export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
-  const methods = usePaymentMethods();
+  const { methods, loading, error } = usePaymentMethods();
   const original = methods.find((item) => item.id === params.id);
   const [kind, setKind] = useState<MethodKind>(original?.kind ?? 'mobile-money');
   const [fields, setFields] = useState<MethodFields>(() => ({
@@ -165,53 +169,97 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
   }));
   const [isDefault, setIsDefault] = useState(original?.isDefault ?? methods.length === 0);
   const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
   const { colors, space } = useAppTheme();
+
+  const currentKind = edit && original ? original.kind : kind;
+  const currentFields = edit && original
+    ? { ...fields, provider: fields.provider || original.provider, identifier: fields.identifier || original.identifier }
+    : fields;
+  const currentDefault = edit && original ? isDefault || original.isDefault : isDefault;
 
   const setField = (key: keyof MethodFields, value: string) => setFields((current) => ({ ...current, [key]: value }));
 
-  const submit = () => {
+  const submit = async () => {
+    if (saving) return;
     const missing: string[] = [];
-    if (kind === 'mobile-money') {
-      if (!fields.provider) missing.push('Choose a mobile money provider.');
-      if (fields.identifier.replace(/\D/g, '').length < 9) missing.push('Enter a valid phone number.');
-    } else if (kind === 'bank') {
-      if (!fields.provider.trim()) missing.push('Enter a bank name.');
-      if (!fields.personName.trim()) missing.push('Enter the account name.');
-      if (fields.identifier.replace(/\D/g, '').length < 6) missing.push('Enter a valid account number.');
+    if (currentKind === 'mobile-money') {
+      if (!currentFields.provider) missing.push('Choose a mobile money provider.');
+      if (!edit && currentFields.identifier.replace(/\D/g, '').length < 9) missing.push('Enter a valid phone number.');
+    } else if (currentKind === 'bank') {
+      if (!currentFields.provider.trim()) missing.push('Enter a bank name.');
+      if (!edit && !currentFields.personName.trim()) missing.push('Enter the account name.');
+      if (!edit && currentFields.identifier.replace(/\D/g, '').length < 6) missing.push('Enter a valid account number.');
     } else {
-      if (!fields.personName.trim()) missing.push('Enter the cardholder name.');
-      if (fields.identifier.replace(/\D/g, '').length < 12) missing.push('Enter a valid card number.');
-      const expiry = /^(\d{2})\/\d{2}$/.exec(fields.expiry);
-      if (!expiry || Number(expiry[1]) < 1 || Number(expiry[1]) > 12) {
-        missing.push('Enter a valid expiry date in MM/YY.');
+      if (!edit && !currentFields.personName.trim()) missing.push('Enter the cardholder name.');
+      if (!edit && currentFields.identifier.replace(/\D/g, '').length < 12) missing.push('Enter a valid card number.');
+      if (!edit) {
+        const expiry = /^(\d{2})\/\d{2}$/.exec(currentFields.expiry);
+        if (!expiry || Number(expiry[1]) < 1 || Number(expiry[1]) > 12) {
+          missing.push('Enter a valid expiry date in MM/YY.');
+        }
+        if (!/^\d{3,4}$/.test(currentFields.cvv)) missing.push('Enter a valid CVV.');
       }
-      if (!/^\d{3,4}$/.test(fields.cvv)) missing.push('Enter a valid CVV.');
     }
     setErrors(missing);
     if (missing.length) return;
 
-    const lastFour = fields.identifier.replace(/\D/g, '').slice(-4);
-    const provider = kind === 'card' ? 'Card' : fields.provider.trim();
-    const name = kind === 'mobile-money'
+    const lastFour = edit && original
+      ? original.identifier.replace(/\D/g, '').slice(-4)
+      : currentFields.identifier.replace(/\D/g, '').slice(-4);
+    const provider = currentKind === 'card' ? 'Card' : currentFields.provider.trim();
+    const name = currentKind === 'mobile-money'
       ? provider
-      : kind === 'bank'
+      : currentKind === 'bank'
         ? `${provider} account`
-        : fields.personName.trim();
-    savePaymentMethod({
+        : provider;
+    setSaving(true);
+    setErrors([]);
+    try {
+    await savePaymentMethod({
       id: edit && original ? original.id : `method-${Date.now()}`,
-      kind,
+      kind: currentKind,
       name,
       provider,
       identifier: `•••• ${lastFour}`,
       addedDate: original?.addedDate ?? new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
       status: 'Active',
-      isDefault,
+      isDefault: currentDefault,
     });
     setFields(EMPTY_FIELDS);
     router.back();
+    } catch (error) {
+      setErrors([error instanceof Error ? error.message : 'Could not save payment method.']);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const updateField = (key: keyof MethodFields) => (value: string) => setField(key, value);
+
+  if (edit && loading) {
+    return (
+      <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
+        <View style={[styles.content, { padding: space.base, gap: space.lg }]}>
+          <Header title="Edit Payment Method" onBack={() => router.back()} />
+          <AppText variant="bodySmall" color={colors.textSecondary}>Loading saved method…</AppText>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (edit && !original) {
+    return (
+      <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
+        <View style={[styles.content, { padding: space.base, gap: space.lg }]}>
+          <Header title="Edit Payment Method" onBack={() => router.back()} />
+          <AppText variant="bodySmall" color={error ? colors.error : colors.textSecondary}>
+            {error?.message ?? 'This saved payment method is no longer available.'}
+          </AppText>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
@@ -225,13 +273,45 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
             subtitle="Choose a method type"
             onBack={() => router.back()}
           />
+          {edit && loading ? (
+            <AppText variant="bodySmall" color={colors.textSecondary}>Loading saved method…</AppText>
+          ) : edit && error ? (
+            <AppText variant="bodySmall" color={colors.error}>{error.message}</AppText>
+          ) : null}
+          {edit ? null : (
           <PaymentMethodSelector
             methods={PAYMENT_METHOD_TYPES}
             selectedId={kind}
             onSelect={(method) => { setKind(method.id); setErrors([]); }}
           />
+          )}
           <View style={styles.form}>
-            {kind === 'mobile-money' ? (
+            {edit && original ? (
+              <>
+                <AppText variant="bodySmall" color={colors.textSecondary}>
+                  Only provider details and the last four digits are stored. The full payment credentials cannot be retrieved here.
+                </AppText>
+                {currentKind === 'mobile-money' ? (
+                  <>
+                    <AppText variant="bodySmallStrong">Provider</AppText>
+                    <View style={styles.providerOptions}>
+                      {PROVIDERS.map((provider) => (
+                        <ChoiceChip key={provider} label={provider} selected={currentFields.provider === provider} onPress={() => setField('provider', provider)} />
+                      ))}
+                    </View>
+                  </>
+                ) : currentKind === 'bank' ? (
+                  <FormField label="Bank name" placeholder="Bank name" value={currentFields.provider} onChangeText={updateField('provider')} />
+                ) : (
+                  <AppText variant="bodySmall">Card ending in {original.identifier.slice(-4)}</AppText>
+                )}
+                {currentKind !== 'card' ? (
+                  <AppText variant="bodySmall" color={colors.textSecondary}>
+                    Identifier ending in {original.identifier.slice(-4)} cannot be edited because its full value is not stored.
+                  </AppText>
+                ) : null}
+              </>
+            ) : currentKind === 'mobile-money' ? (
               <>
                 <AppText variant="bodySmallStrong">Provider</AppText>
                 <View style={styles.providerOptions}>
@@ -241,7 +321,7 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
                 </View>
                 <FormField label="Phone number" placeholder="+255 7XX XXX XXX" value={fields.identifier} onChangeText={updateField('identifier')} keyboardType="phone-pad" />
               </>
-            ) : kind === 'bank' ? (
+            ) : currentKind === 'bank' ? (
               <>
                 <FormField label="Bank name" placeholder="e.g. NMB Bank" value={fields.provider} onChangeText={updateField('provider')} />
                 <FormField label="Account name" placeholder="Name on the account" value={fields.personName} onChangeText={updateField('personName')} />
@@ -263,7 +343,12 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
               <AppText variant="bodyStrong">Set as default</AppText>
               <AppText variant="caption" color={colors.textSecondary}>Use this method first when paying</AppText>
             </View>
-            <Switch value={isDefault} onValueChange={setIsDefault} trackColor={{ true: colors.primary }} />
+            <Switch
+              value={currentDefault}
+              onValueChange={setIsDefault}
+              disabled={Boolean(edit && original?.isDefault)}
+              trackColor={{ true: colors.primary }}
+            />
           </View>
           {errors.length ? (
             <View style={[styles.errorBox, { backgroundColor: colors.errorSoft }]}>
@@ -271,9 +356,9 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
             </View>
           ) : null}
           <AppText variant="caption" color={colors.textTertiary}>
-            Demo only: sensitive number and security fields are used for validation and are not saved.
+            Only the provider and last four digits are stored. Card numbers, expiry dates, and security codes are never saved.
           </AppText>
-          <Button label={edit ? 'Save changes' : 'Add payment method'} onPress={submit} />
+          <Button label={edit ? 'Save changes' : 'Add payment method'} loading={saving} onPress={() => void submit()} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -283,17 +368,28 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
 export function PaymentMethodDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
-  const methods = usePaymentMethods();
+  const { methods, loading, error } = usePaymentMethods();
   const item = methods.find((method) => method.id === params.id);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const { colors, space } = useAppTheme();
+
+  if (!item && loading) {
+    return (
+      <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
+        <View style={[styles.content, { padding: space.base, gap: space.lg }]}>
+          <Header title="Payment Method" onBack={() => router.back()} />
+          <AppText variant="bodySmall" color={colors.textSecondary}>Loading payment method…</AppText>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!item) {
     return (
       <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
         <View style={[styles.content, { padding: space.base, gap: space.lg }]}>
           <Header title="Payment Method" onBack={() => router.back()} />
-          <AppText variant="body" color={colors.textSecondary}>This payment method is no longer available.</AppText>
+          <AppText variant="body" color={colors.textSecondary}>{error?.message ?? 'This payment method is no longer available.'}</AppText>
           <Button label="Back to payment methods" onPress={() => router.replace('/payment-methods')} />
         </View>
       </SafeAreaView>
@@ -325,7 +421,7 @@ export function PaymentMethodDetailsScreen() {
           <DetailRow label="Status" value={item.status} />
           <DetailRow label="Added" value={item.addedDate} last />
         </View>
-        {!item.isDefault ? <Button label="Set as default" icon="check" onPress={() => setPaymentMethodDefault(item.id)} /> : null}
+        {!item.isDefault ? <Button label="Set as default" icon="check" onPress={() => void setPaymentMethodDefault(item.id).catch((error: unknown) => Alert.alert('Could not update payment method', error instanceof Error ? error.message : 'Please try again.'))} /> : null}
         <Button
           label="Edit method"
           icon="edit"
@@ -342,7 +438,11 @@ export function PaymentMethodDetailsScreen() {
         confirmLabel="Remove"
         confirmDestructive
         dismissLabel="Keep method"
-        onConfirm={() => { removePaymentMethod(item.id); setConfirmRemove(false); router.replace('/payment-methods'); }}
+        onConfirm={() => {
+          void removePaymentMethod(item.id)
+            .then(() => { setConfirmRemove(false); router.replace('/payment-methods'); })
+            .catch((error: unknown) => Alert.alert('Could not remove payment method', error instanceof Error ? error.message : 'Please try again.'));
+        }}
       />
     </SafeAreaView>
   );

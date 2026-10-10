@@ -12,6 +12,7 @@ import {
   deleteNotification,
   markAllNotificationsRead,
   markNotificationRead,
+  reloadNotifications,
   useNotifications,
 } from '@/data/notification-store';
 import type { AppNotification } from '@/data/mock-notifications';
@@ -49,17 +50,21 @@ function Header({ title, subtitle, onBack, right }: {
 
 export function NotificationsScreen() {
   const router = useRouter();
-  const notifications = useNotifications();
+  const { notifications, loading, error } = useNotifications();
   const { colors, space } = useAppTheme();
   const [confirmClear, setConfirmClear] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
-  const handleNotificationPress = (notification: typeof notifications[0]) => {
-    markNotificationRead(notification.id);
-    if (notification.actionRoute) {
-      router.push(notification.actionRoute as any);
+  const handleNotificationPress = async (notification: AppNotification) => {
+    try {
+      await markNotificationRead(notification.id);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : 'Could not mark notification as read.');
+      return;
     }
+    router.push({ pathname: '/notifications/[id]', params: { id: notification.id } });
   };
 
   return (
@@ -76,7 +81,11 @@ export function NotificationsScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Mark all as read"
-                onPress={() => markAllNotificationsRead()}
+                onPress={() => {
+                  void markAllNotificationsRead().catch((error: unknown) =>
+                    setActionError(error instanceof Error ? error.message : 'Could not mark notifications as read.')
+                  );
+                }}
                 style={({ pressed }) => [
                   styles.headerButton,
                   { backgroundColor: pressed ? colors.surfacePressed : colors.surface, borderColor: colors.border, borderRadius: 999 },
@@ -87,7 +96,20 @@ export function NotificationsScreen() {
           }
         />
 
-        {notifications.length > 0 ? (
+        {error || actionError ? (
+          <Pressable onPress={() => {
+            setActionError(null);
+            void reloadNotifications();
+          }}>
+            <AppText variant="bodySmall" color={colors.error}>
+              {actionError ?? error?.message} Tap to retry.
+            </AppText>
+          </Pressable>
+        ) : null}
+
+        {loading ? (
+          <AppText variant="bodySmall" color={colors.textSecondary}>Loading notifications…</AppText>
+        ) : notifications.length > 0 ? (
           <>
             <View style={styles.notificationList}>
               {notifications.map((notification) => (
@@ -95,7 +117,11 @@ export function NotificationsScreen() {
                   key={notification.id}
                   notification={notification}
                   onPress={() => handleNotificationPress(notification)}
-                  onDelete={() => deleteNotification(notification.id)}
+                  onDelete={() => {
+                    void deleteNotification(notification.id).catch((error: unknown) =>
+                      setActionError(error instanceof Error ? error.message : 'Could not delete notification.')
+                    );
+                  }}
                 />
               ))}
             </View>
@@ -120,8 +146,11 @@ export function NotificationsScreen() {
         confirmDestructive
         dismissLabel="Cancel"
         onConfirm={() => {
-          clearAllNotifications();
-          setConfirmClear(false);
+          void clearAllNotifications()
+            .then(() => setConfirmClear(false))
+            .catch((error: unknown) =>
+              setActionError(error instanceof Error ? error.message : 'Could not clear notifications.')
+            );
         }}
       />
     </SafeAreaView>
@@ -131,15 +160,28 @@ export function NotificationsScreen() {
 export function NotificationDetailsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string }>();
-  const notifications = useNotifications();
+  const { notifications, loading, error } = useNotifications();
   const notification = notifications.find((n) => n.id === params.id);
   const { colors, space } = useAppTheme();
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  if (!notification && loading) {
+    return (
+      <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
+        <View style={[styles.content, { padding: space.base, gap: space.lg }]}>
+          <Header title="Notification" onBack={() => router.back()} />
+          <AppText variant="bodySmall" color={colors.textSecondary}>Loading notification…</AppText>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   if (!notification) {
     return (
       <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
         <View style={[styles.content, { padding: space.base, gap: space.lg }]}>
           <Header title="Notification" onBack={() => router.back()} />
+          {error ? <AppText variant="bodySmall" color={colors.error}>{error.message}</AppText> : null}
           <AppText variant="body" color={colors.textSecondary}>This notification is no longer available.</AppText>
           <Button label="Back to notifications" onPress={() => router.replace('/notifications')} />
         </View>
@@ -151,6 +193,7 @@ export function NotificationDetailsScreen() {
     <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={[styles.content, { padding: space.base, gap: space.lg }]} showsVerticalScrollIndicator={false}>
         <Header title="Notification" subtitle="Details" onBack={() => router.back()} />
+        {actionError ? <AppText variant="bodySmall" color={colors.error}>{actionError}</AppText> : null}
 
         <View style={[styles.detailHero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           <NotificationIcon type={notification.type} status={notification.status} />
@@ -187,8 +230,11 @@ export function NotificationDetailsScreen() {
           icon="close"
           variant="danger"
           onPress={() => {
-            deleteNotification(notification.id);
-            router.replace('/notifications');
+            void deleteNotification(notification.id)
+              .then(() => router.replace('/notifications'))
+              .catch((error: unknown) =>
+                setActionError(error instanceof Error ? error.message : 'Could not delete notification.')
+              );
           }}
         />
       </ScrollView>

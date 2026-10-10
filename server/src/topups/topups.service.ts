@@ -11,6 +11,7 @@ import {
 import { AblinerClient } from '../abliner/abliner.client.js';
 import { generateReference } from '../common/crypto.js';
 import { ProviderError } from '../common/errors.js';
+import { createTransactionNotification } from '../account/notification-writer.js';
 import { AppConfigService } from '../config/app-config.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { toTransaction } from '../wallet/wallet.mapper.js';
@@ -39,26 +40,30 @@ export class TopUpsService {
     const amount = BigInt(input.amount);
     const reference = generateReference('DEP');
 
-    const transaction = await this.prisma.transaction.create({
-      data: {
-        userId,
-        reference,
-        type: 'deposit',
-        status: 'pending',
-        category: 'topUp',
-        channel: 'mobileMoney',
-        direction: 'credit',
-        amount,
-        fee: 0n,
-        total: amount,
-        counterparty: input.mobileNumber,
-        counterpartyDetail: input.network
-          ? MOBILE_NETWORK_LABEL[input.network]
-          : 'Mobile money',
-        provider: 'abliner',
-        providerStatus: 'pending',
-        metadata: { network: input.network ?? null },
-      },
+    const transaction = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.transaction.create({
+        data: {
+          userId,
+          reference,
+          type: 'deposit',
+          status: 'pending',
+          category: 'topUp',
+          channel: 'mobileMoney',
+          direction: 'credit',
+          amount,
+          fee: 0n,
+          total: amount,
+          counterparty: input.mobileNumber,
+          counterpartyDetail: input.network
+            ? MOBILE_NETWORK_LABEL[input.network]
+            : 'Mobile money',
+          provider: 'abliner',
+          providerStatus: 'pending',
+          metadata: { network: input.network ?? null },
+        },
+      });
+      await createTransactionNotification(tx, created);
+      return created;
     });
 
     try {
@@ -107,23 +112,27 @@ export class TopUpsService {
     const amount = BigInt(input.amount);
     const reference = generateReference('DEP');
 
-    const transaction = await this.prisma.transaction.create({
-      data: {
-        userId,
-        reference,
-        type: 'deposit',
-        status: 'pending',
-        category: 'topUp',
-        channel: 'card',
-        direction: 'credit',
-        amount,
-        fee: 0n,
-        total: amount,
-        counterparty: input.customerName ?? 'Card payment',
-        counterpartyDetail: input.customerEmail ?? null,
-        provider: 'abliner',
-        providerStatus: 'pending',
-      },
+    const transaction = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.transaction.create({
+        data: {
+          userId,
+          reference,
+          type: 'deposit',
+          status: 'pending',
+          category: 'topUp',
+          channel: 'card',
+          direction: 'credit',
+          amount,
+          fee: 0n,
+          total: amount,
+          counterparty: input.customerName ?? 'Card payment',
+          counterpartyDetail: input.customerEmail ?? null,
+          provider: 'abliner',
+          providerStatus: 'pending',
+        },
+      });
+      await createTransactionNotification(tx, created);
+      return created;
     });
 
     try {
