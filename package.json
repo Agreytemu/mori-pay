@@ -42,6 +42,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
+    "postinstall": "npm run build --workspace @mori-pay/contracts && npm run prisma:generate --workspace @mori-pay/server",
     "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
