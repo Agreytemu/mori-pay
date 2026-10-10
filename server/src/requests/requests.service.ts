@@ -96,10 +96,12 @@ export class RequestsService {
         where: { requesterId: userId },
         orderBy: { createdAt: 'desc' },
       }),
-      this.prisma.moneyRequest.findMany({
-        where: { payerPhone: me.phone },
-        orderBy: { createdAt: 'desc' },
-      }),
+      me.phone
+        ? this.prisma.moneyRequest.findMany({
+            where: { payerPhone: me.phone },
+            orderBy: { createdAt: 'desc' },
+          })
+        : Promise.resolve([]),
     ]);
 
     const rows = [...outgoing, ...incoming].sort(

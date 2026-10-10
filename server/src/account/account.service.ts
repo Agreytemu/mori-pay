@@ -36,12 +36,20 @@ export class AccountService {
   ): Promise<AccountProfile> {
     const fullName = input.fullName.trim().replace(/\s+/g, ' ');
     const [firstName] = fullName.split(' ');
+    const current = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true },
+    });
+    if (input.email !== current.email) {
+      throw new BadRequestException(
+        'Sign-in email changes must be verified before they can be saved',
+      );
+    }
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: {
         fullName,
         firstName,
-        email: input.email,
         dateOfBirth: input.dateOfBirth
           ? new Date(`${input.dateOfBirth}T00:00:00.000Z`)
           : null,
@@ -290,7 +298,7 @@ export class AccountService {
     memberId: string;
     fullName: string;
     firstName: string;
-    phone: string;
+    phone: string | null;
     email: string | null;
     dateOfBirth: Date | null;
     tier: AccountProfile['tier'];

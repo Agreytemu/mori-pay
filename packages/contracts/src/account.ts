@@ -16,7 +16,7 @@ export type WalletAccount = {
   fullName: string;
   /** Short name used in greetings. */
   firstName: string;
-  phoneNumber: string;
+  phoneNumber: string | null;
   /** Masked wallet/account identifier shown on the balance card. */
   accountNumber: string;
   /** Masked national ID. */
@@ -35,7 +35,7 @@ export type AccountProfile = {
   memberId: string;
   fullName: string;
   firstName: string;
-  phoneNumber: string;
+  phoneNumber: string | null;
   email: string | null;
   dateOfBirth: string | null;
   tier: AccountTier;

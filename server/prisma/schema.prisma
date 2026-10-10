@@ -26,8 +26,13 @@ enum AccountTier {
 
 model User {
   id             String        @id @default(cuid())
-  phone          String        @unique
+  phone          String?       @unique
+  // Case-insensitive uniqueness is enforced by a partial SQL index in migrations.
   email          String?
+  emailVerifiedAt DateTime?
+  passwordHash   String?
+  passwordFailedCount Int       @default(0)
+  passwordLockedUntil DateTime?
   fullName       String
   firstName      String
   dateOfBirth    DateTime?
@@ -54,6 +59,7 @@ model User {
   auditLogs              AuditLog[]
   limitUsages            LimitUsage[]
   otpChallenges          OtpChallenge[]
+  emailChallenges        EmailChallenge[]
 
   @@index([phone])
 }
@@ -71,6 +77,21 @@ model OtpChallenge {
   user       User?     @relation(fields: [userId], references: [id])
 
   @@index([phone, purpose])
+}
+
+model EmailChallenge {
+  id         String    @id @default(cuid())
+  email      String
+  codeHash   String
+  purpose    String
+  expiresAt  DateTime
+  consumedAt DateTime?
+  attempts   Int       @default(0)
+  createdAt  DateTime  @default(now())
+  userId     String?
+  user       User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([email, purpose])
 }
 
 model Device {

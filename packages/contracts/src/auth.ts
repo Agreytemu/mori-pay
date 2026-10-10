@@ -1,5 +1,6 @@
 import type { WalletAccount } from './account';
 import type { Currency } from './money';
+import type { DeviceInfo } from './schemas';
 
 export type OtpPurpose = 'login' | 'transaction' | 'pin_reset';
 
@@ -15,8 +16,10 @@ export type AuthUser = {
   memberId: string;
   fullName: string;
   firstName: string;
-  phoneNumber: string;
+  phoneNumber: string | null;
   email: string | null;
+  emailVerified: boolean;
+  hasPassword: boolean;
   tier: 'Standard' | 'Verified';
   kycLevel: number;
   status: 'active' | 'pending' | 'restricted';
@@ -44,6 +47,47 @@ export type OtpChallengeResult = {
   retryAfter: number;
   /** Never expose the code in production; present only in sandbox/dev. */
   devCode?: string;
+};
+
+export type EmailSignInInput = {
+  email: string;
+  password: string;
+  device?: DeviceInfo;
+};
+
+export type PinSignInInput = {
+  email: string;
+  pin: string;
+  device?: DeviceInfo;
+};
+
+export type EmailRegisterInput = {
+  fullName: string;
+  firstName: string;
+  email: string;
+  password: string;
+  dateOfBirth?: string;
+};
+
+export type VerifyEmailInput = {
+  email: string;
+  code: string;
+  device?: DeviceInfo;
+};
+
+export type RequestPasswordResetInput = {
+  email: string;
+};
+
+export type ResetPasswordInput = {
+  email: string;
+  code: string;
+  password: string;
+};
+
+export type EmailCredentialsInput = {
+  email: string;
+  password: string;
 };
 
 export type PinStatus = {

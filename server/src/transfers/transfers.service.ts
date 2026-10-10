@@ -37,7 +37,7 @@ export class TransfersService {
     if (!user) return { found: false, phoneNumber: phone };
     return {
       found: true,
-      phoneNumber: user.phone,
+      phoneNumber: user.phone ?? phone,
       fullName: user.fullName,
       firstName: user.firstName,
     };

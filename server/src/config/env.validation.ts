@@ -33,6 +33,9 @@ export const envSchema = z.object({
   SMS_PROVIDER: z.enum(['console', 'abliner', 'beem', 'nextsms']).default('console'),
   SMS_API_KEY: z.string().optional(),
 
+  RESEND_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().email().optional(),
+
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
@@ -49,6 +52,18 @@ export function validateEnv(config: Record<string, unknown>): Env {
       .map((issue) => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${details}`);
+  }
+
+  if (result.data.RESEND_API_KEY && !result.data.EMAIL_FROM) {
+    throw new Error('Invalid environment configuration:\n  - EMAIL_FROM: required when RESEND_API_KEY is set');
+  }
+  if (
+    result.data.NODE_ENV === 'production' &&
+    (!result.data.RESEND_API_KEY || !result.data.EMAIL_FROM)
+  ) {
+    throw new Error(
+      'Invalid environment configuration:\n  - RESEND_API_KEY and EMAIL_FROM are required in production',
+    );
   }
 
   return result.data;

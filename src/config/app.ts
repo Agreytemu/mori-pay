@@ -18,7 +18,7 @@ export const DEFAULT_CURRENCY = 'TZS';
 export const APP_VERSION = Constants.expoConfig?.version ?? '1.0.0';
 
 export const SUPPORT = {
-  email: 'support@lipanaagreytemu.co.tz',
+  email: 'support@moripay.co.tz',
   phone: '+255 700 000 000',
   hours: 'Mon – Sun, 07:00 – 22:00 EAT',
 } as const;

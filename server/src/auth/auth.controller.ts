@@ -10,24 +10,39 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import {
   changePinSchema,
+  emailCredentialsSchema,
+  emailOnlySchema,
+  emailRegisterSchema,
+  emailSignInSchema,
+  pinSignInSchema,
+  requestPasswordResetSchema,
   refreshTokenSchema,
   registerSchema,
+  resetPasswordSchema,
   requestOtpSchema,
   setPinSchema,
+  verifyEmailSchema,
   verifyOtpSchema,
   verifyPinSchema,
   type AuthSession,
   type AuthTokens,
   type AuthUser,
   type ChangePinInput,
+  type EmailCredentialsInput,
+  type EmailRegisterInput,
+  type EmailSignInInput,
   type OtpChallengeResult,
+  type PinSignInInput,
   type PinStatus,
+  type RequestPasswordResetInput,
+  type ResetPasswordInput,
   type RefreshTokenInput,
   type RegisterInput,
   type RequestOtpInput,
   type SetPinInput,
   type VerifyOtpInput,
   type VerifyOtpResult,
+  type VerifyEmailInput,
   type VerifyPinInput,
   type WalletAccount,
 } from '@mori-pay/contracts';
@@ -42,6 +57,71 @@ import type { AuthenticatedUser } from './auth.types.js';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
+
+  @Public()
+  @Post('email/login')
+  @HttpCode(HttpStatus.OK)
+  emailSignIn(
+    @Body(new ZodValidationPipe(emailSignInSchema)) input: EmailSignInInput,
+  ): Promise<AuthSession> {
+    return this.auth.emailSignIn(input);
+  }
+
+  @Public()
+  @Post('pin/login')
+  @HttpCode(HttpStatus.OK)
+  pinSignIn(
+    @Body(new ZodValidationPipe(pinSignInSchema)) input: PinSignInInput,
+  ): Promise<AuthSession> {
+    return this.auth.pinSignIn(input);
+  }
+
+  @Public()
+  @Post('email/register')
+  registerEmail(
+    @Body(new ZodValidationPipe(emailRegisterSchema))
+    input: EmailRegisterInput,
+  ): Promise<OtpChallengeResult> {
+    return this.auth.registerEmail(input);
+  }
+
+  @Public()
+  @Post('email/verify')
+  @HttpCode(HttpStatus.OK)
+  verifyEmail(
+    @Body(new ZodValidationPipe(verifyEmailSchema)) input: VerifyEmailInput,
+  ): Promise<AuthSession> {
+    return this.auth.verifyEmail(input);
+  }
+
+  @Public()
+  @Post('email/resend')
+  @HttpCode(HttpStatus.OK)
+  resendEmailVerification(
+    @Body(new ZodValidationPipe(emailOnlySchema)) input: { email: string },
+  ): Promise<OtpChallengeResult> {
+    return this.auth.resendEmailVerification(input.email);
+  }
+
+  @Public()
+  @Post('password/reset/request')
+  @HttpCode(HttpStatus.OK)
+  requestPasswordReset(
+    @Body(new ZodValidationPipe(requestPasswordResetSchema))
+    input: RequestPasswordResetInput,
+  ): Promise<OtpChallengeResult> {
+    return this.auth.requestPasswordReset(input);
+  }
+
+  @Public()
+  @Post('password/reset')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async resetPassword(
+    @Body(new ZodValidationPipe(resetPasswordSchema))
+    input: ResetPasswordInput,
+  ): Promise<void> {
+    await this.auth.resetPassword(input);
+  }
 
   @Public()
   @Post('otp/request')
@@ -61,12 +141,43 @@ export class AuthController {
     return this.auth.verifyOtp(input);
   }
 
+  @ApiBearerAuth()
+  @Post('phone/request-link')
+  @HttpCode(HttpStatus.OK)
+  requestPhoneLink(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(requestOtpSchema)) input: RequestOtpInput,
+  ): Promise<OtpChallengeResult> {
+    return this.auth.requestPhoneLink(user.userId, input);
+  }
+
+  @ApiBearerAuth()
+  @Post('phone/verify-link')
+  @HttpCode(HttpStatus.OK)
+  verifyPhoneLink(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(verifyOtpSchema)) input: VerifyOtpInput,
+  ): Promise<void> {
+    return this.auth.verifyPhoneLink(user.userId, input);
+  }
+
   @Public()
   @Post('register')
   register(
     @Body(new ZodValidationPipe(registerSchema)) input: RegisterInput,
   ): Promise<AuthSession> {
     return this.auth.register(input);
+  }
+
+  @ApiBearerAuth()
+  @Post('email/credentials')
+  @HttpCode(HttpStatus.OK)
+  setEmailCredentials(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(emailCredentialsSchema))
+    input: EmailCredentialsInput,
+  ): Promise<OtpChallengeResult> {
+    return this.auth.setEmailCredentials(user.userId, input);
   }
 
   @Public()

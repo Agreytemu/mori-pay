@@ -13,7 +13,14 @@ export const tzPhoneSchema = z
 
 export const emailSchema = z
   .string()
+  .trim()
+  .toLowerCase()
   .regex(EMAIL_RE, 'Must be a valid email address');
+
+export const passwordSchema = z
+  .string()
+  .min(10, 'Password must be at least 10 characters')
+  .max(128, 'Password must be at most 128 characters');
 
 export const pinSchema = z
   .string()
@@ -22,6 +29,14 @@ export const pinSchema = z
 export const otpCodeSchema = z
   .string()
   .regex(/^\d{6}$/, 'OTP must be exactly 6 digits');
+
+const dateOnlySchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must use YYYY-MM-DD')
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }, 'Date must be a valid calendar date');
 
 /** Whole TZS, minimum 500 (mobile money operator floor). */
 export const amountSchema = z
@@ -59,13 +74,50 @@ export const registerSchema = z.object({
     .optional(),
 });
 
-const dateOnlySchema = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must use YYYY-MM-DD')
-  .refine((value) => {
-    const date = new Date(`${value}T00:00:00.000Z`);
-    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
-  }, 'Date must be a valid calendar date');
+export const emailSignInSchema = z.object({
+  email: emailSchema,
+  password: z.string().min(1).max(128),
+  device: deviceInfoSchema.optional(),
+});
+
+export const emailOnlySchema = z.object({
+  email: emailSchema,
+});
+
+export const pinSignInSchema = z.object({
+  email: emailSchema,
+  pin: pinSchema,
+  device: deviceInfoSchema.optional(),
+});
+
+export const emailRegisterSchema = z.object({
+  fullName: z.string().trim().min(2).max(120),
+  firstName: z.string().trim().min(1).max(60),
+  email: emailSchema,
+  password: passwordSchema,
+  dateOfBirth: dateOnlySchema.optional(),
+});
+
+export const verifyEmailSchema = z.object({
+  email: emailSchema,
+  code: otpCodeSchema,
+  device: deviceInfoSchema.optional(),
+});
+
+export const requestPasswordResetSchema = z.object({
+  email: emailSchema,
+});
+
+export const resetPasswordSchema = z.object({
+  email: emailSchema,
+  code: otpCodeSchema,
+  password: passwordSchema,
+});
+
+export const emailCredentialsSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+});
 
 export const updateAccountProfileSchema = z.object({
   fullName: z.string().trim().min(2).max(120),

@@ -369,7 +369,11 @@ OTP_MAX_ATTEMPTS=5
 STAKABA_BASE_URL="https://api.stakaba.com"
 STAKABA_API_KEY="your-live-key"
 SMS_PROVIDER="beem"
+RESEND_API_KEY="your-resend-api-key"
+EMAIL_FROM="auth@your-verified-domain.example"
 ```
+
+Email registration, verification, and password recovery use Resend. Verify the sender domain in Resend before setting `EMAIL_FROM`. Do not commit the API key.
 
 6. Deploy the service and confirm `/health` and `/docs` are reachable.
 
@@ -682,5 +686,4 @@ This project is licensed under the MIT license. See [LICENSE](LICENSE) for detai
 Mori Pay is in active product-oriented development and is structured as a real-world fintech application starter with a mobile client, typed API contracts, and production-minded backend architecture.
 
 If you're building a wallet, mobile-money, or payments product, this repo is designed to give you a stronger foundation than a plain starter template.
-
 

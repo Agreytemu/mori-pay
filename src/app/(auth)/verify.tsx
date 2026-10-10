@@ -25,6 +25,7 @@ export default function VerifyScreen() {
 
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [needsEmailRegistration, setNeedsEmailRegistration] = useState(false);
   const [busy, setBusy] = useState(false);
   const [cooldown, setCooldown] = useState(
     Number(typeof params.retryAfter === 'string' ? params.retryAfter : 30) || 30
@@ -39,11 +40,25 @@ export default function VerifyScreen() {
   const finish = useCallback(
     async (result: Awaited<ReturnType<typeof verifyOtp>>) => {
       if (result.registrationRequired) {
-        router.push({ pathname: '/(auth)/register', params: { setupToken: result.setupToken } });
+        setNeedsEmailRegistration(true);
+        setError(
+          'This phone number is not linked to an existing account. Create an account with email, then add this phone from Personal Information.'
+        );
         return;
       }
       const pinStatus = await signIn(result.session);
-      router.replace(pinStatus.pinSet ? '/(tabs)' : '/(auth)/set-pin');
+      router.replace(
+        !result.session.user.hasPassword
+          ? '/(auth)/setup-credentials'
+          : !result.session.user.emailVerified
+            ? {
+                pathname: '/(auth)/verify-email',
+                params: { email: result.session.user.email ?? '' },
+              }
+            : pinStatus.pinSet
+              ? '/(tabs)'
+              : '/(auth)/set-pin'
+      );
     },
     [router, signIn]
   );
@@ -54,6 +69,7 @@ export default function VerifyScreen() {
       setBusy(true);
       setError(null);
       try {
+        setNeedsEmailRegistration(false);
         await finish(await verifyOtp({ phone, code: value, device: deviceInfo() }));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Verification failed. Try again.');
@@ -80,6 +96,7 @@ export default function VerifyScreen() {
       setCooldown(challenge.retryAfter);
       setCode('');
       setError(null);
+      setNeedsEmailRegistration(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not resend the code.');
     }
@@ -107,9 +124,17 @@ export default function VerifyScreen() {
         {error ? (
           <StatusBanner
             tone="error"
-            title="That code is wrong"
+            title={needsEmailRegistration ? 'No existing account found' : 'That code is wrong'}
             message={error}
             onDismiss={() => setError(null)}
+          />
+        ) : null}
+
+        {needsEmailRegistration ? (
+          <PrimaryButton
+            label="Create an email account"
+            block
+            onPress={() => router.replace('/(auth)/register')}
           />
         ) : null}
 

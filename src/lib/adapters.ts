@@ -36,7 +36,7 @@ export function toWalletData(wallet: WalletAccount, status: WalletAccountStatus)
     availableBalance: wallet.balance.available,
     currency: 'TZS',
     accountNumber: wallet.accountNumber,
-    phoneNumber: formatPhone(wallet.phoneNumber),
+    phoneNumber: wallet.phoneNumber ? formatPhone(wallet.phoneNumber) : 'Not added',
     openedDate: formatDate(wallet.memberSince),
     status,
   };
@@ -74,7 +74,7 @@ export function toUserProfile(profile: AccountProfile): UserProfile {
     id: profile.id,
     memberId: profile.memberId,
     fullName: profile.fullName,
-    phone: profile.phoneNumber,
+    phone: profile.phoneNumber ?? '',
     email: profile.email ?? '',
     dateOfBirth: profile.dateOfBirth ?? '',
     status:

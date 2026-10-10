@@ -6,6 +6,9 @@ import type {
   AccountProfile,
   AppNotification,
   ChangePinInput,
+  EmailCredentialsInput,
+  EmailRegisterInput,
+  EmailSignInInput,
   Merchant,
   MoneyRequest,
   OtpChallengeResult,
@@ -15,6 +18,7 @@ import type {
   PayRequestInput,
   PayRequestResult,
   PinStatus,
+  PinSignInInput,
   PreviewTransferInput,
   RecipientLookup,
   RefreshTokenInput,
@@ -22,6 +26,8 @@ import type {
   RequestMoneyInput,
   RequestMoneyResult,
   RequestOtpInput,
+  RequestPasswordResetInput,
+  ResetPasswordInput,
   NotificationPreference,
   SavedPaymentMethod,
   TrustedDevice,
@@ -38,6 +44,7 @@ import type {
   TransferPreview,
   VerifyOtpInput,
   VerifyOtpResult,
+  VerifyEmailInput,
   VerifyPinInput,
   WalletAccount,
   WithdrawalInput,
@@ -66,6 +73,20 @@ export function requestOtp(input: RequestOtpInput): Promise<OtpChallengeResult> 
   });
 }
 
+export function requestPhoneLink(input: RequestOtpInput): Promise<OtpChallengeResult> {
+  return request<OtpChallengeResult>('/auth/phone/request-link', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export function verifyPhoneLink(input: VerifyOtpInput): Promise<void> {
+  return request<void>('/auth/phone/verify-link', {
+    method: 'POST',
+    body: input,
+  });
+}
+
 export function verifyOtp(input: VerifyOtpInput): Promise<VerifyOtpResult> {
   return request<VerifyOtpResult>('/auth/otp/verify', {
     method: 'POST',
@@ -76,6 +97,71 @@ export function verifyOtp(input: VerifyOtpInput): Promise<VerifyOtpResult> {
 
 export function register(input: RegisterInput): Promise<AuthSession> {
   return request<AuthSession>('/auth/register', { method: 'POST', auth: false, body: input });
+}
+
+export function signInWithEmail(input: EmailSignInInput): Promise<AuthSession> {
+  return request<AuthSession>('/auth/email/login', {
+    method: 'POST',
+    auth: false,
+    body: input,
+  });
+}
+
+export function signInWithPin(input: PinSignInInput): Promise<AuthSession> {
+  return request<AuthSession>('/auth/pin/login', {
+    method: 'POST',
+    auth: false,
+    body: input,
+  });
+}
+
+export function registerEmail(input: EmailRegisterInput): Promise<OtpChallengeResult> {
+  return request<OtpChallengeResult>('/auth/email/register', {
+    method: 'POST',
+    auth: false,
+    body: input,
+  });
+}
+
+export function verifyEmail(input: VerifyEmailInput): Promise<AuthSession> {
+  return request<AuthSession>('/auth/email/verify', {
+    method: 'POST',
+    auth: false,
+    body: input,
+  });
+}
+
+export function resendEmailVerification(email: string): Promise<OtpChallengeResult> {
+  return request<OtpChallengeResult>('/auth/email/resend', {
+    method: 'POST',
+    auth: false,
+    body: { email },
+  });
+}
+
+export function requestPasswordReset(
+  input: RequestPasswordResetInput
+): Promise<OtpChallengeResult> {
+  return request<OtpChallengeResult>('/auth/password/reset/request', {
+    method: 'POST',
+    auth: false,
+    body: input,
+  });
+}
+
+export function resetPassword(input: ResetPasswordInput): Promise<void> {
+  return request<void>('/auth/password/reset', {
+    method: 'POST',
+    auth: false,
+    body: input,
+  });
+}
+
+export function setEmailCredentials(input: EmailCredentialsInput): Promise<OtpChallengeResult> {
+  return request<OtpChallengeResult>('/auth/email/credentials', {
+    method: 'POST',
+    body: input,
+  });
 }
 
 export function refreshTokens(input: RefreshTokenInput): Promise<AuthTokens> {

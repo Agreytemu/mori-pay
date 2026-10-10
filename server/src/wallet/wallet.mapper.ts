@@ -55,6 +55,8 @@ export function toAuthUser(user: UserWithWallet): AuthUser {
     firstName: user.firstName,
     phoneNumber: user.phone,
     email: user.email,
+    emailVerified: Boolean(user.emailVerifiedAt),
+    hasPassword: Boolean(user.passwordHash),
     tier: user.tier,
     kycLevel: user.kycLevel,
     status: user.status,

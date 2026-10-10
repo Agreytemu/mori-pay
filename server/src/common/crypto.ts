@@ -47,8 +47,16 @@ export function safeEqualHex(a: string, b: string): boolean {
 
 /** Hash a PIN with scrypt; returns a self-describing `scrypt:<salt>:<hash>`. */
 export async function hashPin(pin: string): Promise<string> {
+  return hashSecret(pin);
+}
+
+export async function hashPassword(password: string): Promise<string> {
+  return hashSecret(password);
+}
+
+async function hashSecret(value: string): Promise<string> {
   const salt = randomBytes(16).toString('hex');
-  const derived = (await scrypt(pin, salt, SCRYPT_KEY_LENGTH)) as Buffer;
+  const derived = (await scrypt(value, salt, SCRYPT_KEY_LENGTH)) as Buffer;
   return `scrypt:${salt}:${derived.toString('hex')}`;
 }
 
@@ -56,12 +64,26 @@ export async function verifyPinHash(
   pin: string,
   stored: string | null,
 ): Promise<boolean> {
+  return verifySecretHash(pin, stored);
+}
+
+export async function verifyPasswordHash(
+  password: string,
+  stored: string | null,
+): Promise<boolean> {
+  return verifySecretHash(password, stored);
+}
+
+async function verifySecretHash(
+  value: string,
+  stored: string | null,
+): Promise<boolean> {
   if (!stored) return false;
 
   const [scheme, salt, hash] = stored.split(':');
   if (scheme !== 'scrypt' || !salt || !hash) return false;
 
-  const derived = (await scrypt(pin, salt, SCRYPT_KEY_LENGTH)) as Buffer;
+  const derived = (await scrypt(value, salt, SCRYPT_KEY_LENGTH)) as Buffer;
   const expected = Buffer.from(hash, 'hex');
   if (derived.length !== expected.length) return false;
 

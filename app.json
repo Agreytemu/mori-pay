@@ -1,27 +1,26 @@
 {
   "expo": {
-    "name": "lipa-na-agreytemu",
+    "name": "Mori Pay",
     "slug": "lipa-na-agreytemu",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/mori pay official logo.png",
     "scheme": "lipanaagreytemu",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/mori pay official logo.png"
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/images/mori pay official logo.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.mori_dev.lipanaagreytemu"
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/mori pay official logo.png"
     },
     "plugins": [
       "expo-router",
@@ -40,7 +39,11 @@
       "reactCompiler": true
     },
     "extra": {
-      "apiUrl": "http://localhost:4000/api/v1"
+      "apiUrl": "https://mori-pay.onrender.com/api/v1",
+      "router": {},
+      "eas": {
+        "projectId": "5ff03196-ddcc-49a5-a880-ca3bb289a551"
+      }
     }
   }
 }

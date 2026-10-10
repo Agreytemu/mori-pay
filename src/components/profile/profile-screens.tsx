@@ -314,7 +314,7 @@ function validateProfile(draft: EditableProfileFields): ProfileErrors {
   else if (!/[a-z]/i.test(name)) errors.fullName = 'Name must contain letters.';
 
   const digits = draft.phone.replace(/\D/g, '');
-  if (digits.length < 9 || digits.length > 15) {
+  if (digits.length > 0 && (digits.length < 9 || digits.length > 15)) {
     errors.phone = 'Enter a valid phone number, e.g. +255712345678.';
   }
 
@@ -464,9 +464,17 @@ export function PersonalInformationScreen() {
             block
             onPress={() => setEditing(true)}
           />
+          {!profile.phone ? (
+            <SecondaryButton
+              label="Add and verify phone number"
+              icon="phone"
+              block
+              onPress={() => router.push('/account/link-phone')}
+            />
+          ) : null}
 
           <AppText variant="caption" color={colors.textTertiary}>
-            Your mobile number is verified and cannot be changed here. Contact support if it needs to be updated.
+            Phone numbers are optional for account creation. A verified number may be needed for some payment features.
           </AppText>
         </>
       ) : (
@@ -482,25 +490,32 @@ export function PersonalInformationScreen() {
               error={submitted ? errors.fullName : undefined}
             />
             <ProfileField
-              label="Phone number"
+              label="Phone number (optional)"
               value={currentDraft.phone}
               onChangeText={update('phone')}
               editable={false}
               keyboardType="phone-pad"
               autoComplete="tel"
-              placeholder="+255712345678"
-              hint="Include the country code."
+              placeholder="Not added"
+              hint="Add a verified number later for phone-based payment features."
               error={submitted ? errors.phone : undefined}
             />
+            {!profile.phone ? (
+              <SecondaryButton
+                label="Add and verify phone number"
+                icon="phone"
+                block
+                onPress={() => router.push('/account/link-phone')}
+              />
+            ) : null}
             <ProfileField
               label="Email"
               value={currentDraft.email}
-              onChangeText={update('email')}
-              keyboardType="email-address"
+              editable={false}
               autoCapitalize="none"
               autoComplete="email"
-              placeholder="you@example.co.tz"
-              error={submitted ? errors.email : undefined}
+              placeholder="No email added"
+              hint="Your sign-in email can only be changed after verification."
             />
             <ProfileField
               label="Date of birth"

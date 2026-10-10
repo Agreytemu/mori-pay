@@ -5,6 +5,7 @@ import { SmsModule } from '../sms/sms.module.js';
 import { AuthController } from './auth.controller.js';
 import { JwtAuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
+import { EmailService } from './email.service.js';
 import { TokenService } from './token.service.js';
 
 @Module({
@@ -12,6 +13,7 @@ import { TokenService } from './token.service.js';
   controllers: [AuthController],
   providers: [
     AuthService,
+    EmailService,
     TokenService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],

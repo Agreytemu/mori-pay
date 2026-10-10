@@ -82,6 +82,13 @@ export class AppConfigService {
     };
   }
 
+  get email() {
+    return {
+      apiKey: this.get('RESEND_API_KEY'),
+      from: this.get('EMAIL_FROM'),
+    };
+  }
+
   get logLevel() {
     return this.get('LOG_LEVEL');
   }

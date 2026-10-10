@@ -3,10 +3,12 @@ import { describe, it } from 'node:test';
 
 import {
   generateNumericCode,
+  hashPassword,
   hashPin,
   safeEqualHex,
   sha256,
   verifyPinHash,
+  verifyPasswordHash,
 } from '../src/common/crypto.js';
 
 describe('crypto', () => {
@@ -24,6 +26,15 @@ describe('crypto', () => {
     assert.equal(await verifyPinHash('123456', hash), true);
     assert.equal(await verifyPinHash('654321', hash), false);
     assert.equal(await verifyPinHash('123456', null), false);
+  });
+
+  it('hashes and verifies passwords without storing the cleartext', async () => {
+    const password = 'correct horse battery staple';
+    const hash = await hashPassword(password);
+    assert.notEqual(hash, password);
+    assert.equal(await verifyPasswordHash(password, hash), true);
+    assert.equal(await verifyPasswordHash('incorrect password', hash), false);
+    assert.equal(await verifyPasswordHash(password, null), false);
   });
 
   it('compares hex digests in constant time', () => {

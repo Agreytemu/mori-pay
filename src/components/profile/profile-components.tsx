@@ -79,7 +79,7 @@ export function ProfileHeader({ profile }: { profile: UserProfile }) {
           {profile.fullName}
         </AppText>
         <AppText variant="bodySmall" color={colors.textSecondary}>
-          {maskPhone(profile.phone)}
+          {profile.phone ? maskPhone(profile.phone) : 'Phone number not added'}
         </AppText>
         <View style={styles.headerMeta}>
           <ProfileStatus status={profile.status} />
