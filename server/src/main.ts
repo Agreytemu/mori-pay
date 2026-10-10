@@ -20,7 +20,10 @@ import { AppConfigService } from './config/app-config.service.js';
 };
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
 
   const config = app.get(AppConfigService);
   const logger = app.get(Logger);

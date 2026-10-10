@@ -1,0 +1,41 @@
+import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+
+import {
+  topupCardSchema,
+  topupMobileMoneySchema,
+  type CardTopupResult,
+  type TopupCardInput,
+  type TopupInitResult,
+  type TopupMobileMoneyInput,
+} from '@mori-pay/contracts';
+
+import type { AuthenticatedUser } from '../auth/auth.types.js';
+import { CurrentUser } from '../common/decorators/current-user.decorator.js';
+import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
+import { TopUpsService } from './topups.service.js';
+
+@ApiTags('topups')
+@ApiBearerAuth()
+@Controller('topups')
+export class TopUpsController {
+  constructor(private readonly topups: TopUpsService) {}
+
+  @Post('mobile-money')
+  @HttpCode(HttpStatus.OK)
+  mobileMoney(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(topupMobileMoneySchema)) input: TopupMobileMoneyInput,
+  ): Promise<TopupInitResult> {
+    return this.topups.initiateMobileMoney(user.userId, input);
+  }
+
+  @Post('card')
+  @HttpCode(HttpStatus.OK)
+  card(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(topupCardSchema)) input: TopupCardInput,
+  ): Promise<CardTopupResult> {
+    return this.topups.initiateCard(user.userId, input);
+  }
+}

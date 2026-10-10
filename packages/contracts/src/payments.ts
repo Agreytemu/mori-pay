@@ -66,3 +66,19 @@ export type PayRequestResult = {
   transaction: Transaction;
   fee: Amount;
 };
+
+/** A pending top-up plus the instruction to show the user (e.g. "enter PIN"). */
+export type TopupInitResult = {
+  transaction: Transaction;
+  instructions: string;
+};
+
+export type CardTopupResult = {
+  transaction: Transaction;
+  checkoutUrl: string;
+};
+
+export type WithdrawalResult = {
+  transaction: Transaction;
+  fee: Amount;
+};

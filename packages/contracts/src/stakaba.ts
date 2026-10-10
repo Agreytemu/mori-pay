@@ -93,3 +93,15 @@ export type StakabaWebhookPayload = {
   createdAt: string;
   metadata?: Record<string, unknown>;
 };
+
+/** Result of re-verifying a transaction directly with Stakaba. */
+export type StakabaTransactionVerification = {
+  internalReference: string;
+  status: 'SUCCESS' | 'FAILED' | 'PENDING';
+  type: 'COLLECTION' | 'CARD' | 'PAYOUT';
+  grossAmount: number;
+  stakabaFee: number;
+  netAmount: number;
+  providerReference?: string;
+};
+

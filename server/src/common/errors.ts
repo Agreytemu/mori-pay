@@ -5,7 +5,8 @@
 export type DomainErrorCode =
   | 'INSUFFICIENT_FUNDS'
   | 'UNBALANCED_LEDGER'
-  | 'INVALID_LEDGER_LEG';
+  | 'INVALID_LEDGER_LEG'
+  | 'PROVIDER_ERROR';
 
 export class DomainError extends Error {
   constructor(
@@ -32,5 +33,11 @@ export class UnbalancedLedgerError extends DomainError {
 export class InvalidLedgerLegError extends DomainError {
   constructor(message = 'Invalid ledger leg') {
     super(message, 'INVALID_LEDGER_LEG');
+  }
+}
+
+export class ProviderError extends DomainError {
+  constructor(message = 'Payment provider error') {
+    super(message, 'PROVIDER_ERROR');
   }
 }

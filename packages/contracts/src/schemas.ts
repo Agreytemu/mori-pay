@@ -131,6 +131,24 @@ export const withdrawalSchema = z.object({
   phoneNumber: tzPhoneSchema,
   network: stakabaNetworkSchema,
   accountName: z.string().max(120).optional(),
+  pin: pinSchema,
+  idempotencyKey: z.string().min(1).max(120).optional(),
+});
+
+export const stakabaWebhookSchema = z.object({
+  event: z.enum(['transaction.success', 'transaction.failed']),
+  internalReference: z.string().min(1),
+  status: z.enum(['SUCCESS', 'FAILED']),
+  type: z.enum(['COLLECTION', 'PAYOUT', 'CARD']),
+  grossAmount: z.number(),
+  stakabaFee: z.number(),
+  netAmount: z.number(),
+  currency: z.literal('TZS'),
+  mobileNumber: z.string().optional(),
+  network: z.string().optional(),
+  providerReference: z.string().optional(),
+  createdAt: z.string().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export type RequestOtpInput = z.infer<typeof requestOtpSchema>;
@@ -150,3 +168,4 @@ export type RecipientLookupInput = z.infer<typeof recipientLookupSchema>;
 export type TopupMobileMoneyInput = z.infer<typeof topupMobileMoneySchema>;
 export type TopupCardInput = z.infer<typeof topupCardSchema>;
 export type WithdrawalInput = z.infer<typeof withdrawalSchema>;
+export type StakabaWebhookInput = z.infer<typeof stakabaWebhookSchema>;

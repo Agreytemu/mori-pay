@@ -117,7 +117,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const status =
       exception.code === 'INSUFFICIENT_FUNDS'
         ? HttpStatus.CONFLICT
-        : HttpStatus.BAD_REQUEST;
+        : exception.code === 'PROVIDER_ERROR'
+          ? HttpStatus.BAD_GATEWAY
+          : HttpStatus.BAD_REQUEST;
     return {
       status,
       error: this.statusToCode(status),

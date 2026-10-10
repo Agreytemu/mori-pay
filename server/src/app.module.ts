@@ -15,8 +15,13 @@ import { MerchantsModule } from './merchants/merchants.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RequestsModule } from './requests/requests.module.js';
+import { SettlementModule } from './settlement/settlement.module.js';
+import { StakabaModule } from './stakaba/stakaba.module.js';
+import { TopUpsModule } from './topups/topups.module.js';
 import { TransfersModule } from './transfers/transfers.module.js';
 import { WalletModule } from './wallet/wallet.module.js';
+import { WebhooksModule } from './webhooks/webhooks.module.js';
+import { WithdrawalsModule } from './withdrawals/withdrawals.module.js';
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -64,11 +69,16 @@ const isProduction = process.env.NODE_ENV === 'production';
     PrismaModule,
     LedgerModule,
     PaymentsModule,
+    SettlementModule,
+    StakabaModule,
     AuthModule,
     WalletModule,
     TransfersModule,
     RequestsModule,
     MerchantsModule,
+    TopUpsModule,
+    WithdrawalsModule,
+    WebhooksModule,
     HealthModule,
   ],
   providers: [

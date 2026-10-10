@@ -29,6 +29,13 @@ function balanceOf(accounts: LedgerAccount[], kind: string): bigint {
   return accounts.find((account) => account.kind === kind)?.balance ?? 0n;
 }
 
+/** Available ledger account id for a user, or `undefined` when absent. */
+export function findAvailableAccountId(user: UserWithWallet): string | undefined {
+  return user.wallet?.ledgerAccounts.find(
+    (account) => account.kind === LEDGER_ACCOUNT_AVAILABLE,
+  )?.id;
+}
+
 export function toWalletBalance(
   wallet: Wallet & { ledgerAccounts: LedgerAccount[] },
 ): WalletBalance {
