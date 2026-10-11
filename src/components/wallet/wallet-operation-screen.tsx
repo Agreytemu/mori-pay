@@ -29,6 +29,7 @@ import {
 } from '@mori-pay/contracts';
 
 import { ApiError } from '@/lib/api';
+import { newIdempotencyKey } from '@/lib/idempotency';
 import {
   createWithdrawal,
   getTransaction,
@@ -47,10 +48,6 @@ type WalletOperation = 'deposit' | 'withdraw';
 type Step = 'form' | 'pin' | 'busy' | 'done' | 'failed';
 
 const MIN_AMOUNT = 500;
-
-function randomKey(): string {
-  return `mp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
 
 const DEPOSIT_METHODS = [
   { id: 'mobile', name: 'Mobile money', description: 'M-Pesa, Airtel Money and more', icon: 'receive' as const },
@@ -224,7 +221,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         phoneNumber: normalized,
         network,
         pin: pinValue,
-        idempotencyKey: randomKey(),
+        idempotencyKey: newIdempotencyKey(),
       });
       await refreshWallet();
       setStep('done');

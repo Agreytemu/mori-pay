@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import {
   payMerchantSchema,
@@ -25,6 +26,7 @@ export class MerchantsController {
   }
 
   @Post('pay')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   pay(
     @CurrentUser() user: AuthenticatedUser,

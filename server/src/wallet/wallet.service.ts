@@ -2,12 +2,15 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import type {
   Paginated,
+  ReceiveCode,
   Transaction as TransactionDto,
   WalletAccount,
 } from '@mori-pay/contracts';
 
 import type { Prisma } from '../generated/prisma/client.js';
+import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { ReceiveCodeService } from '../qr/receive-code.service.js';
 import { ReconciliationService } from '../webhooks/reconciliation.service.js';
 import { toTransaction, toWalletAccount, type UserWithWallet } from './wallet.mapper.js';
 
@@ -26,11 +29,19 @@ export class WalletService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly reconciliation: ReconciliationService,
+    private readonly limits: LimitsService,
+    private readonly receiveCodes: ReceiveCodeService,
   ) {}
 
   async getWallet(userId: string): Promise<WalletAccount> {
     const user = await this.loadUserWithWallet(userId);
-    return toWalletAccount(user);
+    const summary = await this.limits.getSummary(user.id, user.tier);
+    return toWalletAccount(user, summary);
+  }
+
+  /** Issues a fresh signed receive code for the user's receive QR. */
+  getReceiveCode(userId: string): ReceiveCode {
+    return this.receiveCodes.issue(userId);
   }
 
   /** Loads a user together with their wallet and ledger accounts. */

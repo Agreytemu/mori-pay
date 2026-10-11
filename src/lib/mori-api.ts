@@ -21,6 +21,7 @@ import type {
   PinSignInInput,
   PreviewTransferInput,
   RecipientLookup,
+  ReceiveCode,
   RefreshTokenInput,
   RegisterInput,
   RequestMoneyInput,
@@ -263,6 +264,10 @@ export function changePin(input: ChangePinInput): Promise<PinStatus> {
 
 export function getWallet(): Promise<WalletAccount> {
   return request<WalletAccount>('/wallet');
+}
+
+export function getReceiveCode(): Promise<ReceiveCode> {
+  return request<ReceiveCode>('/wallet/receive-code');
 }
 
 export function listTransactions(params: {

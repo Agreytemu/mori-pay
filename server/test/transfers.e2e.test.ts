@@ -71,6 +71,26 @@ async function createUserWithWallet(
   });
 }
 
+/**
+ * Mints an access token bound to a real refresh-token session, because the auth
+ * guard now rejects tokens whose `sid` has no active session row.
+ */
+async function createTestAccessToken(
+  prisma: PrismaService,
+  tokens: TokenService,
+  userId: string,
+): Promise<string> {
+  const refresh = tokens.createRefreshToken();
+  const session = await prisma.refreshToken.create({
+    data: {
+      userId,
+      tokenHash: refresh.tokenHash,
+      expiresAt: refresh.expiresAt,
+    },
+  });
+  return tokens.createAccessToken(userId, session.id).token;
+}
+
 describe(
   'Transfers, requests and merchants (e2e)',
   { skip: databaseReachable ? false : 'Postgres not reachable' },
@@ -93,9 +113,10 @@ describe(
     };
 
     const balance = async (user: UserWithWallet): Promise<number> => {
+      const token = await createTestAccessToken(prisma, tokens, user.id);
       const response = await request(app.getHttpServer())
         .get(`/${API_PREFIX}/wallet`)
-        .set('Authorization', `Bearer ${tokens.createAccessToken(user.id, 'e2e').token}`)
+        .set('Authorization', `Bearer ${token}`)
         .expect(200);
       return response.body.balance.available as number;
     };
@@ -115,8 +136,8 @@ describe(
 
       userA = await createUserWithWallet(prisma, `2557${suffix}1`, 'Asha Mwangi');
       userB = await createUserWithWallet(prisma, `2557${suffix}2`, 'Bakari Salim');
-      tokenA = tokens.createAccessToken(userA.id, 'e2e-a').token;
-      tokenB = tokens.createAccessToken(userB.id, 'e2e-b').token;
+      tokenA = await createTestAccessToken(prisma, tokens, userA.id);
+      tokenB = await createTestAccessToken(prisma, tokens, userB.id);
 
       await prisma.merchant.createMany({
         data: [

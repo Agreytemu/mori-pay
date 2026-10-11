@@ -20,6 +20,7 @@ import { generateReference } from '../common/crypto.js';
 import type { MoneyRequest as MoneyRequestRow } from '../generated/prisma/client.js';
 import { FeesService } from '../payments/fees.service.js';
 import { PaymentsService } from '../payments/payments.service.js';
+import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { WalletService } from '../wallet/wallet.service.js';
 
@@ -33,6 +34,7 @@ export class RequestsService {
     private readonly payments: PaymentsService,
     private readonly fees: FeesService,
     private readonly auth: AuthService,
+    private readonly limits: LimitsService,
   ) {}
 
   async create(userId: string, input: RequestMoneyInput): Promise<RequestMoneyResult> {
@@ -159,6 +161,7 @@ export class RequestsService {
     }
 
     await this.auth.verifyPin(userId, input.pin);
+    await this.limits.assertWithinLimits(userId, payer.tier, request.amount);
 
     const requester = await this.prisma.user.findUnique({
       where: { id: request.requesterId },
@@ -166,7 +169,7 @@ export class RequestsService {
     });
     if (!requester) throw new NotFoundException('Requester no longer exists');
 
-    const fee = await this.fees.resolveFee({
+    const feeDetail = await this.fees.resolveFeeDetail({
       type: 'send',
       channel: 'wallet',
       amount: request.amount,
@@ -176,7 +179,8 @@ export class RequestsService {
       from: payer,
       to: requester,
       amount: request.amount,
-      fee,
+      fee: feeDetail.fee,
+      feeDetail,
       note: request.note ?? undefined,
       type: 'send',
       category: 'person',
@@ -191,7 +195,7 @@ export class RequestsService {
     return {
       request: this.toDto(updated, 'incoming', requester.fullName, payer.fullName),
       transaction,
-      fee: Number(fee),
+      fee: Number(feeDetail.fee),
     };
   }
 

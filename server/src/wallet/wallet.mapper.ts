@@ -11,12 +11,10 @@ import type {
   User,
   Wallet,
 } from '../generated/prisma/client.js';
-
-/**
- * Placeholder daily limit until the limits/limits-usage milestone wires
- * real per-tier rules from the `LimitUsage`/`FeeRule` tables.
- */
-export const DAILY_LIMIT_DEFAULT = 1_000_000;
+import {
+  resolveTierLimits,
+  type LimitsSummary,
+} from '../limits/limits.config.js';
 
 export const LEDGER_ACCOUNT_AVAILABLE = 'available';
 export const LEDGER_ACCOUNT_PENDING = 'pending';
@@ -38,12 +36,18 @@ export function findAvailableAccountId(user: UserWithWallet): string | undefined
 
 export function toWalletBalance(
   wallet: Wallet & { ledgerAccounts: LedgerAccount[] },
+  summary: LimitsSummary,
 ): WalletBalance {
+  const remaining =
+    summary.dailyUsed >= summary.dailyLimit
+      ? 0n
+      : summary.dailyLimit - summary.dailyUsed;
+
   return {
     available: Number(balanceOf(wallet.ledgerAccounts, LEDGER_ACCOUNT_AVAILABLE)),
     pending: Number(balanceOf(wallet.ledgerAccounts, LEDGER_ACCOUNT_PENDING)),
-    dailyLimitRemaining: DAILY_LIMIT_DEFAULT,
-    dailyLimit: DAILY_LIMIT_DEFAULT,
+    dailyLimitRemaining: Number(remaining),
+    dailyLimit: Number(summary.dailyLimit),
   };
 }
 
@@ -64,9 +68,17 @@ export function toAuthUser(user: UserWithWallet): AuthUser {
   };
 }
 
-export function toWalletAccount(user: UserWithWallet): WalletAccount {
+export function toWalletAccount(
+  user: UserWithWallet,
+  summary?: LimitsSummary,
+): WalletAccount {
   const wallet = user.wallet;
   if (!wallet) throw new Error('Wallet not found');
+
+  const limits: LimitsSummary = summary ?? {
+    dailyLimit: resolveTierLimits(user.tier).dailyOutflow,
+    dailyUsed: 0n,
+  };
 
   return {
     id: wallet.id,
@@ -79,7 +91,7 @@ export function toWalletAccount(user: UserWithWallet): WalletAccount {
     tier: user.tier,
     memberSince: user.createdAt.toISOString(),
     currency: wallet.currency as WalletAccount['currency'],
-    balance: toWalletBalance(wallet),
+    balance: toWalletBalance(wallet, limits),
   };
 }
 
@@ -94,6 +106,8 @@ export function toTransaction(transaction: Transaction): TransactionDto {
     amount: Number(transaction.amount),
     currency: transaction.currency as TransactionDto['currency'],
     fee: Number(transaction.fee),
+    feeFlat: Number(transaction.feeFlat ?? 0n),
+    feePercentage: transaction.feePercentage ?? 0,
     counterparty: transaction.counterparty,
     counterpartyDetail: transaction.counterpartyDetail ?? undefined,
     note: transaction.note ?? undefined,

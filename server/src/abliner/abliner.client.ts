@@ -28,14 +28,38 @@ type ErrorPayload = {
   transaction_id?: string;
 };
 
-/** Provider failure enriched with Abliner's stable machine-readable `code`. */
+/** User-safe message per Abliner error code. Raw provider text never leaves. */
+const SAFE_PROVIDER_MESSAGE: Record<string, string> = {
+  insufficient_funds: 'You do not have enough funds for this transaction.',
+  amount_out_of_range: 'That amount is outside the allowed range.',
+  invalid_phone: 'That phone number was rejected. Check it and try again.',
+  unsupported_request: 'This payment method is not available right now.',
+  validation_failed: 'The payment details were rejected. Review them and try again.',
+  name_not_found: 'We could not find that recipient.',
+  not_found: 'We could not find that transaction.',
+  unauthorized: 'The payment service is temporarily unavailable.',
+  gateway_not_configured: 'This payment method is temporarily unavailable.',
+  provider_error: 'The payment provider could not complete this request. Please try again.',
+  internal_error: 'The payment provider could not complete this request. Please try again.',
+};
+const DEFAULT_PROVIDER_MESSAGE =
+  'The payment could not be completed. Please try again.';
+
+/**
+ * Provider failure enriched with Abliner's stable machine-readable `code`.
+ * The message shown to clients is always a safe, generic sentence; the raw
+ * provider text is kept in `detail` for server-side logging only.
+ */
 export class AblinerProviderError extends ProviderError {
   constructor(
-    message: string,
-    readonly providerCode?: string,
+    readonly providerCode: string | undefined,
     readonly retryable = false,
+    readonly detail?: string,
   ) {
-    super(message);
+    super(
+      (providerCode && SAFE_PROVIDER_MESSAGE[providerCode]) ||
+        DEFAULT_PROVIDER_MESSAGE,
+    );
   }
 }
 
@@ -112,10 +136,30 @@ export class AblinerClient {
   }
 
   async getTransaction(id: string): Promise<AblinerTransaction | null> {
+    return this.findTransaction({ id });
+  }
+
+  /**
+   * Looks a transaction up by any of the identifiers Abliner supports. Docs:
+   * `GET /api/v1/transactions?id=`, `?customer_reference=`, `?idempotency_key=`.
+   * An empty result means no transaction was created (safe to retry).
+   */
+  async findTransaction(query: {
+    id?: string;
+    customerReference?: string;
+    idempotencyKey?: string;
+  }): Promise<AblinerTransaction | null> {
+    const params: Record<string, string | undefined> = {
+      id: query.id,
+      customer_reference: query.customerReference,
+      idempotency_key: query.idempotencyKey,
+    };
+    if (!Object.values(params).some(Boolean)) return null;
+
     const rows = await this.data<AblinerTransaction[]>(
       'GET',
       '/api/v1/transactions',
-      { query: { id } },
+      { query: params },
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
   }
@@ -181,12 +225,15 @@ export class AblinerClient {
       headers['idempotency-key'] = options.idempotencyKey;
     }
     if (options.signed) {
-      if (!rawBody) throw new ProviderError('Signed request is missing a body');
+      if (!rawBody) {
+        throw new ProviderError('The payment request could not be prepared.');
+      }
       const secret = this.config.abliner.webhookSecret;
       if (!secret) {
-        throw new ProviderError(
+        this.logger.error(
           'ABLINER_WEBHOOK_SECRET is required to sign deposit requests',
         );
+        throw new ProviderError('The payment service is not configured.');
       }
       const timestamp = Math.floor(Date.now() / 1000).toString();
       headers['x-abliner-timestamp'] = timestamp;
@@ -207,12 +254,9 @@ export class AblinerClient {
         signal: controller.signal,
       });
     } catch (error) {
-      this.logger.error(
-        `Abliner ${method} ${path} unreachable: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      throw new AblinerProviderError('Unable to reach the payment provider', undefined, true);
+      const detail = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Abliner ${method} ${path} unreachable: ${detail}`);
+      throw new AblinerProviderError(undefined, true, detail);
     } finally {
       clearTimeout(timeout);
     }
@@ -233,14 +277,14 @@ export class AblinerClient {
         `Abliner ${method} ${path} -> ${response.status} ${error?.code ?? ''}: ${message}`,
       );
       throw new AblinerProviderError(
-        message,
         error?.code,
         error?.retryable ?? response.status >= 500,
+        message,
       );
     }
 
     if (payload === undefined) {
-      throw new AblinerProviderError('Payment provider returned an empty response');
+      throw new AblinerProviderError(undefined, false, 'empty response');
     }
 
     return payload as T;

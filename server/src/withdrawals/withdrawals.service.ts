@@ -12,6 +12,7 @@ import { generateReference } from '../common/crypto.js';
 import { InsufficientFundsError } from '../common/errors.js';
 import { createTransactionNotification } from '../account/notification-writer.js';
 import { FeesService } from '../payments/fees.service.js';
+import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SettlementService } from '../settlement/settlement.service.js';
 import { LEDGER_ACCOUNT_AVAILABLE, toTransaction } from '../wallet/wallet.mapper.js';
@@ -40,6 +41,7 @@ export class WithdrawalsService {
     private readonly auth: AuthService,
     private readonly abliner: AblinerClient,
     private readonly settlement: SettlementService,
+    private readonly limits: LimitsService,
   ) {}
 
   /** Resolves the payout fee, preferring Abliner's live quote. */
@@ -89,6 +91,7 @@ export class WithdrawalsService {
     await this.auth.verifyPin(userId, input.pin);
 
     const amount = BigInt(input.amount);
+    await this.limits.assertWithinLimits(user.id, user.tier, amount);
     const fee = await this.resolveFee(amount);
 
     const available =
@@ -100,7 +103,12 @@ export class WithdrawalsService {
     const created = await this.prisma.$transaction(async (client) => {
       if (input.idempotencyKey) {
         const existing = await client.transaction.findUnique({
-          where: { idempotencyKey: input.idempotencyKey },
+          where: {
+            userId_idempotencyKey: {
+              userId,
+              idempotencyKey: input.idempotencyKey,
+            },
+          },
         });
         if (existing) return existing;
       }
@@ -116,6 +124,7 @@ export class WithdrawalsService {
           direction: 'debit',
           amount,
           fee,
+          feeFlat: fee,
           total: amount + fee,
           counterparty: input.phoneNumber,
           counterpartyDetail: input.network

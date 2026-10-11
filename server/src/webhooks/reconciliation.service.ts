@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 
-import type { AblinerWebhookInput } from '@mori-pay/contracts';
+import type { AblinerTransaction, AblinerWebhookInput } from '@mori-pay/contracts';
 
 import { AblinerClient } from '../abliner/abliner.client.js';
 import type { Transaction } from '../generated/prisma/client.js';
+import { isTerminalStatus } from '../payments/transaction-status.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SettlementService } from '../settlement/settlement.service.js';
 
@@ -27,11 +28,22 @@ export class ReconciliationService {
   ) {}
 
   async process(payload: AblinerWebhookInput): Promise<void> {
+    const identifiers = [payload.data.id];
+    if (payload.data.customer_reference) {
+      identifiers.push(payload.data.customer_reference);
+    }
+
+    // Match on either Abliner's transaction id or the reference we generated,
+    // so a webhook still settles a transaction whose create-response was lost.
     const transaction = await this.prisma.transaction.findFirst({
       where: {
+        provider: 'abliner',
         OR: [
-          { internalReference: payload.data.id },
-          { providerRef: payload.data.id },
+          { internalReference: { in: identifiers } },
+          { providerRef: { in: identifiers } },
+          ...(payload.data.customer_reference
+            ? [{ reference: payload.data.customer_reference }]
+            : []),
         ],
       },
     });
@@ -49,17 +61,15 @@ export class ReconciliationService {
   /**
    * Re-verifies a pending gateway transaction with Abliner and settles it.
    * A no-op for internal movements or already-final transactions.
+   *
+   * A missing/empty provider lookup is never treated as failure: the
+   * transaction stays pending until Abliner reports a final status.
    */
   async reconcile(transaction: Transaction): Promise<void> {
-    if (transaction.status !== 'pending' && transaction.status !== 'processing') {
-      return;
-    }
+    if (isTerminalStatus(transaction.status)) return;
     if (transaction.provider !== 'abliner') return;
 
-    const reference = transaction.internalReference ?? transaction.providerRef;
-    if (!reference) return;
-
-    const verified = await this.abliner.getTransaction(reference);
+    const verified = await this.verify(transaction);
     if (!verified || verified.status === 'pending') return;
 
     const success = verified.status === 'completed';
@@ -87,5 +97,42 @@ export class ReconciliationService {
         success ? 'completed' : 'failed'
       }`,
     );
+  }
+
+  /**
+   * Looks the transaction up at Abliner, trying every identifier we hold:
+   * the provider id, our reference (echoed as `customer_reference`), and — for
+   * deposits — the `Idempotency-Key` we sent (the transaction id).
+   */
+  private async verify(
+    transaction: Transaction,
+  ): Promise<AblinerTransaction | null> {
+    const providerId =
+      transaction.internalReference ?? transaction.providerRef ?? undefined;
+
+    const attempts: Array<{
+      id?: string;
+      customerReference?: string;
+      idempotencyKey?: string;
+    }> = [];
+    if (providerId) attempts.push({ id: providerId });
+    attempts.push({ customerReference: transaction.reference });
+    if (transaction.type === 'deposit') {
+      attempts.push({ idempotencyKey: transaction.id });
+    }
+
+    for (const query of attempts) {
+      try {
+        const found = await this.abliner.findTransaction(query);
+        if (found) return found;
+      } catch (error) {
+        this.logger.warn(
+          `Reconcile lookup failed for ${transaction.reference}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+    return null;
   }
 }

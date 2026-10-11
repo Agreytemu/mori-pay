@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
+import QRCode from 'react-native-qrcode-svg';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import {
@@ -29,6 +30,7 @@ import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import type {
   MoneyRequest,
   PayMerchantResult,
+  ReceiveCode,
   RecipientLookup,
   RequestMoneyResult,
   SendMoneyResult,
@@ -36,8 +38,10 @@ import type {
 } from '@mori-pay/contracts';
 
 import { ApiError } from '@/lib/api';
+import { newIdempotencyKey } from '@/lib/idempotency';
 import {
   createRequest,
+  getReceiveCode,
   getWallet,
   listMerchants,
   lookupRecipient,
@@ -71,36 +75,7 @@ type FlowName =
 
 type PinReason = 'send' | 'pay';
 
-const QR_SIZE = 15;
 const MIN_AMOUNT = 500;
-
-function isQrFinderCell(row: number, column: number): boolean | undefined {
-  const positions = [
-    [0, 0],
-    [0, QR_SIZE - 5],
-    [QR_SIZE - 5, 0],
-  ] as const;
-
-  for (const [top, left] of positions) {
-    const localRow = row - top;
-    const localColumn = column - left;
-    if (localRow >= 0 && localRow < 5 && localColumn >= 0 && localColumn < 5) {
-      return (
-        localRow === 0 ||
-        localRow === 4 ||
-        localColumn === 0 ||
-        localColumn === 4 ||
-        (localRow === 2 && localColumn === 2)
-      );
-    }
-  }
-
-  return undefined;
-}
-
-function randomKey(): string {
-  return `mp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-}
 
 function prettyPhone(phone: string): string {
   return `+${phone.slice(0, 3)} ${phone.slice(3, 6)} ${phone.slice(6, 9)} ${phone.slice(9)}`;
@@ -139,6 +114,11 @@ export default function PaymentsScreen() {
   const [payNote, setPayNote] = useState('');
   const [payResult, setPayResult] = useState<PayMerchantResult | null>(null);
 
+  /* Receive QR */
+  const [receiveCode, setReceiveCode] = useState<ReceiveCode | null>(null);
+  const [receiveBusy, setReceiveBusy] = useState(false);
+  const [receiveError, setReceiveError] = useState<string | null>(null);
+
   /* Shared flow state */
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -168,6 +148,18 @@ export default function PaymentsScreen() {
       // Best effort; the next load will reconcile.
     }
   };
+
+  const loadReceiveCode = useCallback(async () => {
+    setReceiveBusy(true);
+    setReceiveError(null);
+    try {
+      setReceiveCode(await getReceiveCode());
+    } catch (err) {
+      setReceiveError(err instanceof Error ? err.message : 'Could not load your receive code');
+    } finally {
+      setReceiveBusy(false);
+    }
+  }, []);
 
   /* ------------------------------------------------- recipient lookup (send) */
 
@@ -266,6 +258,15 @@ export default function PaymentsScreen() {
         ? 'receive'
         : screen;
 
+  /* -------------------------------------------------------------- receive QR */
+
+  useEffect(() => {
+    if (activeScreen !== 'receive') return;
+    const timer = setTimeout(() => void loadReceiveCode(), 0);
+    return () => clearTimeout(timer);
+  }, [activeScreen, loadReceiveCode]);
+
+
   /* ---------------------------------------------------------------- handlers */
 
   const continueSendRecipient = async () => {
@@ -323,7 +324,7 @@ export default function PaymentsScreen() {
         amount: Number(sendAmount || '0'),
         note: sendNote.trim() || undefined,
         pin,
-        idempotencyKey: randomKey(),
+        idempotencyKey: newIdempotencyKey(),
       });
       setSendResult(result);
       setPinReason(null);
@@ -399,7 +400,7 @@ export default function PaymentsScreen() {
         amount: Number(payAmount || '0'),
         note: payNote.trim() || undefined,
         pin,
-        idempotencyKey: randomKey(),
+        idempotencyKey: newIdempotencyKey(),
       });
       setPayResult(result);
       setPinReason(null);
@@ -630,34 +631,26 @@ export default function PaymentsScreen() {
   const renderReceive = () => {
     const phone = wallet?.phoneNumber;
     const account = wallet?.accountNumber;
+    const qrValue = receiveCode?.code ?? null;
     return (
       <View style={styles.stack}>
         <View style={styles.qrCard}>
           <AppText variant="title2">Your wallet</AppText>
           <View style={[styles.qrWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={styles.qrInner}>
-              <View style={styles.qrGrid}>
-                {Array.from({ length: QR_SIZE * QR_SIZE }, (_, index) => {
-                  const row = Math.floor(index / QR_SIZE);
-                  const column = index % QR_SIZE;
-                  const finderCell = isQrFinderCell(row, column);
-                  const filled = finderCell ?? ((row * 7 + column * 11 + row * column) % 5 < 2);
-
-                  return (
-                    <View
-                      key={index}
-                      style={[
-                        styles.qrCell,
-                        { backgroundColor: filled ? '#14231F' : 'transparent' },
-                      ]}
-                    />
-                  );
-                })}
-              </View>
+              {qrValue ? (
+                <QRCode value={qrValue} size={180} backgroundColor="#FFFFFF" color="#14231F" />
+              ) : (
+                <AppText variant="caption" color={colors.textTertiary} align="center">
+                  {receiveError ?? 'Generating your code…'}
+                </AppText>
+              )}
             </View>
           </View>
           <AppText variant="caption" color={colors.textTertiary} align="center">
-            QR preview · shareable codes coming soon
+            {receiveCode
+              ? `Scan to pay you · code refreshes ${formatDateTime(receiveCode.expiresAt)}`
+              : 'Share this code to get paid instantly'}
           </AppText>
           {phone ? (
             <View style={[styles.idRow, { backgroundColor: colors.primarySoft, borderColor: colors.primary }]}>
@@ -670,8 +663,29 @@ export default function PaymentsScreen() {
         </View>
 
         <View style={styles.inlineActions}>
-          <Button label="Copy number" variant="secondary" disabled={!phone} onPress={() => phone && void copyText('Phone number', phone)} />
-          <Button label="Copy account" variant="secondary" disabled={!account} onPress={() => account && void copyText('Account number', account)} />
+          <Button
+            label="Refresh code"
+            loading={receiveBusy}
+            onPress={() => void loadReceiveCode()}
+          />
+          <SecondaryButton
+            label="Copy code"
+            disabled={!qrValue}
+            onPress={() => qrValue && void copyText('Receive code', qrValue)}
+          />
+        </View>
+
+        <View style={styles.inlineActions}>
+          <SecondaryButton
+            label="Copy number"
+            disabled={!phone}
+            onPress={() => phone && void copyText('Phone number', phone)}
+          />
+          <SecondaryButton
+            label="Copy account"
+            disabled={!account}
+            onPress={() => account && void copyText('Account number', account)}
+          />
         </View>
 
         <AppText variant="caption" color={colors.textTertiary} align="center">
@@ -1045,21 +1059,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  qrGrid: {
-    width: 162,
-    height: 162,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    alignContent: 'flex-start',
-    justifyContent: 'flex-start',
-    gap: 3,
-  },
-  qrCell: {
-    width: 8,
-    height: 8,
-    borderRadius: 1,
   },
   idRow: {
     flexDirection: 'row',

@@ -1,5 +1,6 @@
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import {
   topupCardSchema,
@@ -22,6 +23,7 @@ export class TopUpsController {
   constructor(private readonly topups: TopUpsService) {}
 
   @Post('mobile-money')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   mobileMoney(
     @CurrentUser() user: AuthenticatedUser,
@@ -31,6 +33,7 @@ export class TopUpsController {
   }
 
   @Post('card')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   card(
     @CurrentUser() user: AuthenticatedUser,

@@ -15,8 +15,10 @@ export const ABLINER_EVENT_ID_HEADER = 'x-webhook-id';
 const MAX_CLOCK_SKEW_SECONDS = 300;
 
 /**
- * Verifies Abliner webhook signatures. When no secret is configured (local
- * development and tests) verification is skipped so callbacks still process.
+ * Verifies Abliner webhook signatures. When no secret is configured,
+ * verification is skipped in development and tests so callbacks still process,
+ * but every request is rejected in production (an unsigned webhook must never
+ * be trusted; `env.validation` also refuses to boot without a secret).
  */
 @Injectable()
 export class AblinerWebhookSignatureService {
@@ -28,7 +30,7 @@ export class AblinerWebhookSignatureService {
     timestamp?: string,
   ): boolean {
     const secret = this.config.abliner.webhookSecret;
-    if (!secret) return true;
+    if (!secret) return !this.config.isProduction;
     if (!rawBody || !signature || !timestamp) return false;
 
     const sentAt = Number(timestamp);

@@ -9,6 +9,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Required by the root `postinstall` (which runs `prisma generate`) and by the
+# server job's `prisma migrate deploy`. The app job never connects to it.
+env:
+  DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mori_pay?schema=public
+
 jobs:
   app:
     name: Mobile app (lint + typecheck)
@@ -40,8 +45,6 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-    env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mori_pay?schema=public
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

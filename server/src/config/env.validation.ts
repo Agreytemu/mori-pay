@@ -17,8 +17,17 @@ export const envSchema = z.object({
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('30d'),
 
+  /** Optional dedicated secret for receive-code QR signing; falls back to JWT. */
+  RECEIVE_QR_SECRET: z.string().min(16).optional(),
+
   OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+
+  /** Per-tier outflow limits (whole TZS). See limits.config.ts for rationale. */
+  LIMIT_STANDARD_DAILY: z.coerce.number().int().positive().default(1_000_000),
+  LIMIT_STANDARD_PER_TX: z.coerce.number().int().positive().default(500_000),
+  LIMIT_VERIFIED_DAILY: z.coerce.number().int().positive().default(5_000_000),
+  LIMIT_VERIFIED_PER_TX: z.coerce.number().int().positive().default(3_000_000),
 
   ABLINER_BASE_URL: z.string().url().default('https://abliner.net'),
   ABLINER_API_KEY: z.string().default(''),
@@ -29,6 +38,14 @@ export const envSchema = z.object({
     .default('http://localhost:4000/api/v1/webhooks/abliner'),
   /** Approved Abliner Sender ID for outbound SMS (optional). */
   ABLINER_SMS_SENDER_ID: z.string().optional(),
+
+  /** Background settlement of gateway transactions whose webhook never arrived. */
+  RECONCILIATION_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
+  RECONCILIATION_INTERVAL_SECONDS: z.coerce.number().int().positive().default(120),
+  RECONCILIATION_STALE_SECONDS: z.coerce.number().int().positive().default(180),
 
   SMS_PROVIDER: z.enum(['console', 'abliner', 'beem', 'nextsms']).default('console'),
   SMS_API_KEY: z.string().optional(),
@@ -64,6 +81,29 @@ export function validateEnv(config: Record<string, unknown>): Env {
     throw new Error(
       'Invalid environment configuration:\n  - RESEND_API_KEY and EMAIL_FROM are required in production',
     );
+  }
+
+  if (result.data.NODE_ENV === 'production') {
+    const missing: string[] = [];
+    if (!result.data.ABLINER_API_KEY) missing.push('ABLINER_API_KEY');
+    if (!result.data.ABLINER_WEBHOOK_SECRET) {
+      missing.push('ABLINER_WEBHOOK_SECRET');
+    }
+    if (missing.length > 0) {
+      throw new Error(
+        `Invalid environment configuration:\n${missing
+          .map((key) => `  - ${key}: required in production`)
+          .join('\n')}`,
+      );
+    }
+
+    const callback = result.data.ABLINER_CALLBACK_URL;
+    const isLocal = /localhost|127\.0\.0\.1|0\.0\.0\.0/.test(callback);
+    if (!callback.startsWith('https://') || isLocal) {
+      throw new Error(
+        'Invalid environment configuration:\n  - ABLINER_CALLBACK_URL: must be a public HTTPS URL in production',
+      );
+    }
   }
 
   return result.data;

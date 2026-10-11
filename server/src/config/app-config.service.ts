@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
+import type { TierLimits } from '../limits/limits.config.js';
 import type { Env } from './env.validation.js';
 
 /** Typed, single source of truth for reading configuration throughout the app. */
@@ -58,6 +59,10 @@ export class AppConfigService {
     };
   }
 
+  get receiveQrSecret() {
+    return this.get('RECEIVE_QR_SECRET');
+  }
+
   get otp() {
     return {
       ttlSeconds: this.get('OTP_TTL_SECONDS'),
@@ -72,6 +77,27 @@ export class AppConfigService {
       webhookSecret: this.get('ABLINER_WEBHOOK_SECRET'),
       callbackUrl: this.get('ABLINER_CALLBACK_URL'),
       smsSenderId: this.get('ABLINER_SMS_SENDER_ID'),
+    };
+  }
+
+  get reconciliation() {
+    return {
+      enabled: this.get('RECONCILIATION_ENABLED'),
+      intervalSeconds: this.get('RECONCILIATION_INTERVAL_SECONDS'),
+      staleSeconds: this.get('RECONCILIATION_STALE_SECONDS'),
+    };
+  }
+
+  get limits(): { standard: TierLimits; verified: TierLimits } {
+    return {
+      standard: {
+        dailyOutflow: BigInt(this.get('LIMIT_STANDARD_DAILY')),
+        perTransaction: BigInt(this.get('LIMIT_STANDARD_PER_TX')),
+      },
+      verified: {
+        dailyOutflow: BigInt(this.get('LIMIT_VERIFIED_DAILY')),
+        perTransaction: BigInt(this.get('LIMIT_VERIFIED_PER_TX')),
+      },
     };
   }
 

@@ -72,6 +72,26 @@ async function createUserWithWallet(
   });
 }
 
+/**
+ * Mints an access token bound to a real refresh-token session, because the auth
+ * guard now rejects tokens whose `sid` has no active session row.
+ */
+async function createTestAccessToken(
+  prisma: PrismaService,
+  tokens: TokenService,
+  userId: string,
+): Promise<string> {
+  const refresh = tokens.createRefreshToken();
+  const session = await prisma.refreshToken.create({
+    data: {
+      userId,
+      tokenHash: refresh.tokenHash,
+      expiresAt: refresh.expiresAt,
+    },
+  });
+  return tokens.createAccessToken(userId, session.id).token;
+}
+
 describe(
   'Wallet (e2e)',
   { skip: databaseReachable ? false : 'Postgres not reachable' },
@@ -109,8 +129,8 @@ describe(
 
       userA = await createUserWithWallet(prisma, `2557${suffix}1`, 'Asha Mwangi');
       userB = await createUserWithWallet(prisma, `2557${suffix}2`, 'Bakari Salim');
-      accessTokenA = tokens.createAccessToken(userA.id, 'e2e-a').token;
-      accessTokenB = tokens.createAccessToken(userB.id, 'e2e-b').token;
+      accessTokenA = await createTestAccessToken(prisma, tokens, userA.id);
+      accessTokenB = await createTestAccessToken(prisma, tokens, userB.id);
 
       const external = await ledger.getSystemAccount(SYSTEM_LEDGER_ACCOUNTS.external);
       await ledger.post({

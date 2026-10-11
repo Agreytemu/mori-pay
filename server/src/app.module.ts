@@ -13,9 +13,11 @@ import { AblinerModule } from './abliner/abliner.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { HealthModule } from './health/health.module.js';
 import { LedgerModule } from './ledger/ledger.module.js';
+import { LimitsModule } from './limits/limits.module.js';
 import { MerchantsModule } from './merchants/merchants.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { ReceiveCodeModule } from './qr/receive-code.module.js';
 import { RequestsModule } from './requests/requests.module.js';
 import { SettlementModule } from './settlement/settlement.module.js';
 import { TopUpsModule } from './topups/topups.module.js';
@@ -70,6 +72,8 @@ const isProduction = process.env.NODE_ENV === 'production';
     AccountModule,
     PrismaModule,
     LedgerModule,
+    LimitsModule,
+    ReceiveCodeModule,
     PaymentsModule,
     SettlementModule,
     AblinerModule,

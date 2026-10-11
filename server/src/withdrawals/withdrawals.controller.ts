@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import {
   recipientLookupSchema,
@@ -26,6 +27,7 @@ export class WithdrawalsController {
   constructor(private readonly withdrawals: WithdrawalsService) {}
 
   @Post()
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   create(
     @CurrentUser() user: AuthenticatedUser,
     @Body(new ZodValidationPipe(withdrawalSchema)) input: WithdrawalInput,

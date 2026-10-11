@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import type {
   Paginated,
+  ReceiveCode,
   Transaction as TransactionDto,
   WalletAccount,
 } from '@mori-pay/contracts';
@@ -29,6 +30,11 @@ export class WalletController {
   @Get()
   getWallet(@CurrentUser() user: AuthenticatedUser): Promise<WalletAccount> {
     return this.wallet.getWallet(user.userId);
+  }
+
+  @Get('receive-code')
+  getReceiveCode(@CurrentUser() user: AuthenticatedUser): ReceiveCode {
+    return this.wallet.getReceiveCode(user.userId);
   }
 
   @Get('transactions')

@@ -82,3 +82,14 @@ export type WithdrawalResult = {
   transaction: Transaction;
   fee: Amount;
 };
+
+/**
+ * A short-lived, server-signed per-user receive code. Rendered as a QR so a
+ * payer can resolve it to the owner's account without exposing internal ids.
+ */
+export type ReceiveCode = {
+  /** Opaque, tamper-proof code. Safe to encode in a QR or share as text. */
+  code: string;
+  /** ISO-8601 expiry; the code rotates and must be refreshed after this. */
+  expiresAt: string;
+};

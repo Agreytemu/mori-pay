@@ -12,6 +12,7 @@ import {
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { createTransactionNotification } from '../account/notification-writer.js';
+import type { FeeDetail } from './fees.service.js';
 import {
   LEDGER_ACCOUNT_AVAILABLE,
   toTransaction,
@@ -23,6 +24,7 @@ export type TransferToUserInput = {
   to: UserWithWallet;
   amount: bigint;
   fee: bigint;
+  feeDetail?: FeeDetail;
   note?: string;
   type: string;
   category: string;
@@ -34,6 +36,7 @@ export type PaySystemInput = {
   system: SystemLedgerAccountKind;
   amount: bigint;
   fee: bigint;
+  feeDetail?: FeeDetail;
   note?: string;
   type: string;
   category: string;
@@ -69,7 +72,12 @@ export class PaymentsService {
     return this.prisma.$transaction(async (tx) => {
       if (input.idempotencyKey) {
         const existing = await tx.transaction.findUnique({
-          where: { idempotencyKey: input.idempotencyKey },
+          where: {
+            userId_idempotencyKey: {
+              userId: input.from.id,
+              idempotencyKey: input.idempotencyKey,
+            },
+          },
         });
         if (existing) return toTransaction(existing);
       }
@@ -85,6 +93,8 @@ export class PaymentsService {
           direction: 'debit',
           amount: input.amount,
           fee: input.fee,
+          feeFlat: input.feeDetail?.flat ?? 0n,
+          feePercentage: input.feeDetail?.percentage ?? 0,
           total,
           counterparty: input.to.fullName,
           counterpartyDetail: input.to.phone,
@@ -155,7 +165,12 @@ export class PaymentsService {
     return this.prisma.$transaction(async (tx) => {
       if (input.idempotencyKey) {
         const existing = await tx.transaction.findUnique({
-          where: { idempotencyKey: input.idempotencyKey },
+          where: {
+            userId_idempotencyKey: {
+              userId: input.from.id,
+              idempotencyKey: input.idempotencyKey,
+            },
+          },
         });
         if (existing) return toTransaction(existing);
       }
@@ -171,6 +186,8 @@ export class PaymentsService {
           direction: 'debit',
           amount: input.amount,
           fee: input.fee,
+          feeFlat: input.feeDetail?.flat ?? 0n,
+          feePercentage: input.feeDetail?.percentage ?? 0,
           total,
           counterparty: input.counterparty,
           counterpartyDetail: input.counterpartyDetail ?? null,

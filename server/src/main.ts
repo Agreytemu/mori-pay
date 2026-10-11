@@ -32,9 +32,11 @@ async function bootstrap(): Promise<void> {
   app.use(helmet());
 
   const origins = config.corsOrigins;
+  const allowsAllOrigins = origins.includes('*');
   app.enableCors({
-    origin: origins.includes('*') ? true : origins,
-    credentials: true,
+    origin: allowsAllOrigins ? true : origins,
+    // A wildcard origin must never be combined with credentials.
+    credentials: !allowsAllOrigins,
   });
 
   app.setGlobalPrefix(API_PREFIX);
@@ -47,27 +49,30 @@ async function bootstrap(): Promise<void> {
   );
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  const swagger = new DocumentBuilder()
-    .setTitle(`${config.appName}`)
-    .setDescription('Mori Pay wallet & payments API')
-    .setVersion('0.1.0')
-    .addBearerAuth()
-    .addApiKey(
-      { type: 'apiKey', name: 'x-request-id', in: 'header' },
-      'request-id',
-    )
-    .build();
-  const document = SwaggerModule.createDocument(app, swagger);
-  SwaggerModule.setup('docs', app, document, {
-    swaggerOptions: { persistAuthorization: true },
-  });
+  if (!config.isProduction) {
+    const swagger = new DocumentBuilder()
+      .setTitle(`${config.appName}`)
+      .setDescription('Mori Pay wallet & payments API')
+      .setVersion('0.1.0')
+      .addBearerAuth()
+      .addApiKey(
+        { type: 'apiKey', name: 'x-request-id', in: 'header' },
+        'request-id',
+      )
+      .build();
+    const document = SwaggerModule.createDocument(app, swagger);
+    SwaggerModule.setup('docs', app, document, {
+      swaggerOptions: { persistAuthorization: true },
+    });
+  }
 
   app.enableShutdownHooks();
 
   await app.listen(config.port, '0.0.0.0');
 
   logger.log(
-    `${config.appName} listening on http://0.0.0.0:${config.port}/${API_PREFIX} (docs at /docs)`,
+    `${config.appName} listening on http://0.0.0.0:${config.port}/${API_PREFIX}` +
+      (config.isProduction ? '' : ' (docs at /docs)'),
   );
 }
 

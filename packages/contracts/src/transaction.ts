@@ -29,6 +29,10 @@ export type Transaction = {
   amount: Amount;
   currency: Currency;
   fee: Amount;
+  /** Flat component of `fee`, when it was resolved from a fee rule. */
+  feeFlat?: Amount;
+  /** Percentage component of `fee` as a fraction (e.g. 0.02 = 2%). */
+  feePercentage?: number;
   /** Counterparty display name, or the merchant label for payments. */
   counterparty: string;
   /** Secondary line shown under the counterparty, e.g. phone number. */

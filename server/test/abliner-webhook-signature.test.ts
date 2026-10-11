@@ -5,8 +5,14 @@ import { describe, it } from 'node:test';
 import type { AppConfigService } from '../src/config/app-config.service.js';
 import { AblinerWebhookSignatureService } from '../src/abliner/webhook-signature.service.js';
 
-function configWith(secret?: string): AppConfigService {
-  return { abliner: { webhookSecret: secret } } as unknown as AppConfigService;
+function configWith(
+  secret?: string,
+  isProduction = false,
+): AppConfigService {
+  return {
+    abliner: { webhookSecret: secret },
+    isProduction,
+  } as unknown as AppConfigService;
 }
 
 function sign(secret: string, timestamp: string, body: Buffer): string {
@@ -18,9 +24,15 @@ function sign(secret: string, timestamp: string, body: Buffer): string {
 describe('AblinerWebhookSignatureService', () => {
   const body = Buffer.from(JSON.stringify({ id: 'evt_1', event: 'transaction.completed' }));
 
-  it('skips verification when no secret is configured', () => {
+  it('skips verification when no secret is configured outside production', () => {
     const service = new AblinerWebhookSignatureService(configWith(undefined));
     assert.equal(service.verify(undefined, undefined, undefined), true);
+  });
+
+  it('rejects every webhook when no secret is configured in production', () => {
+    const service = new AblinerWebhookSignatureService(configWith(undefined, true));
+    assert.equal(service.verify(undefined, undefined, undefined), false);
+    assert.equal(service.verify(body, 'deadbeef', '123'), false);
   });
 
   it('accepts a correct signature within the clock skew', () => {

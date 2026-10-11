@@ -147,7 +147,8 @@ export class TopUpsService {
       });
 
       if (!deposit.payment_url) {
-        throw new ProviderError('Card checkout URL was not returned');
+        this.logger.error(`Card checkout URL missing for ${reference}`);
+        throw new ProviderError('Card checkout is temporarily unavailable.');
       }
 
       const updated = await this.prisma.transaction.update({

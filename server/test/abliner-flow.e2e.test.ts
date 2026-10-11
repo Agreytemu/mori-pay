@@ -14,6 +14,7 @@ import { TokenService } from '../src/auth/token.service.js';
 import { API_PREFIX } from '../src/common/constants.js';
 import { LedgerService, SYSTEM_LEDGER_ACCOUNTS } from '../src/ledger/ledger.service.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { SettlementService } from '../src/settlement/settlement.service.js';
 import { LEDGER_ACCOUNT_AVAILABLE, type UserWithWallet } from '../src/wallet/wallet.mapper.js';
 
 async function isDatabaseReachable(): Promise<boolean> {
@@ -101,6 +102,35 @@ class FakeAblinerClient {
       created_at: new Date().toISOString(),
     });
   }
+
+  findTransaction(query: {
+    id?: string;
+    customerReference?: string;
+    idempotencyKey?: string;
+  }): Promise<unknown> {
+    const id = query.id ?? query.customerReference ?? query.idempotencyKey ?? '';
+    return this.getTransaction(id);
+  }
+}
+
+/**
+ * Mints an access token bound to a real refresh-token session, because the auth
+ * guard now rejects tokens whose `sid` has no active session row.
+ */
+async function createTestAccessToken(
+  prisma: PrismaService,
+  tokens: TokenService,
+  userId: string,
+): Promise<string> {
+  const refresh = tokens.createRefreshToken();
+  const session = await prisma.refreshToken.create({
+    data: {
+      userId,
+      tokenHash: refresh.tokenHash,
+      expiresAt: refresh.expiresAt,
+    },
+  });
+  return tokens.createAccessToken(userId, session.id).token;
 }
 
 describe(
@@ -111,6 +141,7 @@ describe(
     let prisma: PrismaService;
     let ledger: LedgerService;
     let tokens: TokenService;
+    let settlement: SettlementService;
     let fake: FakeAblinerClient;
     let user: UserWithWallet;
     let token: string;
@@ -176,6 +207,7 @@ describe(
       prisma = app.get(PrismaService);
       ledger = app.get(LedgerService);
       tokens = app.get(TokenService);
+      settlement = app.get(SettlementService);
 
       user = await prisma.user.create({
         data: {
@@ -196,7 +228,7 @@ describe(
         },
         include: { wallet: { include: { ledgerAccounts: true } } },
       });
-      token = tokens.createAccessToken(user.id, 'e2e').token;
+      token = await createTestAccessToken(prisma, tokens, user.id);
 
       await request(app.getHttpServer())
         .post(`/${API_PREFIX}/auth/pin/set`)
@@ -362,6 +394,45 @@ describe(
         .set('Authorization', `Bearer ${token}`)
         .send({ amount: 1_000_000, phoneNumber: phone, network: 'Mpesa', pin: PIN })
         .expect(409);
+    });
+
+    it('settles a deposit exactly once under concurrent finalization', async () => {
+      const before = await balance();
+
+      const deposit = await prisma.transaction.create({
+        data: {
+          userId: user.id,
+          reference: `CONC-${suffix}`,
+          type: 'deposit',
+          status: 'pending',
+          category: 'topUp',
+          channel: 'mobileMoney',
+          direction: 'credit',
+          amount: 7_000n,
+          fee: 0n,
+          total: 7_000n,
+          counterparty: phone,
+          provider: 'abliner',
+          providerStatus: 'pending',
+        },
+      });
+
+      await Promise.all([
+        settlement.settleDeposit(deposit),
+        settlement.settleDeposit(deposit),
+        settlement.settleDeposit(deposit),
+      ]);
+
+      assert.equal(await balance(), before + 7_000);
+
+      const settled = await prisma.transaction.findUniqueOrThrow({
+        where: { id: deposit.id },
+      });
+      assert.equal(settled.status, 'completed');
+
+      // A second round of finalization after terminal state is a no-op.
+      await settlement.settleDeposit(settled);
+      assert.equal(await balance(), before + 7_000);
     });
   },
 );

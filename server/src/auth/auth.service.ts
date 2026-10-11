@@ -43,6 +43,7 @@ import {
   verifyPinHash,
 } from '../common/crypto.js';
 import { AppConfigService } from '../config/app-config.service.js';
+import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SMS_PROVIDER, type SmsProvider } from '../sms/sms.provider.js';
 import {
@@ -68,6 +69,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
+    private readonly limits: LimitsService,
     private readonly tokens: TokenService,
     @Inject(SMS_PROVIDER) private readonly sms: SmsProvider,
     private readonly email: EmailService,
@@ -680,7 +682,24 @@ export class AuthService {
       where: { tokenHash },
     });
 
-    if (!record || record.revokedAt || record.expiresAt < new Date()) {
+    if (!record) {
+      throw new UnauthorizedException('Invalid or expired session');
+    }
+
+    // Reuse of an already-rotated token means it leaked: assume theft and
+    // drop every active session for the account.
+    if (record.revokedAt) {
+      await this.prisma.refreshToken.updateMany({
+        where: { userId: record.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      this.logger.warn(
+        `Refresh token reuse detected for user ${record.userId}; all sessions revoked`,
+      );
+      throw new UnauthorizedException('Invalid or expired session');
+    }
+
+    if (record.expiresAt < new Date()) {
       throw new UnauthorizedException('Invalid or expired session');
     }
 
@@ -706,7 +725,10 @@ export class AuthService {
     const user = await this.loadUser(userId);
     return {
       user: toAuthUser(user),
-      wallet: toWalletAccount(user),
+      wallet: toWalletAccount(
+        user,
+        await this.limits.getSummary(user.id, user.tier),
+      ),
     };
   }
 
@@ -813,7 +835,10 @@ export class AuthService {
 
     return {
       user: toAuthUser(user),
-      wallet: toWalletAccount(user),
+      wallet: toWalletAccount(
+        user,
+        await this.limits.getSummary(user.id, user.tier),
+      ),
       tokens,
     };
   }

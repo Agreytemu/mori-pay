@@ -8,6 +8,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import {
   payRequestSchema,
@@ -44,6 +45,7 @@ export class RequestsController {
   }
 
   @Post(':id/pay')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   pay(
     @CurrentUser() user: AuthenticatedUser,

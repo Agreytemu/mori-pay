@@ -178,6 +178,10 @@ model Transaction {
   direction          String
   amount             BigInt
   fee                BigInt         @default(0)
+  // Applied fee breakdown, captured at creation so a transaction's fee is
+  // self-describing even after the underlying FeeRule changes.
+  feeFlat            BigInt         @default(0)
+  feePercentage      Float          @default(0)
   total              BigInt
   currency           String         @default("TZS")
   counterparty       String
@@ -188,13 +192,14 @@ model Transaction {
   providerRef        String?
   providerStatus     String?
   metadata           Json?
-  idempotencyKey     String?        @unique
+  idempotencyKey     String?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
   settledAt          DateTime?
   ledgerEntries      LedgerEntry[]
   notifications      Notification[]
 
+  @@unique([userId, idempotencyKey])
   @@index([userId, createdAt])
   @@index([status])
 }

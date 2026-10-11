@@ -1,0 +1,104 @@
+#################################################################
+# Mori Pay — Render Blueprint (infrastructure as code)
+#
+# Deploy: push this repo to GitHub, then in Render choose
+#   New +  ->  Blueprint  ->  connect the repo.
+# Render provisions the API, Postgres and Key Value (Redis) below.
+#
+# Secrets are intentionally NOT stored here:
+#   - generateValue: true   Render generates a strong value.
+#   - sync: false           Render prompts you and stores it securely.
+#
+# The API is a npm-workspace monorepo, so the build runs from the repo
+# root (not server/) so @mori-pay/contracts resolves, then starts the
+# compiled server entrypoint directly.
+#################################################################
+
+services:
+  - type: web
+    name: mori-pay-api
+    runtime: node
+    region: frankfurt
+    # 1 CPU / 2 GB. The readiness probe fails if heap exceeds 512 MB, so keep
+    # at least 1 GB of RAM available. Downsize only with that in mind.
+    plan: 1c-2g
+    # Build from the repo root: `npm ci` triggers the root postinstall,
+    # which builds @mori-pay/contracts and runs `prisma generate`.
+    buildCommand: npm ci && npm run build --workspace @mori-pay/server
+    # Applied migrations run against the managed database before the new
+    # version receives traffic. Always forward-only (`migrate deploy`).
+    preDeployCommand: npm run prisma:deploy --workspace @mori-pay/server
+    startCommand: node server/dist/main.js
+    # Readiness endpoint pings Postgres (and heap); the API only goes live
+    # once it passes. Mounted under the global /api/v1 prefix.
+    healthCheckPath: /api/v1/health/ready
+    autoDeployTrigger: commit
+    maxShutdownDelaySeconds: 30
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: APP_NAME
+        value: Mori Pay API
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        fromDatabase:
+          name: mori-pay-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: mori-pay-kv
+          property: connectionString
+      # Comma-separated allowed browser origins (the Expo web build and any
+      # admin surface). Set to the real domains before going live.
+      - key: CORS_ORIGINS
+        sync: false
+      # Auth secrets — generated once and stored by Render.
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      # Abliner payment rails (tsl_live_ key / whsec_ webhook secret).
+      - key: ABLINER_BASE_URL
+        value: https://abliner.net
+      - key: ABLINER_API_KEY
+        sync: false
+      - key: ABLINER_WEBHOOK_SECRET
+        sync: false
+      # Public HTTPS endpoint Abliner POSTs events to. Must be this service's
+      # URL plus /api/v1/webhooks/abliner (boot fails on a local/insecure URL).
+      - key: ABLINER_CALLBACK_URL
+        sync: false
+      # Transactional email (Resend) — required in production.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      # SMS OTP delivery: console | abliner | beem | nextsms.
+      - key: SMS_PROVIDER
+        value: abliner
+      - key: SMS_API_KEY
+        sync: false
+      # Optional error reporting.
+      - key: SENTRY_DSN
+        sync: false
+
+  - type: keyvalue
+    name: mori-pay-kv
+    region: frankfurt
+    plan: 256mb
+    maxmemoryPolicy: noeviction
+    # Internal-only: reachable from the API over Render's private network.
+    ipAllowList: []
+
+databases:
+  - name: mori-pay-db
+    databaseName: mori_pay
+    region: frankfurt
+    plan: 0.5c-1g
+    postgresMajorVersion: "16"
+    # Private network only — no public internet access to the database.
+    ipAllowList: []

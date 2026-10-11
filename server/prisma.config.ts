@@ -17,6 +17,10 @@ export default defineConfig({
     path: 'prisma/migrations',
   },
   datasource: {
-    url: env('MIGRATE_DATABASE_URL') || env('DATABASE_URL'),
+    // MIGRATE_DATABASE_URL is optional: use it (session pooler / direct) when
+    // present, otherwise fall back to DATABASE_URL. Read it via process.env so a
+    // missing value doesn't throw — Prisma's `env()` helper errors on absence,
+    // which would break CI and hosts (e.g. Render) that only set DATABASE_URL.
+    url: process.env.MIGRATE_DATABASE_URL ?? env('DATABASE_URL'),
   },
 });

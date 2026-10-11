@@ -192,6 +192,10 @@ export const recipientLookupSchema = z.object({
   phone: tzPhoneSchema,
 });
 
+export const verifyReceiveCodeSchema = z.object({
+  code: z.string().trim().min(1).max(1024),
+});
+
 export const withdrawalPreviewQuerySchema = z.object({
   amount: z.coerce
     .number()
@@ -272,6 +276,7 @@ export type RequestMoneyInput = z.infer<typeof requestMoneySchema>;
 export type PayRequestInput = z.infer<typeof payRequestSchema>;
 export type PayMerchantInput = z.infer<typeof payMerchantSchema>;
 export type RecipientLookupInput = z.infer<typeof recipientLookupSchema>;
+export type VerifyReceiveCodeInput = z.infer<typeof verifyReceiveCodeSchema>;
 export type WithdrawalPreviewQuery = z.infer<typeof withdrawalPreviewQuerySchema>;
 export type TopupMobileMoneyInput = z.infer<typeof topupMobileMoneySchema>;
 export type TopupCardInput = z.infer<typeof topupCardSchema>;

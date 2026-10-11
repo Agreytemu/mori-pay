@@ -10,6 +10,7 @@ import { AuthService } from '../auth/auth.service.js';
 import { SYSTEM_LEDGER_ACCOUNTS } from '../ledger/ledger.service.js';
 import { FeesService } from '../payments/fees.service.js';
 import { PaymentsService } from '../payments/payments.service.js';
+import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { WalletService } from '../wallet/wallet.service.js';
 
@@ -21,6 +22,7 @@ export class MerchantsService {
     private readonly payments: PaymentsService,
     private readonly fees: FeesService,
     private readonly auth: AuthService,
+    private readonly limits: LimitsService,
   ) {}
 
   async list(): Promise<Merchant[]> {
@@ -52,7 +54,8 @@ export class MerchantsService {
     await this.auth.verifyPin(userId, input.pin);
 
     const amount = BigInt(input.amount);
-    const fee = await this.fees.resolveFee({
+    await this.limits.assertWithinLimits(payer.id, payer.tier, amount);
+    const feeDetail = await this.fees.resolveFeeDetail({
       type: 'payment',
       channel: 'wallet',
       amount,
@@ -62,7 +65,8 @@ export class MerchantsService {
       from: payer,
       system: SYSTEM_LEDGER_ACCOUNTS.merchant,
       amount,
-      fee,
+      fee: feeDetail.fee,
+      feeDetail,
       note: input.note,
       type: 'payment',
       category: 'merchant',
@@ -72,6 +76,6 @@ export class MerchantsService {
       metadata: { merchantId: merchant.id },
     });
 
-    return { transaction, merchantName: merchant.name, fee: Number(fee) };
+    return { transaction, merchantName: merchant.name, fee: Number(feeDetail.fee) };
   }
 }

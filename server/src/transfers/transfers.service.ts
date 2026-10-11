@@ -13,9 +13,11 @@ import type {
 } from '@mori-pay/contracts';
 
 import { AuthService } from '../auth/auth.service.js';
+import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { FeesService } from '../payments/fees.service.js';
 import { PaymentsService } from '../payments/payments.service.js';
+import { ReceiveCodeService } from '../qr/receive-code.service.js';
 import { WalletService } from '../wallet/wallet.service.js';
 
 @Injectable()
@@ -26,6 +28,8 @@ export class TransfersService {
     private readonly payments: PaymentsService,
     private readonly fees: FeesService,
     private readonly auth: AuthService,
+    private readonly limits: LimitsService,
+    private readonly receiveCodes: ReceiveCodeService,
   ) {}
 
   async resolveRecipient(phone: string): Promise<RecipientLookup> {
@@ -41,6 +45,19 @@ export class TransfersService {
       fullName: user.fullName,
       firstName: user.firstName,
     };
+  }
+
+  /** Resolves a scanned signed receive code to its owner. */
+  async verifyReceiveCode(code: string): Promise<RecipientLookup> {
+    const userId = this.receiveCodes.verify(code);
+    const owner = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { phone: true },
+    });
+    if (!owner?.phone) {
+      throw new NotFoundException('This receive code is no longer valid');
+    }
+    return this.resolveRecipient(owner.phone);
   }
 
   async preview(input: PreviewTransferInput): Promise<TransferPreview> {
@@ -85,7 +102,8 @@ export class TransfersService {
     await this.auth.verifyPin(userId, input.pin);
 
     const amount = BigInt(input.amount);
-    const fee = await this.fees.resolveFee({
+    await this.limits.assertWithinLimits(sender.id, sender.tier, amount);
+    const feeDetail = await this.fees.resolveFeeDetail({
       type: 'send',
       channel: 'wallet',
       amount,
@@ -95,13 +113,18 @@ export class TransfersService {
       from: sender,
       to: recipient,
       amount,
-      fee,
+      fee: feeDetail.fee,
+      feeDetail,
       note: input.note,
       type: 'send',
       category: 'person',
       idempotencyKey: input.idempotencyKey,
     });
 
-    return { transaction, recipientName: recipient.fullName, fee: Number(fee) };
+    return {
+      transaction,
+      recipientName: recipient.fullName,
+      fee: Number(feeDetail.fee),
+    };
   }
 }
