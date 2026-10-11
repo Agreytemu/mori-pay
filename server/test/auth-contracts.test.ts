@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  deviceInfoSchema,
   emailRegisterSchema,
   emailSignInSchema,
   pinSignInSchema,
@@ -58,6 +59,23 @@ describe('email auth contracts', () => {
         email: 'AMINA@example.com',
         password: 'password',
       }).success,
+      true,
+    );
+  });
+
+  it('accepts an optional stable installation ID for trusted-device reuse', () => {
+    const device = {
+      name: 'Mori Pay app',
+      platform: 'android',
+      installationId: 'a'.repeat(48),
+    };
+    assert.equal(deviceInfoSchema.safeParse(device).success, true);
+    assert.equal(
+      deviceInfoSchema.safeParse({ ...device, installationId: 'short' }).success,
+      false,
+    );
+    assert.equal(
+      deviceInfoSchema.safeParse({ name: 'Mori Pay app', platform: 'ios' }).success,
       true,
     );
   });

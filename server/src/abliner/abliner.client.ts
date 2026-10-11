@@ -26,7 +26,77 @@ type ErrorPayload = {
   retryable?: boolean;
   field?: string;
   transaction_id?: string;
+  errors?: unknown;
 };
+
+const SAFE_VALIDATION_FIELDS = new Set([
+  'amount',
+  'method',
+  'currency',
+  'phone',
+  'reference',
+  'callback_url',
+]);
+const SENSITIVE_LABEL_VALUE =
+  /\b(phone|mobile|recipient|customer|payer|account|reference|email|name|token|secret|api[_ -]?key|authorization|signature|card(?:holder)?|cvv|pin)\b(\s*[:=]\s*|\s+)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi;
+
+type SafeValidationError = { field: string; message?: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function redactProviderText(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const text = value
+    .slice(0, 500)
+    .replace(/\b(?:tsl_(?:live|test)_|whsec_)[A-Za-z0-9_-]+\b/gi, '[redacted]')
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[redacted email]')
+    .replace(SENSITIVE_LABEL_VALUE, '$1$2[redacted]')
+    .replace(
+      /\b(?:belongs to|registered to|owned by|for customer)\s+[^,.;]+/gi,
+      '[redacted personal data]',
+    )
+    .replace(/\b[A-Z][a-z]{1,}\s+[A-Z][a-z]{1,}(?:\s+[A-Z][a-z]{1,})*\b/g, '[redacted name]')
+    .replace(/(?:\+?\d[\s().-]*){8,}/g, '[redacted number]')
+    .replace(/\b[a-f0-9]{64}\b/gi, '[redacted signature]')
+    .trim();
+  return text || undefined;
+}
+
+function safeValidationErrors(value: unknown): SafeValidationError[] {
+  const result: SafeValidationError[] = [];
+  const add = (field: unknown, message: unknown) => {
+    if (
+      typeof field !== 'string' ||
+      !SAFE_VALIDATION_FIELDS.has(field) ||
+      result.length >= 20
+    ) {
+      return;
+    }
+    const safeMessage = redactProviderText(message);
+    result.push({ field, ...(safeMessage ? { message: safeMessage } : {}) });
+  };
+
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (!isRecord(entry)) continue;
+      add(entry.field ?? entry.path ?? entry.name, entry.message ?? entry.detail);
+    }
+  } else if (isRecord(value)) {
+    for (const [field, entry] of Object.entries(value)) {
+      if (typeof entry === 'string') {
+        add(field, entry);
+      } else if (Array.isArray(entry)) {
+        for (const message of entry) add(field, message);
+      } else if (isRecord(entry)) {
+        add(field, entry.message ?? entry.detail);
+      }
+    }
+  }
+  return result;
+}
 
 /** User-safe message per Abliner error code. Raw provider text never leaves. */
 const SAFE_PROVIDER_MESSAGE: Record<string, string> = {
@@ -51,8 +121,7 @@ const DEFAULT_PROVIDER_MESSAGE =
 
 /**
  * Provider failure enriched with Abliner's stable machine-readable `code`.
- * The message shown to clients is always a safe, generic sentence; the raw
- * provider text is kept in `detail` for server-side logging only.
+ * The message shown to clients is always safe; diagnostic detail is redacted.
  */
 export class AblinerProviderError extends ProviderError {
   constructor(
@@ -279,16 +348,36 @@ export class AblinerClient {
     }
 
     if (!response.ok) {
-      const error = payload as ErrorPayload | undefined;
-      const message =
-        error?.message ?? `Payment provider returned ${response.status}`;
+      const error = isRecord(payload) ? (payload as ErrorPayload) : undefined;
+      const safeMessage = redactProviderText(error?.message);
+      const providerCode =
+        typeof error?.code === 'string' &&
+        /^[a-z0-9_]{1,80}$/i.test(error.code)
+          ? error.code
+          : undefined;
       this.logger.error(
-        `Abliner ${method} ${path} -> HTTP ${response.status}`,
+        JSON.stringify({
+          provider: 'abliner',
+          method,
+          path,
+          status: response.status,
+          ...(providerCode ? { code: providerCode } : {}),
+          ...(typeof error?.field === 'string' &&
+          SAFE_VALIDATION_FIELDS.has(error.field)
+            ? { field: error.field }
+            : {}),
+          ...(safeMessage ? { message: safeMessage } : {}),
+          ...(response.status === 422
+            ? { validationErrors: safeValidationErrors(error?.errors) }
+            : {}),
+        }),
       );
       throw new AblinerProviderError(
-        error?.code,
-        error?.retryable ?? response.status >= 500,
-        message,
+        providerCode,
+        typeof error?.retryable === 'boolean'
+          ? error.retryable
+          : response.status >= 500,
+        safeMessage ?? `Payment provider returned ${response.status}`,
       );
     }
 

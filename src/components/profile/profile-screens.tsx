@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import {
+  Linking,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -10,6 +11,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
 import { SegmentedControl } from '@/components/ui/segmented-control';
@@ -100,8 +102,20 @@ export function ProfileScreen() {
   const { preference } = useAppTheme();
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
+  const [verificationError, setVerificationError] = useState(false);
 
   const otherDevices = devices.filter((device) => !device.isCurrent).length;
+  const requestVerification = async () => {
+    const subject = encodeURIComponent('Request account verification');
+    const body = encodeURIComponent(
+      `Hello Mori Pay Support,\n\nI would like to request account verification.\n\nMember ID: ${profile.memberId}`,
+    );
+    try {
+      await Linking.openURL(`mailto:${APP.supportEmail}?subject=${subject}&body=${body}`);
+    } catch {
+      setVerificationError(true);
+    }
+  };
 
   return (
     <Screen
@@ -151,6 +165,15 @@ export function ProfileScreen() {
           onPress={() => router.push('/wallet')}
           showDivider
         />
+        {profile.status === 'standard' ? (
+          <ProfileMenuItem
+            icon="id"
+            label="Request account verification"
+            description="Contact support to start a verification review"
+            onPress={() => void requestVerification()}
+            showDivider
+          />
+        ) : null}
         <ProfileMenuItem
           icon="notification"
           label="Notifications"
@@ -270,10 +293,16 @@ export function ProfileScreen() {
           {ABOUT_COPY.legal}
         </AppText>
         <AppText variant="caption" color={colors.textTertiary} align="center">
-          Version {APP.version} · {APP.buildLabel}
+          Version {APP.version}
         </AppText>
       </View>
 
+      <AppDialog
+        visible={verificationError}
+        title="Contact support"
+        message={`Email ${APP.supportEmail} to request account verification.`}
+        onClose={() => setVerificationError(false)}
+      />
       <ConfirmationDialog
         visible={confirmLogout}
         title="Log out?"
@@ -452,7 +481,13 @@ export function PersonalInformationScreen() {
             <AccountInfoRow label="Date of birth" value={formatDate(profile.dateOfBirth)} />
             <AccountInfoRow
               label="Account status"
-              value={profile.status === 'verified' ? 'Verified' : profile.status}
+              value={
+                profile.status === 'verified'
+                  ? 'Verified'
+                  : profile.status === 'standard'
+                    ? 'Standard'
+                    : 'Restricted'
+              }
             />
             <AccountInfoRow label="Member ID" value={profile.memberId} />
             <AccountInfoRow label="Member since" value={formatDate(profile.joinedAt)} last />
@@ -999,7 +1034,6 @@ export function SettingsScreen() {
           icon="info"
           label="App version"
           value={`v${APP.version}`}
-          description={APP.buildLabel}
           showDivider
         />
         <ProfileMenuItem
@@ -1189,7 +1223,7 @@ export function AboutScreen() {
         </AppText>
         <View style={[styles.versionPill, { borderRadius: radius.pill, backgroundColor: colors.surfaceMuted }]}>
           <AppText variant="caption" color={colors.textSecondary}>
-            Version {APP.version} · {APP.buildLabel}
+            Version {APP.version}
           </AppText>
         </View>
       </View>

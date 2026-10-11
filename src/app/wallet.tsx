@@ -66,7 +66,7 @@ export function WalletScreen({ isTab = false }: { isTab?: boolean }) {
         ]}
         showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          {isTab ? <View style={styles.headerButton} /> : (
+          {!isTab ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Back"
@@ -81,12 +81,11 @@ export function WalletScreen({ isTab = false }: { isTab?: boolean }) {
               ]}>
               <AppIcon name="chevronLeft" size={19} color={colors.text} />
             </Pressable>
-          )}
+          ) : null}
           <View style={styles.headerCopy}>
             <AppText variant="title2">Wallet</AppText>
             <AppText variant="caption" color={colors.textSecondary}>Account details</AppText>
           </View>
-          <View style={{ width: 42 }} />
         </View>
 
         {account ? (

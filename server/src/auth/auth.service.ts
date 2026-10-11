@@ -812,16 +812,29 @@ export class AuthService {
     let deviceId: string | undefined;
 
     if (device) {
-      const created = await this.prisma.device.create({
-        data: {
-          userId,
-          name: device.name,
-          platform: device.platform,
-          pushToken: device.pushToken ?? null,
-          isCurrent: true,
-        },
-      });
-      deviceId = created.id;
+      const deviceData = {
+        name: device.name,
+        platform: device.platform,
+        ...(device.pushToken === undefined ? {} : { pushToken: device.pushToken }),
+        isCurrent: true,
+        lastActiveAt: new Date(),
+      };
+      const registered = device.installationId
+        ? await this.prisma.device.upsert({
+            where: {
+              userId_installationId: { userId, installationId: device.installationId },
+            },
+            create: { userId, ...deviceData, installationId: device.installationId },
+            update: deviceData,
+          })
+        : await this.prisma.device.create({
+            data: {
+              userId,
+              ...deviceData,
+              pushToken: device.pushToken ?? null,
+            },
+          });
+      deviceId = registered.id;
     } else {
       const existing = await this.prisma.device.findFirst({
         where: { userId },

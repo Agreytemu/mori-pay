@@ -114,18 +114,6 @@ function VerticalBrand({ label }: { label: string }) {
   );
 }
 
-function EmvChip() {
-  return (
-    <View pointerEvents="none" style={styles.chip}>
-      <View style={[styles.chipTraceH, { top: 9 }]} />
-      <View style={[styles.chipTraceH, { bottom: 9 }]} />
-      <View style={[styles.chipTraceV, { left: 14 }]} />
-      <View style={[styles.chipTraceV, { right: 14 }]} />
-      <View style={styles.chipPad} />
-    </View>
-  );
-}
-
 export function AccountCard({
   account,
   visible,
@@ -157,7 +145,6 @@ export function AccountCard({
       ]}>
       <ContourPattern />
       <VerticalBrand label={account.brand} />
-      <EmvChip />
 
       <View pointerEvents="none" style={styles.content}>
         <View style={styles.brandRow}>
@@ -327,7 +314,7 @@ const GREEN = '91, 196, 168';
 const styles = StyleSheet.create({
   card: {
     position: 'relative',
-    minHeight: 216,
+    minHeight: 198,
     borderWidth: 1,
     borderColor: `rgba(${GREEN}, 0.20)`,
     backgroundColor: '#0A0F0D',
@@ -380,7 +367,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: 8,
-    paddingRight: 48,
+    paddingRight: 44,
   },
   balanceCopy: {
     flex: 1,
@@ -496,43 +483,6 @@ const styles = StyleSheet.create({
     top: 96,
     borderColor: `rgba(${GREEN}, 0.07)`,
     transform: [{ rotate: '13deg' }],
-  },
-  chip: {
-    position: 'absolute',
-    zIndex: 1,
-    top: 54,
-    right: 22,
-    width: 44,
-    height: 32,
-    borderRadius: 6,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(240, 245, 242, 0.55)',
-    backgroundColor: 'rgba(200, 208, 203, 0.88)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  chipTraceH: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(96, 106, 100, 0.5)',
-  },
-  chipTraceV: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: 'rgba(96, 106, 100, 0.5)',
-  },
-  chipPad: {
-    width: 14,
-    height: 10,
-    borderRadius: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(96, 106, 100, 0.55)',
-    backgroundColor: 'rgba(150, 160, 155, 0.5)',
   },
   infoRow: {
     minHeight: 48,

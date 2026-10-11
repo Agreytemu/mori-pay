@@ -12,6 +12,9 @@ import { ProviderError } from '../src/common/errors.js';
 import type { AppConfigService } from '../src/config/app-config.service.js';
 import {
   ablinerWebhookSchema,
+  topupCardPreviewQuerySchema,
+  topupCardSchema,
+  topupMobileMoneySchema,
 } from '@mori-pay/contracts';
 import {
   completedTransactionFixture,
@@ -72,6 +75,33 @@ const depositRequest = {
 };
 
 describe('AblinerClient contract', () => {
+  it('enforces Abliner deposit amount bounds at top-up and preview inputs', () => {
+    const mobileTopup = {
+      amount: 3_000_000,
+      mobileNumber: '255700000001',
+    };
+    assert.equal(topupMobileMoneySchema.safeParse(mobileTopup).success, true);
+    assert.equal(
+      topupMobileMoneySchema.safeParse({
+        ...mobileTopup,
+        amount: 3_000_001,
+      }).success,
+      false,
+    );
+    assert.equal(
+      topupCardSchema.safeParse({ amount: 3_000_001 }).success,
+      false,
+    );
+    assert.equal(
+      topupCardPreviewQuerySchema.safeParse({ amount: '3000001' }).success,
+      false,
+    );
+    assert.equal(
+      topupCardPreviewQuerySchema.safeParse({ amount: '3000000' }).success,
+      true,
+    );
+  });
+
   it('signs and shapes a deposit exactly as the docs require', async () => {
     const client = new AblinerClient(config({ webhookSecret: 'whsec_test' }));
     stubFetch(pendingDepositResponseFixture);
@@ -211,10 +241,104 @@ describe('AblinerClient contract', () => {
           error.message,
           'The payment service is temporarily unavailable.',
         );
-        assert.deepEqual(logs, ['Abliner POST /api/v1/deposits -> HTTP 401']);
+        assert.equal(logs.length, 1);
+        const diagnostic = JSON.parse(logs[0]) as {
+          status: number;
+          code: string;
+          message: string;
+        };
+        assert.equal(diagnostic.status, 401);
+        assert.equal(diagnostic.code, 'invalid_request_signature');
+        assert.match(diagnostic.message, /\[redacted\]/);
         assert.doesNotMatch(logs.join('\n'), /signature mismatch|tsl_live_abc/i);
         return true;
       },
+    );
+  });
+
+  it('logs redacted structured diagnostics for HTTP 422 validation failures', async () => {
+    const client = new AblinerClient(config({ webhookSecret: 'whsec_test' }));
+    const logs: string[] = [];
+    Object.defineProperty(client, 'logger', {
+      value: { error: (message: string) => logs.push(message) },
+    });
+    stubFetch(
+      {
+        status: 'error',
+        code: 'validation_failed',
+        message:
+          "Invalid phone 255712345678 belongs to Jane Doe; email jane@example.com; key tsl_live_private",
+        field: 'phone',
+        errors: [
+          {
+            field: 'phone',
+            message: 'Phone 255712345678 belongs to Jane Doe',
+          },
+          { field: 'callback_url', message: 'callback_url must use HTTPS' },
+          { field: 'mobileNumber', message: 'must not be logged' },
+        ],
+      },
+      422,
+    );
+
+    await assert.rejects(
+      () => client.createDeposit(depositRequest),
+      (error: unknown) => {
+        assert.ok(error instanceof AblinerProviderError);
+        assert.equal(error.providerCode, 'validation_failed');
+        assert.equal(
+          error.message,
+          'The payment details were rejected. Review them and try again.',
+        );
+        assert.doesNotMatch(
+          `${error.detail}\n${error.message}`,
+          /255712345678|Jane Doe|jane@example.com|tsl_live_private/,
+        );
+        return true;
+      },
+    );
+
+    assert.equal(logs.length, 1);
+    const diagnostic = JSON.parse(logs[0]) as {
+      provider: string;
+      method: string;
+      path: string;
+      status: number;
+      code: string;
+      field: string;
+      message: string;
+      validationErrors: Array<{ field: string; message?: string }>;
+    };
+    assert.deepEqual(
+      {
+        provider: diagnostic.provider,
+        method: diagnostic.method,
+        path: diagnostic.path,
+        status: diagnostic.status,
+        code: diagnostic.code,
+        field: diagnostic.field,
+      },
+      {
+        provider: 'abliner',
+        method: 'POST',
+        path: '/api/v1/deposits',
+        status: 422,
+        code: 'validation_failed',
+        field: 'phone',
+      },
+    );
+    assert.doesNotMatch(
+      diagnostic.message,
+      /255712345678|Jane Doe|jane@example.com|tsl_live_private/,
+    );
+    assert.match(diagnostic.message, /\[redacted\]/);
+    assert.deepEqual(
+      diagnostic.validationErrors.map(({ field }) => field),
+      ['phone', 'callback_url'],
+    );
+    assert.doesNotMatch(
+      JSON.stringify(diagnostic),
+      /255712345678|Jane Doe|jane@example.com|tsl_live_private/,
     );
   });
 
@@ -239,6 +363,11 @@ describe('AblinerClient contract', () => {
         status: 422,
         code: 'amount_out_of_range',
         message: 'That amount is outside the allowed range.',
+      },
+      {
+        status: 422,
+        code: 'unsupported_request',
+        message: 'This payment method is not available right now.',
       },
       {
         status: 502,

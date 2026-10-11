@@ -7,7 +7,7 @@
  */
 import type { IconName } from '@/constants/icons';
 
-export type ProfileStatus = 'verified' | 'pending' | 'restricted';
+export type ProfileStatus = 'verified' | 'standard' | 'restricted';
 
 export type UserProfile = {
   id: string;

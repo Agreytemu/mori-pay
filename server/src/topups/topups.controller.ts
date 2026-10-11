@@ -12,14 +12,14 @@ import { Throttle } from '@nestjs/throttler';
 
 import {
   topupCardSchema,
+  topupCardPreviewQuerySchema,
   topupMobileMoneySchema,
-  withdrawalPreviewQuerySchema,
   type CardTopupResult,
   type FeePreview,
+  type TopupCardPreviewQuery,
   type TopupCardInput,
   type TopupInitResult,
   type TopupMobileMoneyInput,
-  type WithdrawalPreviewQuery,
 } from '@mori-pay/contracts';
 
 import type { AuthenticatedUser } from '../auth/auth.types.js';
@@ -35,8 +35,8 @@ export class TopUpsController {
 
   @Get('card/preview')
   previewCard(
-    @Query(new ZodValidationPipe(withdrawalPreviewQuerySchema))
-    query: WithdrawalPreviewQuery,
+    @Query(new ZodValidationPipe(topupCardPreviewQuerySchema))
+    query: TopupCardPreviewQuery,
   ): Promise<FeePreview> {
     return this.topups.previewCard(BigInt(query.amount));
   }

@@ -70,7 +70,8 @@ export default function VerifyScreen() {
       setError(null);
       try {
         setNeedsEmailRegistration(false);
-        await finish(await verifyOtp({ phone, code: value, device: deviceInfo() }));
+        const device = await deviceInfo();
+        await finish(await verifyOtp({ phone, code: value, device }));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Verification failed. Try again.');
         setCode('');

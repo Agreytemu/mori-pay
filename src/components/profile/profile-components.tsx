@@ -28,10 +28,10 @@ import { formatRelativeTime, maskPhone } from '@/utils/format';
 
 const STATUS_PRESENTATION: Record<
   ProfileStatusValue,
-  { label: string; icon: IconName; tone: 'success' | 'warning' | 'error' }
+  { label: string; icon: IconName; tone: 'success' | 'info' | 'error' }
 > = {
   verified: { label: 'Verified account', icon: 'success', tone: 'success' },
-  pending: { label: 'Verification pending', icon: 'pending', tone: 'warning' },
+  standard: { label: 'Standard account', icon: 'wallet', tone: 'info' },
   restricted: { label: 'Account restricted', icon: 'warning', tone: 'error' },
 };
 
@@ -41,7 +41,7 @@ export function ProfileStatus({ status }: { status: ProfileStatusValue }) {
   const presentation = STATUS_PRESENTATION[status];
   const tone = {
     success: { fg: colors.success, bg: colors.successSoft },
-    warning: { fg: colors.warning, bg: colors.warningSoft },
+    info: { fg: colors.textSecondary, bg: colors.surfaceMuted },
     error: { fg: colors.error, bg: colors.errorSoft },
   }[presentation.tone];
 

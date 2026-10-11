@@ -46,11 +46,17 @@ export const amountSchema = z
   .min(500, 'Minimum amount is 500 TZS')
   .max(Number.MAX_SAFE_INTEGER, 'Amount is too large');
 
+const ablinerDepositAmountSchema = amountSchema.max(
+  3_000_000,
+  'Maximum deposit is 3,000,000 TZS',
+);
+
 export const mobileNetworkSchema = z.enum(MOBILE_NETWORKS);
 
 export const deviceInfoSchema = z.object({
   name: z.string().min(1).max(120),
   platform: z.enum(['android', 'ios', 'web']),
+  installationId: z.string().min(16).max(128).optional(),
   pushToken: z.string().min(1).optional(),
 });
 
@@ -211,8 +217,17 @@ export const withdrawalPreviewQuerySchema = z.object({
     .max(Number.MAX_SAFE_INTEGER, 'Amount is too large'),
 });
 
+export const topupCardPreviewQuerySchema = z.object({
+  amount: z.coerce
+    .number()
+    .int('Amount must be a whole number')
+    .positive('Amount must be positive')
+    .min(500, 'Minimum amount is 500 TZS')
+    .max(3_000_000, 'Maximum deposit is 3,000,000 TZS'),
+});
+
 export const topupMobileMoneySchema = z.object({
-  amount: amountSchema,
+  amount: ablinerDepositAmountSchema,
   mobileNumber: tzPhoneSchema,
   /** Display-only operator hint; Abliner routes the rail automatically. */
   network: mobileNetworkSchema.optional(),
@@ -220,7 +235,7 @@ export const topupMobileMoneySchema = z.object({
 });
 
 export const topupCardSchema = z.object({
-  amount: amountSchema,
+  amount: ablinerDepositAmountSchema,
   customerEmail: emailSchema.optional(),
   customerName: z.string().min(1).max(120).optional(),
   customerPhone: tzPhoneSchema.optional(),
@@ -290,6 +305,7 @@ export type MerchantPaymentPreviewInput = z.infer<typeof merchantPaymentPreviewS
 export type RecipientLookupInput = z.infer<typeof recipientLookupSchema>;
 export type VerifyReceiveCodeInput = z.infer<typeof verifyReceiveCodeSchema>;
 export type WithdrawalPreviewQuery = z.infer<typeof withdrawalPreviewQuerySchema>;
+export type TopupCardPreviewQuery = z.infer<typeof topupCardPreviewQuerySchema>;
 export type TopupMobileMoneyInput = z.infer<typeof topupMobileMoneySchema>;
 export type TopupCardInput = z.infer<typeof topupCardSchema>;
 export type WithdrawalInput = z.infer<typeof withdrawalSchema>;

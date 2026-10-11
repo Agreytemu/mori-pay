@@ -82,7 +82,7 @@ export function toUserProfile(profile: AccountProfile): UserProfile {
         ? 'restricted'
         : profile.tier === 'Verified'
           ? 'verified'
-          : 'pending',
+          : 'standard',
     tier: profile.tier,
     joinedAt: profile.memberSince,
   };

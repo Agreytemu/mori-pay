@@ -60,8 +60,10 @@ export default function HomeScreen() {
             router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'send' } });
           } else if (action.label === 'Receive') {
             router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'receive' } });
+          } else if (action.label === 'Request') {
+            router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'request' } });
           } else {
-            router.push('/(tabs)/payments');
+            router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'pay' } });
           }
         },
       })),
@@ -76,7 +78,7 @@ export default function HomeScreen() {
           styles.content,
           {
             paddingHorizontal: space.base,
-            paddingTop: space.md,
+            paddingTop: space.lg,
             paddingBottom: space.xl,
             gap: space.xl,
           },

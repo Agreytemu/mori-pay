@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, Share, StyleSheet, View } from 'react-native';
 
 import {
   AmountInput,
@@ -86,7 +86,9 @@ function prettyPhone(phone: string): string {
 export default function PaymentsScreen() {
   const { colors, radius, space } = useAppTheme();
   const router = useRouter();
-  const { startFlow } = useLocalSearchParams<{ startFlow?: 'send' | 'receive' }>();
+  const { startFlow } = useLocalSearchParams<{
+    startFlow?: 'send' | 'receive' | 'request' | 'pay';
+  }>();
   const session = useSession();
 
   const [screen, setScreen] = useState<FlowName>('overview');
@@ -260,7 +262,11 @@ export default function PaymentsScreen() {
       ? 'send-recipient'
       : screen === 'overview' && startFlow === 'receive'
         ? 'receive'
-        : screen;
+        : screen === 'overview' && startFlow === 'request'
+          ? 'request-recipient'
+          : screen === 'overview' && startFlow === 'pay'
+            ? 'merchant'
+            : screen;
 
   /* -------------------------------------------------------------- receive QR */
 
@@ -467,7 +473,8 @@ export default function PaymentsScreen() {
 
   const renderOverview = () => (
     <View style={styles.stack}>
-      <View style={styles.sectionTitleWrap}>
+      <View style={styles.overviewIntro}>
+        <AppText variant="title2">Move money</AppText>
         <AppText variant="bodySmall" color={colors.textSecondary}>
           Choose how you want to move money.
         </AppText>
@@ -477,7 +484,19 @@ export default function PaymentsScreen() {
         description="Transfer to a person or family member."
         icon="send"
         onPress={() => openFlow('send')}
+        featured
       />
+      <View style={styles.moreWaysHeader}>
+        <AppText variant="title3">More options</AppText>
+        <Button
+          label="Request history"
+          variant="ghost"
+          size="sm"
+          icon="chevronRight"
+          iconPosition="trailing"
+          onPress={() => router.push('/money-requests' as Href)}
+        />
+      </View>
       <FlowOverviewCard
         title="Receive money"
         description="Share your phone or QR and collect funds."
@@ -489,11 +508,6 @@ export default function PaymentsScreen() {
         description="Ask someone to send the amount they owe."
         icon="request"
         onPress={() => openFlow('request')}
-      />
-      <Button
-        label="View money requests"
-        variant="secondary"
-        onPress={() => router.push('/money-requests' as Href)}
       />
       <FlowOverviewCard
         title="Pay"
@@ -609,6 +623,9 @@ export default function PaymentsScreen() {
     return (
       <PaymentSuccess
         amount={transaction.amount}
+        fee={sendResult.fee}
+        total={transaction.amount + sendResult.fee}
+        transactionId={transaction.id}
         recipient={transaction.counterparty}
         reference={transaction.reference}
         dateTime={formatDateTime(transaction.createdAt)}
@@ -636,6 +653,34 @@ export default function PaymentsScreen() {
     const { transaction } = result;
     const fee = result.fee;
     const recipient = payResult ? payResult.merchantName : transaction.counterparty;
+    const receiptText = [
+      `Mori Pay ${payResult ? 'payment' : 'transfer'} receipt`,
+      'Status: Successful',
+      `Amount: ${formatMoney(transaction.amount, 'TZS')}`,
+      `Fee: ${formatMoney(fee, 'TZS')}`,
+      `Total: ${formatMoney(transaction.amount + fee, 'TZS')}`,
+      `Sender: You`,
+      `Recipient: ${recipient}`,
+      `Payment method: Wallet`,
+      `Reference: ${transaction.reference}`,
+      `Transaction ID: ${transaction.id}`,
+      `Date: ${formatDateTime(transaction.createdAt)}`,
+    ].join('\n');
+    const shareReceipt = async () => {
+      try {
+        await Share.share({ message: receiptText });
+      } catch {
+        setDialog({ title: 'Could not share receipt', message: 'Please try again.' });
+      }
+    };
+    const copyReceipt = async () => {
+      try {
+        await Clipboard.setStringAsync(receiptText);
+        setDialog({ title: 'Receipt copied', message: 'Receipt details copied to clipboard.' });
+      } catch {
+        setDialog({ title: 'Could not copy receipt', message: 'Please try again.' });
+      }
+    };
     return (
       <ReceiptDetails
         kind={payResult ? 'Payment' : 'Transfer'}
@@ -647,6 +692,8 @@ export default function PaymentsScreen() {
         paymentMethod="Wallet"
         fee={fee}
         total={transaction.amount + fee}
+        onShare={() => void shareReceipt()}
+        onCopy={() => void copyReceipt()}
       />
     );
   };
@@ -904,6 +951,9 @@ export default function PaymentsScreen() {
     return (
       <PaymentSuccess
         amount={transaction.amount}
+        fee={payResult.fee}
+        total={transaction.amount + payResult.fee}
+        transactionId={transaction.id}
         recipient={payResult.merchantName}
         reference={transaction.reference}
         dateTime={formatDateTime(transaction.createdAt)}
@@ -1051,8 +1101,17 @@ const styles = StyleSheet.create({
   stack: {
     gap: 16,
   },
-  sectionTitleWrap: {
+  overviewIntro: {
     gap: 4,
+    marginBottom: 4,
+  },
+  moreWaysHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginTop: 4,
+    marginBottom: -4,
   },
   overviewHeader: {
     flexDirection: 'row',

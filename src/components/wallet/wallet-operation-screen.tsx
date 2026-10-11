@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
+import * as Clipboard from 'expo-clipboard';
 import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   TextInput,
   View,
@@ -26,6 +28,7 @@ import {
   MOBILE_NETWORKS,
   MOBILE_NETWORK_LABEL,
   type MobileNetwork,
+  type Transaction,
 } from '@mori-pay/contracts';
 
 import { ApiError } from '@/lib/api';
@@ -42,13 +45,14 @@ import {
 import { normalizeTzPhone } from '@/lib/phone';
 import { useSession } from '@/lib/session';
 import { useAppTheme } from '@/theme';
-import { formatAmount } from '@/utils/format';
+import { formatAmount, formatDateTime } from '@/utils/format';
 
 type WalletOperation = 'deposit' | 'withdraw';
 
-type Step = 'form' | 'pin' | 'busy' | 'done' | 'failed';
+type Step = 'form' | 'pin' | 'busy' | 'done' | 'pending' | 'failed';
 
 const MIN_AMOUNT = 500;
+const MAX_DEPOSIT_AMOUNT = 3_000_000;
 
 const DEPOSIT_METHODS = [
   { id: 'mobile', name: 'Mobile money', description: 'M-Pesa, Airtel Money and more', icon: 'receive' as const },
@@ -72,6 +76,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
+  const [resultTransaction, setResultTransaction] = useState<Transaction | null>(null);
   const [lookup, setLookup] = useState<{
     phone: string;
     found: boolean;
@@ -96,6 +101,8 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
 
   const numericAmount = Number(amount || '0');
   const amountValid = numericAmount >= MIN_AMOUNT;
+  const depositAmountOverLimit =
+    isDeposit && numericAmount > MAX_DEPOSIT_AMOUNT;
   const normalizedPhone = normalizeTzPhone(mobileNumber);
   const activeLookup =
     lookup && normalizedPhone && lookup.phone === normalizedPhone ? lookup : null;
@@ -106,7 +113,9 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       ? preview
       : null;
   const needsFeePreview =
-    amountValid && (!isDeposit || method === 'card');
+    amountValid &&
+    (!isDeposit || method === 'card') &&
+    !depositAmountOverLimit;
   const activePreviewError =
     previewError?.forAmount === numericAmount ? previewError.message : null;
 
@@ -145,7 +154,13 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   }, [mobileNumber, isDeposit]);
 
   useEffect(() => {
-    if (!amountValid || (isDeposit && method !== 'card')) return;
+    if (
+      !amountValid ||
+      depositAmountOverLimit ||
+      (isDeposit && method !== 'card')
+    ) {
+      return;
+    }
     let cancelled = false;
     const timer = setTimeout(() => {
       void (async () => {
@@ -176,22 +191,35 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [isDeposit, method, amountValid, numericAmount, previewAttempt]);
+  }, [
+    isDeposit,
+    method,
+    amountValid,
+    depositAmountOverLimit,
+    numericAmount,
+    previewAttempt,
+  ]);
 
   /* ------------------------------------------------------------- deposit: poll */
 
   const pollUntilSettled = useCallback(
-    async (transactionId: string, attempts = 20): Promise<'completed' | 'failed' | 'timeout'> => {
+    async (
+      transaction: Transaction,
+      attempts = 20,
+    ): Promise<{ status: 'completed' | 'failed' | 'timeout'; transaction: Transaction }> => {
+      let latest = transaction;
       for (let i = 0; i < attempts; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
         try {
-          const tx = await getTransaction(transactionId);
-          if (tx.status === 'completed' || tx.status === 'failed') return tx.status;
+          latest = await getTransaction(transaction.id);
+          if (latest.status === 'completed' || latest.status === 'failed') {
+            return { status: latest.status, transaction: latest };
+          }
         } catch {
           // Transient read error; keep polling.
         }
       }
-      return 'timeout';
+      return { status: 'timeout', transaction: latest };
     },
     []
   );
@@ -205,18 +233,19 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         idempotencyKey: idempotencyKeys.current.get(intent, 'card-deposit'),
       });
       await WebBrowser.openBrowserAsync(result.checkoutUrl);
-      const status = await pollUntilSettled(result.transaction.id);
-      if (status === 'completed') {
+      const outcome = await pollUntilSettled(result.transaction);
+      setResultTransaction(outcome.transaction);
+      if (outcome.status === 'completed') {
         idempotencyKeys.current.clear(intent);
         await refreshWallet();
         setStep('done');
         setResultMessage('Your card payment was received.');
-      } else if (status === 'failed') {
+      } else if (outcome.status === 'failed') {
         idempotencyKeys.current.clear(intent);
         setStep('failed');
         setError('The card payment failed. No money left your card.');
       } else {
-        setStep('done');
+        setStep('pending');
         setResultMessage(
           'Your payment is still processing. It will appear in your wallet once confirmed.'
         );
@@ -237,18 +266,20 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         idempotencyKey: idempotencyKeys.current.get(intent, 'mobile-deposit'),
       });
       setDialog({ title: 'Check your phone', message: result.instructions });
-      const status = await pollUntilSettled(result.transaction.id);
-      if (status === 'completed') {
+      const outcome = await pollUntilSettled(result.transaction);
+      setDialog(null);
+      setResultTransaction(outcome.transaction);
+      if (outcome.status === 'completed') {
         idempotencyKeys.current.clear(intent);
         await refreshWallet();
         setStep('done');
         setResultMessage('Deposit received.');
-      } else if (status === 'failed') {
+      } else if (outcome.status === 'failed') {
         idempotencyKeys.current.clear(intent);
         setStep('failed');
         setError('The deposit failed or was cancelled.');
       } else {
-        setStep('done');
+        setStep('pending');
         setResultMessage('Still processing. It will show in your wallet once confirmed.');
       }
     },
@@ -270,14 +301,26 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         expectedFee: activePreview?.fee,
         idempotencyKey: idempotencyKeys.current.get(intent, 'withdrawal'),
       });
-      idempotencyKeys.current.clear(intent);
       await refreshWallet();
-      setStep('done');
-      setResultMessage(
-        `Sent ${formatAmount(result.transaction.amount)} to ${result.transaction.counterparty}. Fee ${formatAmount(result.fee)}.`
-      );
+      const outcome =
+        result.transaction.status === 'pending'
+          ? await pollUntilSettled(result.transaction)
+          : { status: result.transaction.status, transaction: result.transaction };
+      setResultTransaction(outcome.transaction);
+      if (outcome.status === 'completed') {
+        idempotencyKeys.current.clear(intent);
+        setStep('done');
+        setResultMessage('Your withdrawal was confirmed.');
+      } else if (outcome.status === 'failed') {
+        idempotencyKeys.current.clear(intent);
+        setStep('failed');
+        setError('The withdrawal failed. Your wallet balance will reflect the final status.');
+      } else {
+        setStep('pending');
+        setResultMessage('Your withdrawal is processing. We will update its status when confirmed.');
+      }
     },
-    [activePreview?.fee, mobileNumber, network, refreshWallet]
+    [activePreview?.fee, mobileNumber, network, pollUntilSettled, refreshWallet]
   );
 
   /* ---------------------------------------------------------------- handlers */
@@ -287,6 +330,11 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
 
     if (!amountValid) {
       setError(`Minimum amount is ${formatAmount(MIN_AMOUNT)}.`);
+      return;
+    }
+
+    if (depositAmountOverLimit) {
+      setError(`Maximum deposit is ${formatAmount(MAX_DEPOSIT_AMOUNT)}.`);
       return;
     }
 
@@ -372,6 +420,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     setEntry('');
     setError(null);
     setResultMessage(null);
+    setResultTransaction(null);
     setPreview(null);
     setPreviewError(null);
     setLookup(null);
@@ -381,29 +430,126 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
 
   /* ------------------------------------------------------------------ render */
 
-  if (step === 'done' || step === 'failed') {
+  if (step === 'done' || step === 'pending' || step === 'failed') {
     const success = step === 'done';
+    const pending = step === 'pending';
+    const receiptText = resultTransaction
+      ? [
+          `Mori Pay ${title} ${success ? 'receipt' : 'status'}`,
+          `Status: ${success ? 'Successful' : pending ? 'Processing' : 'Failed'}`,
+          `Amount: ${formatAmount(resultTransaction.amount)}`,
+          `Fee: ${formatAmount(resultTransaction.fee)}`,
+          `Total: ${formatAmount(resultTransaction.amount + resultTransaction.fee)}`,
+          `Counterparty: ${resultTransaction.counterparty}`,
+          `Channel: ${resultTransaction.channel}`,
+          `Reference: ${resultTransaction.reference}`,
+          `Transaction ID: ${resultTransaction.id}`,
+          `Date: ${formatDateTime(resultTransaction.createdAt)}`,
+        ].join('\n')
+      : '';
+    const shareReceipt = async () => {
+      try {
+        await Share.share({ message: receiptText });
+      } catch {
+        setDialog({ title: 'Could not share', message: 'Please try again.' });
+      }
+    };
+    const copyReceipt = async () => {
+      try {
+        await Clipboard.setStringAsync(receiptText);
+        setDialog({ title: 'Copied', message: 'Receipt details copied to clipboard.' });
+      } catch {
+        setDialog({ title: 'Could not copy', message: 'Please try again.' });
+      }
+    };
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
-        <View style={styles.resultWrap}>
+        <ScrollView contentContainerStyle={styles.resultWrap}>
           <View
             style={[
               styles.resultIcon,
-              { borderRadius: radius.circle, backgroundColor: success ? colors.successSoft : colors.errorSoft },
+              {
+                borderRadius: radius.circle,
+                backgroundColor: success
+                  ? colors.successSoft
+                  : pending
+                    ? colors.warningSoft
+                    : colors.errorSoft,
+              },
             ]}>
-            <AppIcon name={success ? 'success' : 'warning'} size={34} color={success ? colors.success : colors.error} weight="semibold" />
+            <AppIcon
+              name={success ? 'success' : pending ? 'pending' : 'warning'}
+              size={34}
+              color={success ? colors.success : pending ? colors.warning : colors.error}
+              weight="semibold"
+            />
           </View>
           <AppText variant="title2" align="center">
-            {success ? `${title} complete` : `${title} failed`}
+            {success ? `${title} complete` : pending ? `${title} processing` : `${title} failed`}
           </AppText>
           <AppText variant="bodySmall" color={colors.textSecondary} align="center">
-            {success ? resultMessage : error}
+            {success || pending ? resultMessage : error}
           </AppText>
+          {resultTransaction ? (
+            <View
+              style={[
+                styles.receiptCard,
+                {
+                  borderRadius: radius.lg,
+                  backgroundColor: colors.surface,
+                  borderColor: colors.border,
+                },
+              ]}>
+              <View style={styles.receiptRow}>
+                <AppText variant="bodySmall" color={colors.textSecondary}>Amount</AppText>
+                <AppText variant="bodySmallStrong">{formatAmount(resultTransaction.amount)}</AppText>
+              </View>
+              <View style={styles.receiptRow}>
+                <AppText variant="bodySmall" color={colors.textSecondary}>Fee</AppText>
+                <AppText variant="bodySmallStrong">{formatAmount(resultTransaction.fee)}</AppText>
+              </View>
+              <View style={styles.receiptRow}>
+                <AppText variant="bodySmall" color={colors.textSecondary}>Total debited</AppText>
+                <AppText variant="bodySmallStrong">
+                  {formatAmount(resultTransaction.amount + resultTransaction.fee)}
+                </AppText>
+              </View>
+              <View style={styles.receiptRow}>
+                <AppText variant="bodySmall" color={colors.textSecondary}>Counterparty</AppText>
+                <AppText variant="bodySmallStrong" numberOfLines={2}>{resultTransaction.counterparty}</AppText>
+              </View>
+              <View style={styles.receiptRow}>
+                <AppText variant="bodySmall" color={colors.textSecondary}>Reference</AppText>
+                <AppText variant="bodySmallStrong" numberOfLines={1}>{resultTransaction.reference}</AppText>
+              </View>
+              <View style={styles.receiptRow}>
+                <AppText variant="bodySmall" color={colors.textSecondary}>Transaction ID</AppText>
+                <AppText variant="bodySmallStrong" numberOfLines={1}>{resultTransaction.id}</AppText>
+              </View>
+              <View style={styles.receiptRow}>
+                <AppText variant="bodySmall" color={colors.textSecondary}>Date</AppText>
+                <AppText variant="bodySmallStrong">{formatDateTime(resultTransaction.createdAt)}</AppText>
+              </View>
+            </View>
+          ) : null}
           <View style={styles.resultActions}>
+            {resultTransaction ? (
+              <>
+                <PrimaryButton label="Share receipt details" block onPress={() => void shareReceipt()} />
+                <SecondaryButton label="Copy receipt details" block onPress={() => void copyReceipt()} />
+              </>
+            ) : null}
             <PrimaryButton label="Done" block onPress={() => router.back()} />
-            {!success ? <SecondaryButton label="Try again" block onPress={reset} /> : null}
+            {!success && !pending ? <SecondaryButton label="Try again" block onPress={reset} /> : null}
           </View>
-        </View>
+        </ScrollView>
+        <AppDialog
+          visible={dialog !== null}
+          title={dialog?.title ?? ''}
+          message={dialog?.message ?? ''}
+          onClose={() => setDialog(null)}
+          testID="wallet-operation-dialog"
+        />
       </SafeAreaView>
     );
   }
@@ -453,7 +599,9 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               />
             </View>
             <AppText variant="caption" color={colors.textTertiary}>
-              Minimum {formatAmount(MIN_AMOUNT)}.
+              {isDeposit
+                ? `${formatAmount(MIN_AMOUNT)} - ${formatAmount(MAX_DEPOSIT_AMOUNT)}.`
+                : `Minimum ${formatAmount(MIN_AMOUNT)}.`}
             </AppText>
           </View>
 
@@ -662,7 +810,9 @@ const styles = StyleSheet.create({
   accountHint: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 },
   hintText: { flex: 1 },
   pinSheet: { borderTopWidth: StyleSheet.hairlineWidth, padding: 16, gap: 12 },
-  resultWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 },
+  resultWrap: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 },
   resultIcon: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center' },
   resultActions: { width: '100%', gap: 10, marginTop: 8 },
+  receiptCard: { width: '100%', maxWidth: 560, borderWidth: 1, padding: 16, gap: 12 },
+  receiptRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
 });

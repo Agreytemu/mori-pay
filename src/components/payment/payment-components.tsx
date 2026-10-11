@@ -407,6 +407,9 @@ export function PaymentReview({
 
 export function PaymentSuccess({
   amount,
+  fee,
+  total,
+  transactionId,
   recipient,
   reference,
   dateTime,
@@ -414,6 +417,9 @@ export function PaymentSuccess({
   onSecondary,
 }: {
   amount: number;
+  fee: number;
+  total: number;
+  transactionId: string;
   recipient: string;
   reference: string;
   dateTime: string;
@@ -450,7 +456,10 @@ export function PaymentSuccess({
         ]}
       >
         <DetailCell label="Recipient" value={recipient} />
+        <DetailCell label="Fee" value={formatMoney(fee, 'TZS')} />
+        <DetailCell label="Total debited" value={formatMoney(total, 'TZS')} />
         <DetailCell label="Reference" value={reference} />
+        <DetailCell label="Transaction ID" value={transactionId} />
         <DetailCell label="Date / time" value={dateTime} />
       </View>
       <View style={styles.ctaRow}>
@@ -576,6 +585,8 @@ export function ReceiptDetails({
   paymentMethod,
   fee,
   total,
+  onShare,
+  onCopy,
 }: {
   kind: string;
   amount: number;
@@ -586,6 +597,8 @@ export function ReceiptDetails({
   paymentMethod: string;
   fee: number;
   total: number;
+  onShare: () => void;
+  onCopy: () => void;
 }) {
   const { colors, radius, space } = useAppTheme();
 
@@ -631,8 +644,8 @@ export function ReceiptDetails({
       </View>
 
       <View style={styles.ctaRow}>
-        <Button label="Share" variant="secondary" fullWidth style={styles.ctaButton} onPress={() => undefined} />
-        <Button label="Save" fullWidth style={styles.ctaButton} onPress={() => undefined} />
+        <Button label="Share" variant="secondary" fullWidth style={styles.ctaButton} onPress={onShare} />
+        <Button label="Copy details" fullWidth style={styles.ctaButton} onPress={onCopy} />
       </View>
     </View>
   );
@@ -703,11 +716,13 @@ export function FlowOverviewCard({
   description,
   icon,
   onPress,
+  featured = false,
 }: {
   title: string;
   description: string;
   icon: IconName;
   onPress: () => void;
+  featured?: boolean;
 }) {
   const { colors, radius, space } = useAppTheme();
 
@@ -716,24 +731,46 @@ export function FlowOverviewCard({
       onPress={onPress}
       style={({ pressed }) => [
         styles.card,
+        featured && styles.featuredCard,
         {
-          backgroundColor: pressed ? colors.surfacePressed : colors.surface,
-          borderColor: colors.border,
+          backgroundColor: featured
+            ? pressed
+              ? colors.primaryPressed
+              : colors.primary
+            : pressed
+              ? colors.surfacePressed
+              : colors.surface,
+          borderColor: featured ? colors.primary : colors.border,
           borderRadius: radius.lg,
-          padding: space.base,
+          padding: featured ? space.lg : space.base,
         },
       ]}
     >
-      <View style={[styles.cardIcon, { backgroundColor: colors.primarySoft }]}>
+      <View
+        style={[
+          styles.cardIcon,
+          featured && styles.featuredCardIcon,
+          { backgroundColor: featured ? colors.onPrimary : colors.primarySoft },
+        ]}
+      >
         <AppIcon name={icon} size={20} color={colors.primary} weight="semibold" />
       </View>
       <View style={styles.cardCopy}>
-        <AppText variant="title3">{title}</AppText>
-        <AppText variant="bodySmall" color={colors.textSecondary}>
+        <AppText variant={featured ? 'title2' : 'title3'} color={featured ? colors.onPrimary : undefined}>
+          {title}
+        </AppText>
+        <AppText
+          variant="bodySmall"
+          color={featured ? colors.textInverseSecondary : colors.textSecondary}
+        >
           {description}
         </AppText>
       </View>
-      <AppIcon name="chevronRight" size={18} color={colors.textSecondary} />
+      <AppIcon
+        name="chevronRight"
+        size={18}
+        color={featured ? colors.onPrimary : colors.textSecondary}
+      />
     </Pressable>
   );
 }
@@ -875,12 +912,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 12,
   },
+  featuredCard: {
+    minHeight: 116,
+    borderWidth: 0,
+    gap: 16,
+  },
   cardIcon: {
     width: 42,
     height: 42,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  featuredCardIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
   },
   cardCopy: { flex: 1, gap: 2 },
 });

@@ -50,7 +50,7 @@ export function useProfileState(): ProfileState {
         ? 'restricted'
         : (accountProfile?.tier ?? user?.tier) === 'Verified'
           ? 'verified'
-          : 'pending',
+          : 'standard',
     tier: accountProfile?.tier ?? user?.tier ?? 'Standard',
     joinedAt: accountProfile?.memberSince ?? '',
   };

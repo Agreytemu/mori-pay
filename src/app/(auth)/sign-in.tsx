@@ -52,17 +52,18 @@ export default function SignInScreen() {
     setBusy(true);
     setError(null);
     try {
+      const device = await deviceInfo();
       const session =
         mode === 'password'
           ? await signInWithEmail({
               email: normalizedEmail,
               password,
-              device: deviceInfo(),
+              device,
             })
           : await signInWithPin({
               email: normalizedEmail,
               pin,
-              device: deviceInfo(),
+              device,
             });
       const pinStatus = await signIn(session);
       router.replace(pinStatus.pinSet ? '/(tabs)' : '/(auth)/set-pin');

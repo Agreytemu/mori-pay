@@ -48,10 +48,11 @@ export default function VerifyEmailScreen() {
       setBusy(true);
       setError(null);
       try {
+        const device = await deviceInfo();
         const session = await verifyEmail({
           email,
           code: value,
-          device: deviceInfo(),
+          device,
         });
         const pinStatus = await signIn(session);
         router.replace(pinStatus.pinSet ? '/(tabs)' : '/(auth)/set-pin');

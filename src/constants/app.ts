@@ -12,7 +12,6 @@ export const APP = {
   supportEmail: 'support@moripay.co.tz',
   supportPhone: '+255 700 000 000',
   version: '1.0.0',
-  buildLabel: 'Milestone 1 · UI foundation',
 } as const;
 
 /** Copy shown in the About section. */
