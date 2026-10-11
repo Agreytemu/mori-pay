@@ -3,6 +3,7 @@ import { useFocusEffect, useNavigation, useRouter, type Href } from 'expo-router
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { BackHandler, Pressable, Share, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
   AmountInput,
@@ -102,6 +103,7 @@ function initialScreenForFlow(flow?: PaymentFlow): FlowName {
 
 export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   const { colors, radius, space } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const navigation = useNavigation();
   const session = useSession();
@@ -1133,7 +1135,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   return (
     <ScreenContainer
       header={
-        <View style={styles.safeHeader}>
+        <View style={[styles.safeHeader, { paddingTop: insets.top + 12 }]}>
           {activeScreen !== 'overview' ? (
             <FlowHeader
               title={headerConfig.title}
