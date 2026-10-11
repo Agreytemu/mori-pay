@@ -3,7 +3,10 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 
 import {
+  merchantPaymentPreviewSchema,
   payMerchantSchema,
+  type MerchantPaymentPreview,
+  type MerchantPaymentPreviewInput,
   type Merchant,
   type PayMerchantInput,
   type PayMerchantResult,
@@ -23,6 +26,15 @@ export class MerchantsController {
   @Get()
   list(): Promise<Merchant[]> {
     return this.merchants.list();
+  }
+
+  @Post('preview')
+  @HttpCode(HttpStatus.OK)
+  preview(
+    @Body(new ZodValidationPipe(merchantPaymentPreviewSchema))
+    input: MerchantPaymentPreviewInput,
+  ): Promise<MerchantPaymentPreview> {
+    return this.merchants.preview(input);
   }
 
   @Post('pay')

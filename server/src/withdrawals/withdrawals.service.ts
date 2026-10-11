@@ -1,17 +1,27 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 
 import {
   MOBILE_NETWORK_LABEL,
+  type AblinerWithdrawalData,
   type WithdrawalInput,
   type WithdrawalResult,
 } from '@mori-pay/contracts';
 
-import { AblinerClient } from '../abliner/abliner.client.js';
+import {
+  AblinerClient,
+  AblinerProviderError,
+} from '../abliner/abliner.client.js';
 import { AuthService } from '../auth/auth.service.js';
 import { generateReference } from '../common/crypto.js';
 import { InsufficientFundsError } from '../common/errors.js';
 import { createTransactionNotification } from '../account/notification-writer.js';
-import { FeesService } from '../payments/fees.service.js';
+import { Prisma, type Transaction } from '../generated/prisma/client.js';
+import { FeesService, type FeeDetail } from '../payments/fees.service.js';
 import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SettlementService } from '../settlement/settlement.service.js';
@@ -44,23 +54,30 @@ export class WithdrawalsService {
     private readonly limits: LimitsService,
   ) {}
 
-  /** Resolves the payout fee, preferring Abliner's live quote. */
-  async resolveFee(amount: bigint): Promise<bigint> {
-    try {
-      const preview = await this.abliner.previewWithdrawal('mobile', Number(amount));
-      if (preview.fee_tzs > 0) return BigInt(preview.fee_tzs);
-    } catch (error) {
-      this.logger.warn(
-        `Abliner withdrawal preview failed, using local fee rule: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
-    return this.fees.resolveFee({
+  /** Applies the higher of the configured fee and Abliner's payout quote. */
+  async resolveFeeDetail(amount: bigint): Promise<FeeDetail> {
+    const localFee = await this.fees.resolveFeeDetail({
       type: 'withdrawal',
       channel: 'mobileMoney',
       amount,
     });
+    const preview = await this.abliner.previewWithdrawal('mobile', Number(amount));
+    if (
+      preview.amount_tzs !== Number(amount) ||
+      !Number.isSafeInteger(preview.fee_tzs) ||
+      preview.fee_tzs < 0 ||
+      preview.total_debited_tzs !== preview.amount_tzs + preview.fee_tzs
+    ) {
+      throw new Error('Abliner returned an invalid withdrawal fee quote');
+    }
+    const providerFee = BigInt(preview.fee_tzs);
+    if (providerFee <= localFee.fee) return localFee;
+    return {
+      fee: providerFee,
+      flat: providerFee,
+      percentage: 0,
+      ruleId: localFee.ruleId,
+    };
   }
 
   /** Confirms the registered name of a payout recipient before sending. */
@@ -91,8 +108,35 @@ export class WithdrawalsService {
     await this.auth.verifyPin(userId, input.pin);
 
     const amount = BigInt(input.amount);
-    await this.limits.assertWithinLimits(user.id, user.tier, amount);
-    const fee = await this.resolveFee(amount);
+    if (input.idempotencyKey) {
+      const existing = await this.prisma.transaction.findUnique({
+        where: {
+          userId_idempotencyKey: {
+            userId,
+            idempotencyKey: input.idempotencyKey,
+          },
+        },
+      });
+      if (existing) {
+        this.assertRetryMatches(existing, amount, input.phoneNumber);
+        return {
+          transaction: toTransaction(existing),
+          fee: Number(existing.fee),
+        };
+      }
+    }
+
+    const feeDetail = await this.resolveFeeDetail(amount);
+    const fee = feeDetail.fee;
+    if (
+      input.expectedFee !== undefined &&
+      BigInt(input.expectedFee) !== fee
+    ) {
+      throw new ConflictException(
+        'The withdrawal fee changed. Review the updated fee and total before confirming.',
+      );
+    }
+    await this.limits.assertWithinLimits(user.id, user.tier, amount + fee);
 
     const available =
       user.wallet?.ledgerAccounts.find(
@@ -100,7 +144,12 @@ export class WithdrawalsService {
       )?.balance ?? 0n;
     if (available < amount + fee) throw new InsufficientFundsError();
 
-    const created = await this.prisma.$transaction(async (client) => {
+    let result: {
+      transaction: Transaction;
+      isNew: boolean;
+    };
+    try {
+      result = await this.prisma.$transaction(async (client) => {
       if (input.idempotencyKey) {
         const existing = await client.transaction.findUnique({
           where: {
@@ -110,7 +159,10 @@ export class WithdrawalsService {
             },
           },
         });
-        if (existing) return existing;
+        if (existing) {
+          this.assertRetryMatches(existing, amount, input.phoneNumber);
+          return { transaction: existing, isNew: false };
+        }
       }
 
       const transaction = await client.transaction.create({
@@ -124,7 +176,8 @@ export class WithdrawalsService {
           direction: 'debit',
           amount,
           fee,
-          feeFlat: fee,
+          feeFlat: feeDetail.flat,
+          feePercentage: feeDetail.percentage,
           total: amount + fee,
           counterparty: input.phoneNumber,
           counterpartyDetail: input.network
@@ -142,35 +195,91 @@ export class WithdrawalsService {
 
       await createTransactionNotification(client, transaction);
       await this.settlement.postWithdrawalHold(transaction, client);
-      return transaction;
-    });
+      return { transaction, isNew: true };
+      });
+    } catch (error) {
+      if (
+        !input.idempotencyKey ||
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2002'
+      ) {
+        throw error;
+      }
+      const existing = await this.prisma.transaction.findUnique({
+        where: {
+          userId_idempotencyKey: {
+            userId,
+            idempotencyKey: input.idempotencyKey,
+          },
+        },
+      });
+      if (!existing) throw error;
+      this.assertRetryMatches(existing, amount, input.phoneNumber);
+      return {
+        transaction: toTransaction(existing),
+        fee: Number(existing.fee),
+      };
+    }
+    const created = result.transaction;
 
-    if (created.providerRef || created.status !== 'processing') {
-      return { transaction: toTransaction(created), fee: Number(fee) };
+    if (!result.isNew || created.providerRef || created.status !== 'processing') {
+      return {
+        transaction: toTransaction(created),
+        fee: Number(result.isNew ? fee : created.fee),
+      };
     }
 
+    let payout: AblinerWithdrawalData;
     try {
-      const payout = await this.abliner.createWithdrawal({
+      payout = await this.abliner.createWithdrawal({
         amount: input.amount,
         method: 'mobile',
         currency: 'TZS',
         recipient: input.phoneNumber,
         reference: created.reference,
       });
-
-      const updated = await this.prisma.transaction.update({
-        where: { id: created.id },
-        data: {
-          providerRef: payout.id,
-          providerStatus: payout.status,
-          internalReference: payout.id,
-        },
-      });
-
-      return { transaction: toTransaction(updated), fee: Number(fee) };
     } catch (error) {
-      await this.settlement.failWithdrawal(created);
+      if (error instanceof AblinerProviderError && error.retryable) {
+        this.logger.warn(
+          `Abliner outcome is unknown for withdrawal ${created.reference}; keeping its hold for reconciliation`,
+        );
+      } else {
+        await this.settlement.failWithdrawal(created);
+      }
       throw error;
+    }
+
+    const updated = await this.prisma.transaction.update({
+      where: { id: created.id },
+      data: {
+        providerRef: payout.id,
+        providerStatus: payout.status,
+        internalReference: payout.id,
+      },
+    });
+
+    return { transaction: toTransaction(updated), fee: Number(fee) };
+  }
+
+  private assertRetryMatches(
+    transaction: {
+      type: string;
+      channel: string;
+      amount: bigint;
+      counterparty: string;
+    },
+    amount: bigint,
+    recipientPhone: string,
+  ): void {
+    if (
+      transaction.type !== 'withdrawal' ||
+      transaction.channel !== 'mobileMoney' ||
+      transaction.amount !== amount ||
+      transaction.counterparty !== recipientPhone
+    ) {
+      throw new BadRequestException(
+        'This withdrawal retry does not match the original request.',
+      );
     }
   }
 }

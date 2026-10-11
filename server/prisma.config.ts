@@ -17,10 +17,12 @@ export default defineConfig({
     path: 'prisma/migrations',
   },
   datasource: {
-    // MIGRATE_DATABASE_URL is optional: use it (session pooler / direct) when
-    // present, otherwise fall back to DATABASE_URL. Read it via process.env so a
-    // missing value doesn't throw — Prisma's `env()` helper errors on absence,
-    // which would break CI and hosts (e.g. Render) that only set DATABASE_URL.
-    url: process.env.MIGRATE_DATABASE_URL ?? env('DATABASE_URL'),
+    // Client generation does not connect to a database. Keep installation
+    // independent of server secrets, while requiring a URL for every other
+    // Prisma command (including migrations).
+    url:
+      process.argv[2] === 'generate'
+        ? process.env.MIGRATE_DATABASE_URL ?? process.env.DATABASE_URL ?? ''
+        : process.env.MIGRATE_DATABASE_URL ?? env('DATABASE_URL'),
   },
 });

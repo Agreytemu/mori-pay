@@ -38,6 +38,10 @@ const SAFE_PROVIDER_MESSAGE: Record<string, string> = {
   name_not_found: 'We could not find that recipient.',
   not_found: 'We could not find that transaction.',
   unauthorized: 'The payment service is temporarily unavailable.',
+  invalid_request_signature:
+    'The payment service is temporarily unavailable.',
+  webhook_secret_required:
+    'The payment service is temporarily unavailable.',
   gateway_not_configured: 'This payment method is temporarily unavailable.',
   provider_error: 'The payment provider could not complete this request. Please try again.',
   internal_error: 'The payment provider could not complete this request. Please try again.',
@@ -215,7 +219,9 @@ export class AblinerClient {
     const url = `${base}${path}${query}`;
 
     const rawBody =
-      options.body !== undefined ? JSON.stringify(options.body) : undefined;
+      options.body !== undefined
+        ? Buffer.from(JSON.stringify(options.body), 'utf8')
+        : undefined;
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       accept: 'application/json',
@@ -225,20 +231,20 @@ export class AblinerClient {
       headers['idempotency-key'] = options.idempotencyKey;
     }
     if (options.signed) {
-      if (!rawBody) {
+      if (!rawBody || rawBody.byteLength === 0) {
         throw new ProviderError('The payment request could not be prepared.');
       }
       const secret = this.config.abliner.webhookSecret;
-      if (!secret) {
+      if (!secret?.startsWith('whsec_')) {
         this.logger.error(
-          'ABLINER_WEBHOOK_SECRET is required to sign deposit requests',
+          'ABLINER_WEBHOOK_SECRET must be the Abliner webhook signing secret to sign deposit requests',
         );
         throw new ProviderError('The payment service is not configured.');
       }
       const timestamp = Math.floor(Date.now() / 1000).toString();
       headers['x-abliner-timestamp'] = timestamp;
       headers['x-abliner-signature'] = createHmac('sha256', secret)
-        .update(`${timestamp}.${rawBody}`)
+        .update(Buffer.concat([Buffer.from(`${timestamp}.`, 'utf8'), rawBody]))
         .digest('hex');
     }
 
@@ -254,9 +260,12 @@ export class AblinerClient {
         signal: controller.signal,
       });
     } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Abliner ${method} ${path} unreachable: ${detail}`);
-      throw new AblinerProviderError(undefined, true, detail);
+      this.logger.error(`Abliner ${method} ${path} unreachable`);
+      throw new AblinerProviderError(
+        undefined,
+        true,
+        error instanceof Error ? error.message : String(error),
+      );
     } finally {
       clearTimeout(timeout);
     }
@@ -274,7 +283,7 @@ export class AblinerClient {
       const message =
         error?.message ?? `Payment provider returned ${response.status}`;
       this.logger.error(
-        `Abliner ${method} ${path} -> ${response.status} ${error?.code ?? ''}: ${message}`,
+        `Abliner ${method} ${path} -> HTTP ${response.status}`,
       );
       throw new AblinerProviderError(
         error?.code,

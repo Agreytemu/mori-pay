@@ -29,6 +29,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import type {
   MoneyRequest,
+  MerchantPaymentPreview,
   PayMerchantResult,
   ReceiveCode,
   RecipientLookup,
@@ -38,7 +39,7 @@ import type {
 } from '@mori-pay/contracts';
 
 import { ApiError } from '@/lib/api';
-import { newIdempotencyKey } from '@/lib/idempotency';
+import { IdempotencyKeyCache } from '@/lib/idempotency';
 import {
   createRequest,
   getReceiveCode,
@@ -46,6 +47,7 @@ import {
   listMerchants,
   lookupRecipient,
   payMerchant,
+  previewMerchantPayment,
   previewTransfer,
   sendMoney,
 } from '@/lib/mori-api';
@@ -112,6 +114,7 @@ export default function PaymentsScreen() {
   const [payMerchantId, setPayMerchantId] = useState<string | null>(null);
   const [payAmount, setPayAmount] = useState('');
   const [payNote, setPayNote] = useState('');
+  const [payPreview, setPayPreview] = useState<MerchantPaymentPreview | null>(null);
   const [payResult, setPayResult] = useState<PayMerchantResult | null>(null);
 
   /* Receive QR */
@@ -127,6 +130,7 @@ export default function PaymentsScreen() {
 
   const merchants = useAsync(() => listMerchants(), []);
   const sendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idempotencyKeys = useRef(new IdempotencyKeyCache());
 
   const wallet = session.wallet;
   const sendRecipientName =
@@ -316,16 +320,20 @@ export default function PaymentsScreen() {
 
   const submitSend = async (pin: string) => {
     if (!sendPhoneNorm) return;
+    const amount = Number(sendAmount || '0');
+    const note = sendNote.trim();
+    const intent = `send:${sendPhoneNorm}:${amount}:${note}`;
     setBusy(true);
     setError(null);
     try {
       const result = await sendMoney({
         recipientPhone: sendPhoneNorm,
-        amount: Number(sendAmount || '0'),
-        note: sendNote.trim() || undefined,
+        amount,
+        note: note || undefined,
         pin,
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: idempotencyKeys.current.get(intent, 'send'),
       });
+      idempotencyKeys.current.clear(intent);
       setSendResult(result);
       setPinReason(null);
       setPinEntry('');
@@ -379,7 +387,7 @@ export default function PaymentsScreen() {
     }
   };
 
-  const continuePayAmount = () => {
+  const continuePayAmount = async () => {
     setError(null);
     const amount = Number(payAmount || '0');
     if (amount < MIN_AMOUNT) {
@@ -387,21 +395,36 @@ export default function PaymentsScreen() {
       return;
     }
     if (!payMerchantId) return;
-    setScreen('pay-review');
+    setBusy(true);
+    setPayPreview(null);
+    try {
+      setPayPreview(
+        await previewMerchantPayment({ merchantId: payMerchantId, amount }),
+      );
+      setScreen('pay-review');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not calculate the payment fee.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const submitPay = async (pin: string) => {
     if (!payMerchantId) return;
+    const amount = Number(payAmount || '0');
+    const note = payNote.trim();
+    const intent = `merchant-pay:${payMerchantId}:${amount}:${note}`;
     setBusy(true);
     setError(null);
     try {
       const result = await payMerchant({
         merchantId: payMerchantId,
-        amount: Number(payAmount || '0'),
-        note: payNote.trim() || undefined,
+        amount,
+        note: note || undefined,
         pin,
-        idempotencyKey: newIdempotencyKey(),
+        idempotencyKey: idempotencyKeys.current.get(intent, 'merchant-pay'),
       });
+      idempotencyKeys.current.clear(intent);
       setPayResult(result);
       setPinReason(null);
       setPinEntry('');
@@ -842,13 +865,24 @@ export default function PaymentsScreen() {
         subtitle="Optional note"
       />
       {error ? <StatusBanner tone="error" title="Check the amount" message={error} onDismiss={() => setError(null)} /> : null}
-      <Button label="Continue" onPress={continuePayAmount} />
+      <Button label="Continue" loading={busy} onPress={() => void continuePayAmount()} />
     </View>
   );
 
   const payRows: DetailRow[] = [
-    { label: 'Merchant', value: selectedMerchant?.name ?? '' },
+    { label: 'Merchant', value: payPreview?.merchantName ?? selectedMerchant?.name ?? '' },
     { label: 'Amount', value: formatMoney(Number(payAmount || '0'), 'TZS') },
+    {
+      label: payPreview && payPreview.feePercentage > 0
+        ? `Fee (${payPreview.feePercentage}%)`
+        : 'Fee',
+      value: payPreview ? formatMoney(payPreview.fee, 'TZS') : '…',
+      muted: true,
+    },
+    {
+      label: 'Total',
+      value: payPreview ? formatMoney(payPreview.total, 'TZS') : '…',
+    },
     { label: 'Note', value: payNote || 'No note' },
   ];
 

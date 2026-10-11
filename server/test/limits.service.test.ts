@@ -9,10 +9,10 @@ import {
 } from '../src/limits/limits.config.js';
 import { LimitsService } from '../src/limits/limits.service.js';
 
-function makeService(usage: bigint): LimitsService {
+function makeService(usage: bigint, fees = 0n): LimitsService {
   const prisma = {
     transaction: {
-      aggregate: async () => ({ _sum: { amount: usage } }),
+      aggregate: async () => ({ _sum: { amount: usage, fee: fees } }),
     },
   };
   const config = {
@@ -39,6 +39,11 @@ describe('limits service', () => {
     assert.equal(summary.dailyUsed, 250_000n);
   });
 
+  it('includes prior fees in daily outflow usage', async () => {
+    const summary = await makeService(250_000n, 5_000n).getSummary('usr_1', 'Standard');
+    assert.equal(summary.dailyUsed, 255_000n);
+  });
+
   it('rejects amounts above the per-transaction limit', async () => {
     const service = makeService(0n);
     await assert.rejects(
@@ -51,6 +56,19 @@ describe('limits service', () => {
     const service = makeService(DEFAULT_TIER_LIMITS.Standard.dailyOutflow - 100n);
     await assert.rejects(
       () => service.assertWithinLimits('usr_1', 'Standard', 200n),
+      BadRequestException,
+    );
+  });
+
+  it('rejects a transaction when its fee pushes debit above the per-transaction limit', async () => {
+    const service = makeService(0n);
+    await assert.rejects(
+      () =>
+        service.assertWithinLimits(
+          'usr_1',
+          'Standard',
+          DEFAULT_TIER_LIMITS.Standard.perTransaction - 1_000n + 1_001n,
+        ),
       BadRequestException,
     );
   });

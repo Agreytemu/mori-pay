@@ -39,13 +39,14 @@ export class WithdrawalsController {
   async preview(
     @Query(new ZodValidationPipe(withdrawalPreviewQuerySchema))
     query: WithdrawalPreviewQuery,
-  ): Promise<{ amount: number; fee: number; total: number }> {
+  ): Promise<{ amount: number; fee: number; feePercentage: number; total: number }> {
     const amount = BigInt(query.amount);
-    const fee = await this.withdrawals.resolveFee(amount);
+    const feeDetail = await this.withdrawals.resolveFeeDetail(amount);
     return {
       amount: Number(amount),
-      fee: Number(fee),
-      total: Number(amount + fee),
+      fee: Number(feeDetail.fee),
+      feePercentage: feeDetail.percentage,
+      total: Number(amount + feeDetail.fee),
     };
   }
 

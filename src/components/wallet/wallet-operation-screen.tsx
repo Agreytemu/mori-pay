@@ -29,11 +29,12 @@ import {
 } from '@mori-pay/contracts';
 
 import { ApiError } from '@/lib/api';
-import { newIdempotencyKey } from '@/lib/idempotency';
+import { IdempotencyKeyCache } from '@/lib/idempotency';
 import {
   createWithdrawal,
   getTransaction,
   topupCard,
+  topupCardPreview,
   topupMobileMoney,
   withdrawalLookup,
   withdrawalPreview,
@@ -81,10 +82,17 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     forAmount: number;
     amount: number;
     fee: number;
+    feePercentage: number;
     total: number;
   } | null>(null);
+  const [previewError, setPreviewError] = useState<{
+    forAmount: number;
+    message: string;
+  } | null>(null);
+  const [previewAttempt, setPreviewAttempt] = useState(0);
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idempotencyKeys = useRef(new IdempotencyKeyCache());
 
   const numericAmount = Number(amount || '0');
   const amountValid = numericAmount >= MIN_AMOUNT;
@@ -92,7 +100,15 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const activeLookup =
     lookup && normalizedPhone && lookup.phone === normalizedPhone ? lookup : null;
   const activePreview =
-    !isDeposit && preview && preview.forAmount === numericAmount ? preview : null;
+    (!isDeposit || method === 'card') &&
+    preview &&
+    preview.forAmount === numericAmount
+      ? preview
+      : null;
+  const needsFeePreview =
+    amountValid && (!isDeposit || method === 'card');
+  const activePreviewError =
+    previewError?.forAmount === numericAmount ? previewError.message : null;
 
   /* ------------------------------------------------------- withdraw: lookup + fee */
 
@@ -129,20 +145,38 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   }, [mobileNumber, isDeposit]);
 
   useEffect(() => {
-    if (isDeposit || !amountValid) return;
+    if (!amountValid || (isDeposit && method !== 'card')) return;
     let cancelled = false;
-    void (async () => {
-      try {
-        const result = await withdrawalPreview(numericAmount);
-        if (!cancelled) setPreview({ forAmount: numericAmount, ...result });
-      } catch {
-        if (!cancelled) setPreview(null);
-      }
-    })();
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const result = isDeposit
+            ? await topupCardPreview(numericAmount)
+            : await withdrawalPreview(numericAmount);
+          if (!cancelled) {
+            setPreview({ forAmount: numericAmount, ...result });
+            setPreviewError(null);
+            setError(null);
+          }
+        } catch (err) {
+          if (!cancelled) {
+            setPreview(null);
+            setPreviewError({
+              forAmount: numericAmount,
+              message:
+                err instanceof ApiError
+                  ? err.message
+                  : 'Could not calculate the fee. Please try again.',
+            });
+          }
+        }
+      })();
+    }, 350);
     return () => {
       cancelled = true;
+      clearTimeout(timer);
     };
-  }, [isDeposit, amountValid, numericAmount]);
+  }, [isDeposit, method, amountValid, numericAmount, previewAttempt]);
 
   /* ------------------------------------------------------------- deposit: poll */
 
@@ -164,14 +198,21 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
 
   const runCardDeposit = useCallback(
     async (value: number) => {
-      const result = await topupCard({ amount: value });
+      const intent = `card-deposit:${value}`;
+      const result = await topupCard({
+        amount: value,
+        expectedFee: activePreview?.fee,
+        idempotencyKey: idempotencyKeys.current.get(intent, 'card-deposit'),
+      });
       await WebBrowser.openBrowserAsync(result.checkoutUrl);
       const status = await pollUntilSettled(result.transaction.id);
       if (status === 'completed') {
+        idempotencyKeys.current.clear(intent);
         await refreshWallet();
         setStep('done');
         setResultMessage('Your card payment was received.');
       } else if (status === 'failed') {
+        idempotencyKeys.current.clear(intent);
         setStep('failed');
         setError('The card payment failed. No money left your card.');
       } else {
@@ -181,25 +222,29 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         );
       }
     },
-    [pollUntilSettled, refreshWallet]
+    [activePreview?.fee, pollUntilSettled, refreshWallet]
   );
 
   const runMobileDeposit = useCallback(
     async (value: number) => {
       const normalized = normalizeTzPhone(mobileNumber);
       if (!normalized) throw new Error('Enter a valid mobile money number.');
+      const intent = `mobile-deposit:${value}:${normalized}:${network}`;
       const result = await topupMobileMoney({
         amount: value,
         mobileNumber: normalized,
         network,
+        idempotencyKey: idempotencyKeys.current.get(intent, 'mobile-deposit'),
       });
       setDialog({ title: 'Check your phone', message: result.instructions });
       const status = await pollUntilSettled(result.transaction.id);
       if (status === 'completed') {
+        idempotencyKeys.current.clear(intent);
         await refreshWallet();
         setStep('done');
         setResultMessage('Deposit received.');
       } else if (status === 'failed') {
+        idempotencyKeys.current.clear(intent);
         setStep('failed');
         setError('The deposit failed or was cancelled.');
       } else {
@@ -216,20 +261,23 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     async (value: number, pinValue: string) => {
       const normalized = normalizeTzPhone(mobileNumber);
       if (!normalized) throw new Error('Enter a valid payout number.');
+      const intent = `withdrawal:${value}:${normalized}:${network}`;
       const result = await createWithdrawal({
         amount: value,
         phoneNumber: normalized,
         network,
         pin: pinValue,
-        idempotencyKey: newIdempotencyKey(),
+        expectedFee: activePreview?.fee,
+        idempotencyKey: idempotencyKeys.current.get(intent, 'withdrawal'),
       });
+      idempotencyKeys.current.clear(intent);
       await refreshWallet();
       setStep('done');
       setResultMessage(
         `Sent ${formatAmount(result.transaction.amount)} to ${result.transaction.counterparty}. Fee ${formatAmount(result.fee)}.`
       );
     },
-    [mobileNumber, network, refreshWallet]
+    [activePreview?.fee, mobileNumber, network, refreshWallet]
   );
 
   /* ---------------------------------------------------------------- handlers */
@@ -243,6 +291,15 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     }
 
     if (isDeposit) {
+      if (method === 'card' && !activePreview) {
+        if (activePreviewError) {
+          setPreviewError(null);
+          setPreviewAttempt((attempt) => attempt + 1);
+        } else {
+          setError('Wait for the card fee and total to load before continuing.');
+        }
+        return;
+      }
       setStep('busy');
       setBusy(true);
       try {
@@ -250,6 +307,10 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         else await runMobileDeposit(numericAmount);
       } catch (err) {
         setStep('form');
+        if (err instanceof ApiError && err.status === 409) {
+          setPreview(null);
+          setPreviewAttempt((attempt) => attempt + 1);
+        }
         setError(err instanceof ApiError ? err.message : 'Deposit failed. Please try again.');
       } finally {
         setBusy(false);
@@ -261,6 +322,15 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     const normalized = normalizeTzPhone(mobileNumber);
     if (!normalized) {
       setError('Enter a valid payout number.');
+      return;
+    }
+    if (!activePreview) {
+      if (activePreviewError) {
+        setPreviewError(null);
+        setPreviewAttempt((attempt) => attempt + 1);
+      } else {
+        setError('Wait for the withdrawal fee and total to load before continuing.');
+      }
       return;
     }
     setStep('pin');
@@ -280,21 +350,30 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     try {
       await submitWithdrawal(numericAmount, pinValue);
     } catch (err) {
-      setStep('pin');
+      if (err instanceof ApiError && err.status === 409) {
+        setStep('form');
+        setPreview(null);
+        setPreviewAttempt((attempt) => attempt + 1);
+        setError(err.message);
+      } else {
+        setStep('pin');
+        setError(err instanceof ApiError ? err.message : 'Withdrawal failed. Please try again.');
+      }
       setEntry('');
-      setError(err instanceof ApiError ? err.message : 'Withdrawal failed. Please try again.');
     } finally {
       setBusy(false);
     }
   };
 
   const reset = () => {
+    idempotencyKeys.current.clearAll();
     setStep('form');
     setAmount('');
     setEntry('');
     setError(null);
     setResultMessage(null);
     setPreview(null);
+    setPreviewError(null);
     setLookup(null);
   };
 
@@ -472,26 +551,6 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                 />
               ) : null}
 
-              {activePreview ? (
-                <View style={[styles.feeCard, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md }]}>
-                  <View style={styles.feeRow}>
-                    <AppText variant="bodySmall" color={colors.textSecondary}>Amount</AppText>
-                    <AppText variant="bodySmallStrong">{formatAmount(activePreview.amount)}</AppText>
-                  </View>
-                  <View style={styles.feeRow}>
-                    <AppText variant="bodySmall" color={colors.textSecondary}>Fee</AppText>
-                    <AppText variant="bodySmallStrong">{formatAmount(activePreview.fee)}</AppText>
-                  </View>
-                  <View style={styles.feeRow}>
-                    <AppText variant="bodySmallStrong">You receive</AppText>
-                    <AppText variant="title3">{formatAmount(activePreview.amount)}</AppText>
-                  </View>
-                  <View style={styles.feeRow}>
-                    <AppText variant="bodySmall" color={colors.textSecondary}>Total debited</AppText>
-                    <AppText variant="bodySmallStrong">{formatAmount(activePreview.total)}</AppText>
-                  </View>
-                </View>
-              ) : null}
             </View>
           ) : (
             <View style={[styles.accountHint, { backgroundColor: colors.surfaceMuted, borderRadius: radius.md }]}>
@@ -502,10 +561,57 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
             </View>
           )}
 
+          {activePreview ? (
+            <View style={[styles.feeCard, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md }]}>
+              <View style={styles.feeRow}>
+                <AppText variant="bodySmall" color={colors.textSecondary}>
+                  {isDeposit ? 'Wallet credit' : 'Amount'}
+                </AppText>
+                <AppText variant="bodySmallStrong">{formatAmount(activePreview.amount)}</AppText>
+              </View>
+              <View style={styles.feeRow}>
+                <AppText variant="bodySmall" color={colors.textSecondary}>
+                  {activePreview.feePercentage > 0
+                    ? `Fee (${activePreview.feePercentage}%)`
+                    : 'Fee'}
+                </AppText>
+                <AppText variant="bodySmallStrong">{formatAmount(activePreview.fee)}</AppText>
+              </View>
+              {!isDeposit ? (
+                <View style={styles.feeRow}>
+                  <AppText variant="bodySmallStrong">You receive</AppText>
+                  <AppText variant="title3">{formatAmount(activePreview.amount)}</AppText>
+                </View>
+              ) : null}
+              <View style={styles.feeRow}>
+                <AppText variant="bodySmall" color={colors.textSecondary}>
+                  {isDeposit ? 'Total sent to card checkout' : 'Total debited'}
+                </AppText>
+                <AppText variant="bodySmallStrong">{formatAmount(activePreview.total)}</AppText>
+              </View>
+              {isDeposit ? (
+                <AppText variant="caption" color={colors.textTertiary}>
+                  Review the checkout page for any additional card-provider charges.
+                </AppText>
+              ) : null}
+            </View>
+          ) : null}
+          {needsFeePreview && !activePreview && !activePreviewError ? (
+            <AppText variant="caption" color={colors.textSecondary}>Calculating fee and total…</AppText>
+          ) : null}
+          {needsFeePreview && activePreviewError ? (
+            <StatusBanner tone="error" title="Could not calculate fee" message={activePreviewError} />
+          ) : null}
+
           {error ? <StatusBanner tone="error" title="Something went wrong" message={error} onDismiss={() => setError(null)} /> : null}
 
           {step === 'form' ? (
-            <Button label={isDeposit ? 'Continue' : 'Continue'} loading={busy} onPress={() => void continueFlow()} />
+            <Button
+              label="Continue"
+              loading={busy}
+              disabled={needsFeePreview && !activePreview && !activePreviewError}
+              onPress={() => void continueFlow()}
+            />
           ) : null}
 
           <AppText variant="caption" color={colors.textTertiary}>{accountHint}</AppText>

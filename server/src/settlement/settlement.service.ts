@@ -66,7 +66,7 @@ export class SettlementService {
 
   /** A top-up cleared: move money from the outside world into the wallet. */
   async settleDeposit(transaction: Transaction): Promise<void> {
-    if (!canTransition(transaction.status, TRANSACTION_STATUS.completed)) return;
+    if (!canTransition(transaction.type, transaction.status, TRANSACTION_STATUS.completed)) return;
 
     await this.prisma.$transaction(async (client) => {
       const claimed = await client.transaction.updateMany({
@@ -84,20 +84,33 @@ export class SettlementService {
         client,
       );
       const accountId = await this.availableAccountId(transaction.userId, client);
+      const legs: LedgerLeg[] = [
+        {
+          ledgerAccountId: external.id,
+          direction: 'debit',
+          amount: transaction.total,
+          allowNegative: true,
+        },
+        { ledgerAccountId: accountId, direction: 'credit', amount: transaction.amount },
+      ];
+
+      if (transaction.fee > 0n) {
+        const fees = await this.ledger.getSystemAccount(
+          SYSTEM_LEDGER_ACCOUNTS.fees,
+          client,
+        );
+        legs.push({
+          ledgerAccountId: fees.id,
+          direction: 'credit',
+          amount: transaction.fee,
+        });
+      }
 
       await this.ledger.post(
         {
           reference: `${transaction.reference}-credit`,
           transactionId: transaction.id,
-          legs: [
-            {
-              ledgerAccountId: external.id,
-              direction: 'debit',
-              amount: transaction.amount,
-              allowNegative: true,
-            },
-            { ledgerAccountId: accountId, direction: 'credit', amount: transaction.amount },
-          ],
+          legs,
         },
         client,
       );
@@ -105,7 +118,7 @@ export class SettlementService {
   }
 
   async failDeposit(transaction: Transaction): Promise<void> {
-    if (!canTransition(transaction.status, TRANSACTION_STATUS.failed)) return;
+    if (!canTransition(transaction.type, transaction.status, TRANSACTION_STATUS.failed)) return;
 
     await this.prisma.transaction.updateMany({
       where: { id: transaction.id, status: TRANSACTION_STATUS.pending },
@@ -118,7 +131,7 @@ export class SettlementService {
 
   /** A payout cleared: release the hold to the outside world. */
   async settleWithdrawal(transaction: Transaction): Promise<void> {
-    if (!canTransition(transaction.status, TRANSACTION_STATUS.completed)) return;
+    if (!canTransition(transaction.type, transaction.status, TRANSACTION_STATUS.completed)) return;
 
     await this.prisma.$transaction(async (client) => {
       const claimed = await client.transaction.updateMany({
@@ -160,7 +173,7 @@ export class SettlementService {
 
   /** A payout failed: return the held funds (and fee) to the user. */
   async failWithdrawal(transaction: Transaction): Promise<void> {
-    if (!canTransition(transaction.status, TRANSACTION_STATUS.failed)) return;
+    if (!canTransition(transaction.type, transaction.status, TRANSACTION_STATUS.failed)) return;
 
     await this.prisma.$transaction(async (client) => {
       const claimed = await client.transaction.updateMany({

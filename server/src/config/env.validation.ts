@@ -12,8 +12,8 @@ export const envSchema = z.object({
   REDIS_URL: z.string().url().optional(),
   CORS_ORIGINS: z.string().default('*'),
 
-  JWT_ACCESS_SECRET: z.string().min(16).default('dev-access-secret-change-me-32chars'),
-  JWT_REFRESH_SECRET: z.string().min(16).default('dev-refresh-secret-change-me-32chars'),
+  JWT_ACCESS_SECRET: z.string().default('dev-access-secret-change-me-32chars'),
+  JWT_REFRESH_SECRET: z.string().default('dev-refresh-secret-change-me-32chars'),
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('30d'),
 
@@ -31,11 +31,12 @@ export const envSchema = z.object({
 
   ABLINER_BASE_URL: z.string().url().default('https://abliner.net'),
   ABLINER_API_KEY: z.string().default(''),
-  ABLINER_WEBHOOK_SECRET: z.string().optional(),
+  /** Abliner Dashboard secret for deposit signing and webhook verification. */
+  ABLINER_WEBHOOK_SECRET: z.string().trim().optional(),
   /** Public HTTPS endpoint Abliner POSTs transaction events to. */
   ABLINER_CALLBACK_URL: z
     .string()
-    .default('http://localhost:4000/api/v1/webhooks/abliner'),
+    .default('https://mori-pay.onrender.com/api/v1/webhooks/abliner'),
   /** Approved Abliner Sender ID for outbound SMS (optional). */
   ABLINER_SMS_SENDER_ID: z.string().optional(),
 
@@ -62,13 +63,40 @@ export const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 export function validateEnv(config: Record<string, unknown>): Env {
-  const result = envSchema.safeParse(config);
+  const normalized: Record<string, unknown> = { ...config };
+
+  for (const [key, fallback] of [
+    ['JWT_ACCESS_SECRET', 'dev-access-secret-change-me-32chars'],
+    ['JWT_REFRESH_SECRET', 'dev-refresh-secret-change-me-32chars'],
+  ] as const) {
+    const value = normalized[key];
+    if (typeof value === 'string' && value.trim() === '') {
+      normalized[key] = fallback;
+    }
+  }
+
+  const result = envSchema.safeParse(normalized);
 
   if (!result.success) {
     const details = result.error.issues
       .map((issue) => `  - ${issue.path.join('.') || '(root)'}: ${issue.message}`)
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${details}`);
+  }
+
+  if (result.data.NODE_ENV === 'production') {
+    const weakJwtSecrets = [
+      ['JWT_ACCESS_SECRET', result.data.JWT_ACCESS_SECRET],
+      ['JWT_REFRESH_SECRET', result.data.JWT_REFRESH_SECRET],
+    ].filter(([, value]) => value.length < 16);
+
+    if (weakJwtSecrets.length > 0) {
+      throw new Error(
+        `Invalid environment configuration:\n${weakJwtSecrets
+          .map(([key]) => `  - ${key}: must be at least 16 characters in production`)
+          .join('\n')}`,
+      );
+    }
   }
 
   if (result.data.RESEND_API_KEY && !result.data.EMAIL_FROM) {
@@ -88,6 +116,8 @@ export function validateEnv(config: Record<string, unknown>): Env {
     if (!result.data.ABLINER_API_KEY) missing.push('ABLINER_API_KEY');
     if (!result.data.ABLINER_WEBHOOK_SECRET) {
       missing.push('ABLINER_WEBHOOK_SECRET');
+    } else if (!result.data.ABLINER_WEBHOOK_SECRET.startsWith('whsec_')) {
+      missing.push('ABLINER_WEBHOOK_SECRET (must be the Abliner whsec_ signing secret)');
     }
     if (missing.length > 0) {
       throw new Error(

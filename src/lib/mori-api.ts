@@ -1,5 +1,6 @@
 import type {
   CardTopupResult,
+  FeePreview,
   AuthSession,
   AuthTokens,
   AuthUser,
@@ -10,6 +11,7 @@ import type {
   EmailRegisterInput,
   EmailSignInInput,
   Merchant,
+  MerchantPaymentPreview,
   MoneyRequest,
   OtpChallengeResult,
   Paginated,
@@ -62,7 +64,7 @@ export type PayoutLookup = {
   network?: string;
 };
 
-export type WithdrawalPreview = { amount: number; fee: number; total: number };
+export type WithdrawalPreview = FeePreview;
 
 /* --------------------------------------------------------------------- auth */
 
@@ -299,6 +301,10 @@ export function topupCard(input: TopupCardInput): Promise<CardTopupResult> {
   return request<CardTopupResult>('/topups/card', { method: 'POST', body: input });
 }
 
+export function topupCardPreview(amount: number): Promise<FeePreview> {
+  return request<FeePreview>('/topups/card/preview', { query: { amount } });
+}
+
 /* ---------------------------------------------------------------- withdrawals */
 
 export function withdrawalPreview(amount: number): Promise<WithdrawalPreview> {
@@ -328,6 +334,16 @@ export function sendMoney(input: SendMoneyInput): Promise<SendMoneyResult> {
 }
 
 /* ----------------------------------------------------------------- merchants */
+
+export function previewMerchantPayment(input: {
+  merchantId: string;
+  amount: number;
+}): Promise<MerchantPaymentPreview> {
+  return request<MerchantPaymentPreview>('/merchants/preview', {
+    method: 'POST',
+    body: input,
+  });
+}
 
 export function listMerchants(): Promise<Merchant[]> {
   return request<Merchant[]>('/merchants');

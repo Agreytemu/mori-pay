@@ -44,9 +44,9 @@ export class LimitsService {
         status: { in: OUTFLOW_STATUSES },
         createdAt: { gte: since },
       },
-      _sum: { amount: true },
+      _sum: { amount: true, fee: true },
     });
-    return aggregate._sum.amount ?? 0n;
+    return (aggregate._sum.amount ?? 0n) + (aggregate._sum.fee ?? 0n);
   }
 
   /** Limit + usage for display on the wallet balance card. */
@@ -59,24 +59,24 @@ export class LimitsService {
   }
 
   /**
-   * Throws when an outflow would breach the per-transaction or 24h ceiling.
+   * `totalDebit` includes fees so the limit reflects the full wallet debit.
    * Callers invoke this after PIN verification and before moving money.
    */
   async assertWithinLimits(
     userId: string,
     tier: string,
-    amount: bigint,
+    totalDebit: bigint,
   ): Promise<void> {
     const limits = this.limitsFor(tier);
 
-    if (amount > limits.perTransaction) {
+    if (totalDebit > limits.perTransaction) {
       throw new BadRequestException(
         `Amount exceeds your per-transaction limit of ${limits.perTransaction} TZS`,
       );
     }
 
     const used = await this.getOutflowUsage(userId);
-    if (used + amount > limits.dailyOutflow) {
+    if (used + totalDebit > limits.dailyOutflow) {
       throw new BadRequestException(
         'This transaction would exceed your daily limit',
       );

@@ -4,9 +4,21 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { afterEach, describe, it } from 'node:test';
 
-import { AblinerClient, AblinerProviderError } from '../src/abliner/abliner.client.js';
+import {
+  AblinerClient,
+  AblinerProviderError,
+} from '../src/abliner/abliner.client.js';
 import { ProviderError } from '../src/common/errors.js';
 import type { AppConfigService } from '../src/config/app-config.service.js';
+import {
+  ablinerWebhookSchema,
+} from '@mori-pay/contracts';
+import {
+  completedTransactionFixture,
+  completedWebhookFixture,
+  depositRequestBodyFixture,
+  pendingDepositResponseFixture,
+} from './fixtures/abliner-contract.fixtures.js';
 
 type Captured = { url: string; init: RequestInit };
 
@@ -62,22 +74,11 @@ const depositRequest = {
 describe('AblinerClient contract', () => {
   it('signs and shapes a deposit exactly as the docs require', async () => {
     const client = new AblinerClient(config({ webhookSecret: 'whsec_test' }));
-    stubFetch({
-      status: 'success',
-      data: {
-        id: 'abl_tx_1',
-        type: 'deposit',
-        flow: 'push',
-        status: 'pending',
-        amount: 5_000,
-        currency: 'TZS',
-        method: 'mobile',
-        payment_url: null,
-        reference: 'ABLREF1',
-      },
-    });
+    stubFetch(pendingDepositResponseFixture);
 
+    const before = Math.floor(Date.now() / 1000);
     const result = await client.createDeposit(depositRequest);
+    const after = Math.floor(Date.now() / 1000);
     assert.equal(result.id, 'abl_tx_1');
 
     const call = lastCapture();
@@ -90,22 +91,25 @@ describe('AblinerClient contract', () => {
     assert.equal(headers['idempotency-key'], 'idem-1');
 
     const timestamp = headers['x-abliner-timestamp'];
-    assert.ok(timestamp && /^\d+$/.test(timestamp), 'timestamp header present');
+    assert.match(timestamp, /^\d{10}$/, 'timestamp is Unix seconds');
+    assert.ok(Number(timestamp) >= before && Number(timestamp) <= after);
 
-    const body = call.init.body as string;
+    const bodyBytes = Buffer.from(call.init.body as Uint8Array);
+    const body = bodyBytes.toString('utf8');
+    assert.deepEqual(
+      bodyBytes,
+      Buffer.from(JSON.stringify(depositRequestBodyFixture), 'utf8'),
+      'the exact serialized bytes are sent',
+    );
     const expectedSignature = createHmac('sha256', 'whsec_test')
-      .update(`${timestamp}.${body}`)
+      .update(
+        Buffer.concat([Buffer.from(`${timestamp}.`, 'utf8'), bodyBytes]),
+      )
       .digest('hex');
     assert.equal(headers['x-abliner-signature'], expectedSignature);
+    assert.match(headers['x-abliner-signature'], /^[a-f0-9]{64}$/);
 
-    assert.deepEqual(JSON.parse(body), {
-      amount: 5_000,
-      method: 'mobile',
-      currency: 'TZS',
-      phone: '255700000001',
-      reference: 'DEP-TEST-1',
-      callback_url: 'https://pay.example.com/api/v1/webhooks/abliner',
-    });
+    assert.deepEqual(JSON.parse(body), depositRequestBodyFixture);
   });
 
   it('refuses to sign a deposit without a webhook secret', async () => {
@@ -123,8 +127,28 @@ describe('AblinerClient contract', () => {
     assert.equal(called, false, 'no network call should be attempted');
   });
 
+  it('refuses a secret that is not an Abliner webhook signing secret', async () => {
+    const client = new AblinerClient(config({ webhookSecret: 'not-a-whsec' }));
+    let called = false;
+    globalThis.fetch = (async () => {
+      called = true;
+      return new Response('{}');
+    }) as unknown as typeof fetch;
+
+    await assert.rejects(
+      () => client.createDeposit(depositRequest),
+      (error: unknown) => error instanceof ProviderError,
+    );
+    assert.equal(called, false, 'misconfigured secret must not reach Abliner');
+  });
+
   it('looks transactions up by our supported identifiers', async () => {
     const client = new AblinerClient(config());
+
+    stubFetch({ status: 'success', data: [completedTransactionFixture] });
+    const byId = await client.findTransaction({ id: 'abl_tx_1' });
+    assert.equal(byId?.id, 'abl_tx_1');
+    assert.ok(lastCapture().url.includes('id=abl_tx_1'));
 
     stubFetch({ status: 'success', data: [] });
     const missing = await client.findTransaction({ customerReference: 'DEP-1' });
@@ -133,11 +157,18 @@ describe('AblinerClient contract', () => {
 
     stubFetch({
       status: 'success',
-      data: [{ id: 'abl_tx_9', type: 'deposit', amount: 500, currency: 'TZS', status: 'completed', reference: 'ABL9', created_at: 'now' }],
+      data: [completedTransactionFixture],
     });
     const found = await client.findTransaction({ idempotencyKey: 'idem-9' });
-    assert.equal(found?.id, 'abl_tx_9');
+    assert.equal(found?.id, completedTransactionFixture.id);
     assert.ok(lastCapture().url.includes('idempotency_key=idem-9'));
+  });
+
+  it('accepts the documented webhook fixture shape', () => {
+    assert.deepEqual(
+      ablinerWebhookSchema.parse(completedWebhookFixture),
+      completedWebhookFixture,
+    );
   });
 
   it('maps a known provider code to a safe user message', async () => {
@@ -161,6 +192,10 @@ describe('AblinerClient contract', () => {
 
   it('never leaks an unknown provider message to the client', async () => {
     const client = new AblinerClient(config({ webhookSecret: 'whsec_test' }));
+    const logs: string[] = [];
+    Object.defineProperty(client, 'logger', {
+      value: { error: (message: string) => logs.push(message) },
+    });
     stubFetch(
       { status: 'error', code: 'invalid_request_signature', message: 'signature mismatch for key tsl_live_abc', retryable: false },
       401,
@@ -172,9 +207,68 @@ describe('AblinerClient contract', () => {
         assert.ok(error instanceof AblinerProviderError);
         assert.equal(error.providerCode, 'invalid_request_signature');
         assert.doesNotMatch(error.message, /tsl_live/);
-        assert.match(error.message, /could not be completed/i);
+        assert.equal(
+          error.message,
+          'The payment service is temporarily unavailable.',
+        );
+        assert.deepEqual(logs, ['Abliner POST /api/v1/deposits -> HTTP 401']);
+        assert.doesNotMatch(logs.join('\n'), /signature mismatch|tsl_live_abc/i);
         return true;
       },
     );
+  });
+
+  it('maps provider error codes to safe messages across HTTP error statuses', async () => {
+    const cases = [
+      {
+        status: 400,
+        code: 'validation_failed',
+        message: 'The payment details were rejected. Review them and try again.',
+      },
+      {
+        status: 401,
+        code: 'invalid_request_signature',
+        message: 'The payment service is temporarily unavailable.',
+      },
+      {
+        status: 402,
+        code: 'insufficient_funds',
+        message: 'You do not have enough funds for this transaction.',
+      },
+      {
+        status: 422,
+        code: 'amount_out_of_range',
+        message: 'That amount is outside the allowed range.',
+      },
+      {
+        status: 502,
+        code: 'provider_error',
+        message: 'The payment provider could not complete this request. Please try again.',
+      },
+    ];
+
+    for (const { status, code, message } of cases) {
+      const client = new AblinerClient(config({ webhookSecret: 'whsec_test' }));
+      stubFetch(
+        {
+          status: 'error',
+          code,
+          message: 'raw provider detail containing sensitive data',
+          retryable: status >= 500,
+        },
+        status,
+      );
+
+      await assert.rejects(
+        () => client.createDeposit(depositRequest),
+        (error: unknown) => {
+          assert.ok(error instanceof AblinerProviderError);
+          assert.equal(error.providerCode, code);
+          assert.equal(error.message, message);
+          assert.doesNotMatch(error.message, /raw provider detail|sensitive data/i);
+          return true;
+        },
+      );
+    }
   });
 });

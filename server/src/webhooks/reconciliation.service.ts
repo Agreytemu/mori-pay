@@ -72,6 +72,19 @@ export class ReconciliationService {
     const verified = await this.verify(transaction);
     if (!verified || verified.status === 'pending') return;
 
+    const expectedAmount =
+      transaction.type === 'deposit' ? transaction.total : transaction.amount;
+    if (
+      verified.type !== transaction.type ||
+      !Number.isSafeInteger(verified.amount) ||
+      BigInt(verified.amount) !== expectedAmount
+    ) {
+      this.logger.warn(
+        `Provider record does not match expected type/amount for ${transaction.reference}; leaving it unsettled`,
+      );
+      return;
+    }
+
     const success = verified.status === 'completed';
 
     switch (transaction.type) {

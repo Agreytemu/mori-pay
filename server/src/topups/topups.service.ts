@@ -1,18 +1,30 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 
 import {
   MOBILE_NETWORK_LABEL,
+  type AblinerDepositData,
   type CardTopupResult,
+  type FeePreview,
   type TopupCardInput,
   type TopupInitResult,
   type TopupMobileMoneyInput,
 } from '@mori-pay/contracts';
 
-import { AblinerClient } from '../abliner/abliner.client.js';
+import {
+  AblinerClient,
+  AblinerProviderError,
+} from '../abliner/abliner.client.js';
 import { generateReference } from '../common/crypto.js';
 import { ProviderError } from '../common/errors.js';
 import { createTransactionNotification } from '../account/notification-writer.js';
 import { AppConfigService } from '../config/app-config.service.js';
+import { Prisma, type Transaction } from '../generated/prisma/client.js';
+import { FeesService, type FeeDetail } from '../payments/fees.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { toTransaction } from '../wallet/wallet.mapper.js';
 
@@ -31,7 +43,22 @@ export class TopUpsService {
     private readonly prisma: PrismaService,
     private readonly abliner: AblinerClient,
     private readonly config: AppConfigService,
+    private readonly fees: FeesService,
   ) {}
+
+  async previewCard(amount: bigint): Promise<FeePreview> {
+    const feeDetail = await this.fees.resolveFeeDetail({
+      type: 'deposit',
+      channel: 'card',
+      amount,
+    });
+    return {
+      amount: Number(amount),
+      fee: Number(feeDetail.fee),
+      feePercentage: feeDetail.percentage,
+      total: Number(amount + feeDetail.fee),
+    };
+  }
 
   async initiateMobileMoney(
     userId: string,
@@ -40,7 +67,33 @@ export class TopUpsService {
     const amount = BigInt(input.amount);
     const reference = generateReference('DEP');
 
-    const transaction = await this.prisma.$transaction(async (tx) => {
+    let result: { transaction: Transaction; isNew: boolean };
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+      if (input.idempotencyKey) {
+        const existing = await tx.transaction.findUnique({
+          where: {
+            userId_idempotencyKey: {
+              userId,
+              idempotencyKey: input.idempotencyKey,
+            },
+          },
+        });
+        if (existing) {
+          if (
+            existing.type !== 'deposit' ||
+            existing.channel !== 'mobileMoney' ||
+            existing.amount !== amount ||
+            existing.counterparty !== input.mobileNumber
+          ) {
+            throw new BadRequestException(
+              'This payment retry does not match the original request.',
+            );
+          }
+          return { transaction: existing, isNew: false };
+        }
+      }
+
       const created = await tx.transaction.create({
         data: {
           userId,
@@ -59,50 +112,99 @@ export class TopUpsService {
             : 'Mobile money',
           provider: 'abliner',
           providerStatus: 'pending',
+          idempotencyKey: input.idempotencyKey ?? null,
           metadata: { network: input.network ?? null },
         },
       });
       await createTransactionNotification(tx, created);
-      return created;
-    });
+      return { transaction: created, isNew: true };
+      });
+    } catch (error) {
+      if (
+        !input.idempotencyKey ||
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2002'
+      ) {
+        throw error;
+      }
+      const existing = await this.prisma.transaction.findUnique({
+        where: {
+          userId_idempotencyKey: {
+            userId,
+            idempotencyKey: input.idempotencyKey,
+          },
+        },
+      });
+      if (!existing) throw error;
+      if (
+        existing.type !== 'deposit' ||
+        existing.channel !== 'mobileMoney' ||
+        existing.amount !== amount ||
+        existing.counterparty !== input.mobileNumber
+      ) {
+        throw new BadRequestException(
+          'This payment retry does not match the original request.',
+        );
+      }
+      result = { transaction: existing, isNew: false };
+    }
+    const transaction = result.transaction;
+    if (!result.isNew && transaction.status === 'failed') {
+      throw new BadRequestException(
+        'This payment attempt failed. Start a new payment to try again.',
+      );
+    }
+    if (!result.isNew && transaction.status === 'completed') {
+      return {
+        transaction: toTransaction(transaction),
+        instructions: 'This payment has already been completed.',
+      };
+    }
 
+    let deposit: AblinerDepositData;
     try {
-      const deposit = await this.abliner.createDeposit({
+      deposit = await this.abliner.createDeposit({
         amount: input.amount,
         method: 'mobile',
         currency: 'TZS',
         phone: input.mobileNumber,
-        reference,
+        reference: transaction.reference,
         callbackUrl: this.config.abliner.callbackUrl,
         idempotencyKey: transaction.id,
       });
-
-      const updated = await this.prisma.transaction.update({
-        where: { id: transaction.id },
-        data: {
-          providerRef: deposit.id,
-          internalReference: deposit.id,
-          providerStatus: deposit.status,
-          metadata: {
-            network: input.network ?? null,
-            ablinerReference: deposit.reference,
-          },
-        },
-      });
-
-      return {
-        transaction: toTransaction(updated),
-        instructions:
-          deposit.message ??
-          'Approve the payment prompt sent to your phone to complete the top-up.',
-      };
     } catch (error) {
-      await this.prisma.transaction.update({
-        where: { id: transaction.id },
-        data: { status: 'failed', providerStatus: 'failed' },
-      });
+      if (error instanceof AblinerProviderError && error.retryable) {
+        this.logger.warn(
+          `Abliner outcome is unknown for deposit ${transaction.reference}; leaving it pending for reconciliation`,
+        );
+      } else {
+        await this.prisma.transaction.update({
+          where: { id: transaction.id },
+          data: { status: 'failed', providerStatus: 'failed' },
+        });
+      }
       throw error;
     }
+
+    const updated = await this.prisma.transaction.update({
+      where: { id: transaction.id },
+      data: {
+        providerRef: deposit.id,
+        internalReference: deposit.id,
+        providerStatus: deposit.status,
+        metadata: {
+          network: input.network ?? null,
+          ablinerReference: deposit.reference,
+        },
+      },
+    });
+
+    return {
+      transaction: toTransaction(updated),
+      instructions:
+        deposit.message ??
+        'Approve the payment prompt sent to your phone to complete the top-up.',
+    };
   }
 
   async initiateCard(
@@ -110,9 +212,75 @@ export class TopUpsService {
     input: TopupCardInput,
   ): Promise<CardTopupResult> {
     const amount = BigInt(input.amount);
+    const existing = input.idempotencyKey
+      ? await this.prisma.transaction.findUnique({
+          where: {
+            userId_idempotencyKey: {
+              userId,
+              idempotencyKey: input.idempotencyKey,
+            },
+          },
+        })
+      : null;
+    if (
+      existing &&
+      (existing.type !== 'deposit' ||
+        existing.channel !== 'card' ||
+        existing.amount !== amount)
+    ) {
+      throw new BadRequestException(
+        'This payment retry does not match the original request.',
+      );
+    }
+    const feeDetail: FeeDetail = existing
+      ? {
+          fee: existing.fee,
+          flat: existing.feeFlat,
+          percentage: existing.feePercentage,
+          ruleId: null,
+        }
+      : await this.fees.resolveFeeDetail({
+          type: 'deposit',
+          channel: 'card',
+          amount,
+        });
+    if (
+      input.expectedFee !== undefined &&
+      BigInt(input.expectedFee) !== feeDetail.fee
+    ) {
+      throw new ConflictException(
+        'The card fee changed. Review the updated fee and total before continuing.',
+      );
+    }
+    const total = amount + feeDetail.fee;
     const reference = generateReference('DEP');
 
-    const transaction = await this.prisma.$transaction(async (tx) => {
+    let result: { transaction: Transaction; isNew: boolean };
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+      if (input.idempotencyKey) {
+        const existing = await tx.transaction.findUnique({
+          where: {
+            userId_idempotencyKey: {
+              userId,
+              idempotencyKey: input.idempotencyKey,
+            },
+          },
+        });
+        if (existing) {
+          if (
+            existing.type !== 'deposit' ||
+            existing.channel !== 'card' ||
+            existing.amount !== amount
+          ) {
+            throw new BadRequestException(
+              'This payment retry does not match the original request.',
+            );
+          }
+          return { transaction: existing, isNew: false };
+        }
+      }
+
       const created = await tx.transaction.create({
         data: {
           userId,
@@ -123,62 +291,121 @@ export class TopUpsService {
           channel: 'card',
           direction: 'credit',
           amount,
-          fee: 0n,
-          total: amount,
+          fee: feeDetail.fee,
+          feeFlat: feeDetail.flat,
+          feePercentage: feeDetail.percentage,
+          total,
           counterparty: input.customerName ?? 'Card payment',
           counterpartyDetail: input.customerEmail ?? null,
           provider: 'abliner',
           providerStatus: 'pending',
+          idempotencyKey: input.idempotencyKey ?? null,
         },
       });
       await createTransactionNotification(tx, created);
-      return created;
-    });
-
-    try {
-      const deposit = await this.abliner.createDeposit({
-        amount: input.amount,
-        method: 'card',
-        currency: 'TZS',
-        phone: input.customerPhone,
-        reference,
-        callbackUrl: this.config.abliner.callbackUrl,
-        idempotencyKey: transaction.id,
+      return { transaction: created, isNew: true };
       });
-
-      if (!deposit.payment_url) {
-        this.logger.error(`Card checkout URL missing for ${reference}`);
-        throw new ProviderError('Card checkout is temporarily unavailable.');
+    } catch (error) {
+      if (
+        !input.idempotencyKey ||
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2002'
+      ) {
+        throw error;
       }
-
-      const updated = await this.prisma.transaction.update({
-        where: { id: transaction.id },
-        data: {
-          providerRef: deposit.id,
-          internalReference: deposit.id,
-          providerStatus: deposit.status,
-          metadata: {
-            checkoutUrl: deposit.payment_url,
-            ablinerReference: deposit.reference,
+      const existing = await this.prisma.transaction.findUnique({
+        where: {
+          userId_idempotencyKey: {
+            userId,
+            idempotencyKey: input.idempotencyKey,
           },
         },
       });
+      if (!existing) throw error;
+      if (
+        existing.type !== 'deposit' ||
+        existing.channel !== 'card' ||
+        existing.amount !== amount
+      ) {
+        throw new BadRequestException(
+          'This payment retry does not match the original request.',
+        );
+      }
+      result = { transaction: existing, isNew: false };
+    }
+    const transaction = result.transaction;
+    if (!result.isNew && transaction.status === 'failed') {
+      throw new BadRequestException(
+        'This payment attempt failed. Start a new payment to try again.',
+      );
+    }
+    if (!result.isNew && transaction.status === 'completed') {
+      const metadata =
+        transaction.metadata && typeof transaction.metadata === 'object'
+          ? transaction.metadata
+          : null;
+      const checkoutUrl =
+        metadata && 'checkoutUrl' in metadata &&
+        typeof metadata.checkoutUrl === 'string'
+          ? metadata.checkoutUrl
+          : null;
+      if (checkoutUrl) {
+        return { transaction: toTransaction(transaction), checkoutUrl };
+      }
+      throw new ProviderError('The original checkout details are unavailable.');
+    }
 
-      return {
-        transaction: toTransaction(updated),
-        checkoutUrl: deposit.payment_url,
-      };
+    let deposit: AblinerDepositData;
+    try {
+      deposit = await this.abliner.createDeposit({
+        amount: Number(transaction.total),
+        method: 'card',
+        currency: 'TZS',
+        phone: input.customerPhone,
+        reference: transaction.reference,
+        callbackUrl: this.config.abliner.callbackUrl,
+        idempotencyKey: transaction.id,
+      });
     } catch (error) {
       this.logger.error(
-        `Card top-up failed for ${reference}: ${
+        `Card top-up failed for ${transaction.reference}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      await this.prisma.transaction.update({
-        where: { id: transaction.id },
-        data: { status: 'failed', providerStatus: 'failed' },
-      });
+      if (error instanceof AblinerProviderError && error.retryable) {
+        this.logger.warn(
+          `Abliner outcome is unknown for card deposit ${transaction.reference}; leaving it pending for reconciliation`,
+        );
+      } else {
+        await this.prisma.transaction.update({
+          where: { id: transaction.id },
+          data: { status: 'failed', providerStatus: 'failed' },
+        });
+      }
       throw error;
     }
+
+    if (!deposit.payment_url) {
+      this.logger.error(`Card checkout URL missing for ${transaction.reference}`);
+      throw new ProviderError('Card checkout is temporarily unavailable.');
+    }
+
+    const updated = await this.prisma.transaction.update({
+      where: { id: transaction.id },
+      data: {
+        providerRef: deposit.id,
+        internalReference: deposit.id,
+        providerStatus: deposit.status,
+        metadata: {
+          checkoutUrl: deposit.payment_url,
+          ablinerReference: deposit.reference,
+        },
+      },
+    });
+
+    return {
+      transaction: toTransaction(updated),
+      checkoutUrl: deposit.payment_url,
+    };
   }
 }

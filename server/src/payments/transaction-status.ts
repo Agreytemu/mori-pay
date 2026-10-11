@@ -16,39 +16,55 @@ export const TRANSACTION_STATUS = {
 export type TransactionStatus =
   (typeof TRANSACTION_STATUS)[keyof typeof TRANSACTION_STATUS];
 
-/** Allowed forward transitions; terminal states have none. */
-const TRANSITIONS: Record<TransactionStatus, readonly TransactionStatus[]> = {
-  [TRANSACTION_STATUS.pending]: [
-    TRANSACTION_STATUS.processing,
-    TRANSACTION_STATUS.completed,
-    TRANSACTION_STATUS.failed,
-    TRANSACTION_STATUS.cancelled,
-  ],
-  [TRANSACTION_STATUS.processing]: [
-    TRANSACTION_STATUS.completed,
-    TRANSACTION_STATUS.failed,
-    TRANSACTION_STATUS.cancelled,
-  ],
-  [TRANSACTION_STATUS.completed]: [],
-  [TRANSACTION_STATUS.failed]: [],
-  [TRANSACTION_STATUS.cancelled]: [],
+/** Terminal states have no outgoing transitions. */
+const TERMINAL_STATUSES: readonly TransactionStatus[] = [
+  TRANSACTION_STATUS.completed,
+  TRANSACTION_STATUS.failed,
+  TRANSACTION_STATUS.cancelled,
+];
+
+/** Money-flow transitions; internal wallet movements are final at creation. */
+const FLOW_TRANSITIONS: Record<
+  string,
+  Partial<Record<TransactionStatus, readonly TransactionStatus[]>>
+> = {
+  deposit: {
+    [TRANSACTION_STATUS.pending]: [
+      TRANSACTION_STATUS.completed,
+      TRANSACTION_STATUS.failed,
+    ],
+  },
+  withdrawal: {
+    [TRANSACTION_STATUS.processing]: [
+      TRANSACTION_STATUS.completed,
+      TRANSACTION_STATUS.failed,
+    ],
+  },
 };
 
 export function isTerminalStatus(status: string): boolean {
-  const allowed = TRANSITIONS[status as TransactionStatus];
-  return allowed !== undefined && allowed.length === 0;
+  return TERMINAL_STATUSES.includes(status as TransactionStatus);
 }
 
-export function canTransition(from: string, to: string): boolean {
-  const allowed = TRANSITIONS[from as TransactionStatus];
+export function canTransition(
+  type: string,
+  from: string,
+  to: string,
+): boolean {
+  const allowed =
+    FLOW_TRANSITIONS[type]?.[from as TransactionStatus];
   if (!allowed) return false;
   return allowed.includes(to as TransactionStatus);
 }
 
-export function assertTransition(from: string, to: string): void {
-  if (!canTransition(from, to)) {
+export function assertTransition(
+  type: string,
+  from: string,
+  to: string,
+): void {
+  if (!canTransition(type, from, to)) {
     throw new BadRequestException(
-      `Invalid transaction transition: ${from} -> ${to}`,
+      `Invalid ${type} transaction transition: ${from} -> ${to}`,
     );
   }
 }

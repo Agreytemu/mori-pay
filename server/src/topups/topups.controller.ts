@@ -1,14 +1,25 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 
 import {
   topupCardSchema,
   topupMobileMoneySchema,
+  withdrawalPreviewQuerySchema,
   type CardTopupResult,
+  type FeePreview,
   type TopupCardInput,
   type TopupInitResult,
   type TopupMobileMoneyInput,
+  type WithdrawalPreviewQuery,
 } from '@mori-pay/contracts';
 
 import type { AuthenticatedUser } from '../auth/auth.types.js';
@@ -21,6 +32,14 @@ import { TopUpsService } from './topups.service.js';
 @Controller('topups')
 export class TopUpsController {
   constructor(private readonly topups: TopUpsService) {}
+
+  @Get('card/preview')
+  previewCard(
+    @Query(new ZodValidationPipe(withdrawalPreviewQuerySchema))
+    query: WithdrawalPreviewQuery,
+  ): Promise<FeePreview> {
+    return this.topups.previewCard(BigInt(query.amount));
+  }
 
   @Post('mobile-money')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })

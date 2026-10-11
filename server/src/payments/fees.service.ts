@@ -19,20 +19,9 @@ export type FeeDetail = {
 const NO_FEE: FeeDetail = { fee: 0n, flat: 0n, percentage: 0, ruleId: null };
 
 /**
- * Proposed user-facing fee tiers, pending product sign-off (currently NO rows
- * are seeded, so every movement is free):
- *   - send / payment (wallet):  0 flat, 0%
- *   - withdrawal (mobile money): 0 flat, 2%   (Abliner cash-out is 2–4%)
- *   - withdrawal (bank):        0 flat, 4%   (Abliner card is 4%)
- * Seed matching `FeeRule` rows (type/channel/minAmount/maxAmount/flat/
- * percentage/active) once the pricing above is approved; the engine picks the
- * most specific rule automatically and `Transaction.feeFlat`/`feePercentage`
- * persist what was applied.
- */
-
-/**
  * Resolves the fee for a movement from the `FeeRule` table. When no rule
- * matches (the default for internal P2P), the movement is free.
+ * matches, the movement is free. Applied percentages are persisted on each
+ * transaction and the complete fee is disclosed before confirmation.
  */
 @Injectable()
 export class FeesService {

@@ -14,8 +14,16 @@ export type TransferPreview = {
   recipient: RecipientLookup & { found: true };
   amount: Amount;
   fee: Amount;
+  feePercentage: number;
   total: Amount;
   currency: Currency;
+};
+
+export type FeePreview = {
+  amount: Amount;
+  fee: Amount;
+  feePercentage: number;
+  total: Amount;
 };
 
 export type SendMoneyResult = {
@@ -36,6 +44,14 @@ export type PayMerchantResult = {
   transaction: Transaction;
   merchantName: string;
   fee: Amount;
+};
+
+export type MerchantPaymentPreview = {
+  merchantName: string;
+  amount: Amount;
+  fee: Amount;
+  feePercentage: number;
+  total: Amount;
 };
 
 export type MoneyRequestStatus = 'pending' | 'paid' | 'cancelled' | 'expired';

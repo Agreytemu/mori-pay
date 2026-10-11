@@ -10,23 +10,22 @@ import {
 
 describe('transaction state machine', () => {
   it('allows the documented forward transitions', () => {
-    assert.equal(canTransition('pending', 'processing'), true);
-    assert.equal(canTransition('pending', 'completed'), true);
-    assert.equal(canTransition('pending', 'failed'), true);
-    assert.equal(canTransition('processing', 'completed'), true);
-    assert.equal(canTransition('processing', 'failed'), true);
+    assert.equal(canTransition('deposit', 'pending', 'completed'), true);
+    assert.equal(canTransition('deposit', 'pending', 'failed'), true);
+    assert.equal(canTransition('withdrawal', 'processing', 'completed'), true);
+    assert.equal(canTransition('withdrawal', 'processing', 'failed'), true);
   });
 
-  it('rejects transitions out of terminal states', () => {
-    assert.equal(canTransition('completed', 'failed'), false);
-    assert.equal(canTransition('failed', 'completed'), false);
-    assert.equal(canTransition('cancelled', 'pending'), false);
+  it('rejects transitions that do not belong to the flow', () => {
+    assert.equal(canTransition('deposit', 'pending', 'processing'), false);
+    assert.equal(canTransition('withdrawal', 'pending', 'completed'), false);
+    assert.equal(canTransition('send', 'completed', 'failed'), false);
   });
 
   it('rejects backwards and unknown transitions', () => {
-    assert.equal(canTransition('processing', 'pending'), false);
-    assert.equal(canTransition('completed', 'completed'), false);
-    assert.equal(canTransition('bogus', 'completed'), false);
+    assert.equal(canTransition('deposit', 'failed', 'completed'), false);
+    assert.equal(canTransition('withdrawal', 'completed', 'completed'), false);
+    assert.equal(canTransition('bogus', 'pending', 'completed'), false);
   });
 
   it('identifies terminal states', () => {
@@ -38,7 +37,7 @@ describe('transaction state machine', () => {
   });
 
   it('throws on an invalid transition', () => {
-    assert.throws(() => assertTransition('completed', 'pending'));
-    assert.doesNotThrow(() => assertTransition('pending', 'completed'));
+    assert.throws(() => assertTransition('deposit', 'completed', 'pending'));
+    assert.doesNotThrow(() => assertTransition('deposit', 'pending', 'completed'));
   });
 });

@@ -124,6 +124,16 @@ The server schema is organized around real wallet primitives:
 
 This ledger-based model is a strong foundation for reconciliation, reporting, and future accounting controls.
 
+### Fees and wallet limits
+
+The current fee rules are stored in `FeeRule` and are created by the approved-fees migration:
+
+- Card top-up: 4.5% added to the selected wallet credit amount. That gross total is sent to Abliner; the wallet receives the selected amount. Review the checkout page for any additional card-provider charges.
+- Mobile-money withdrawal: 2.5% or Abliner's higher quoted payout fee. The app displays the final fee and total debit before PIN confirmation; if Abliner cannot provide a fee quote or the quote changes, the withdrawal must be retried after a fresh quote.
+- Wallet transfers and merchant payments: no fee unless a matching active rule is configured.
+
+Fee totals are disclosed before confirmation and saved on each transaction. Outflow limits include both the transaction amount and its fee. Standard defaults are TZS 1,000,000 per rolling 24 hours and TZS 500,000 per transaction; Verified defaults are TZS 5,000,000 and TZS 3,000,000. These limits can be overridden using the `LIMIT_*` variables in `server/.env`.
+
 ## Getting started
 
 ### Prerequisites
@@ -349,8 +359,8 @@ the API, a managed Postgres database and a Render Key Value (Redis) instance.
    | --- | --- |
    | `CORS_ORIGINS` | Comma-separated allowed browser origins (Expo web / admin). |
    | `ABLINER_API_KEY` | Enabled Abliner key, starts with `tsl_live_`. |
-   | `ABLINER_WEBHOOK_SECRET` | Abliner signing secret, starts with `whsec_`. |
-   | `ABLINER_CALLBACK_URL` | `https://<your-service>.onrender.com/api/v1/webhooks/abliner` (public HTTPS; boot fails otherwise). |
+   | `ABLINER_WEBHOOK_SECRET` | Exact webhook signing secret generated in Abliner Dashboard (starts with `whsec_`); do not use or prepend the API key. |
+   | `ABLINER_CALLBACK_URL` | `https://mori-pay.onrender.com/api/v1/webhooks/abliner` (set in the Render Dashboard and register with Abliner). |
    | `RESEND_API_KEY` / `EMAIL_FROM` | Transactional email; required in production. Verify the sender domain in Resend first. |
    | `SMS_API_KEY` | Credentials for the configured `SMS_PROVIDER`. |
    | `SENTRY_DSN` | Optional error reporting. |
@@ -373,6 +383,36 @@ the API, a managed Postgres database and a Render Key Value (Redis) instance.
 
 6. After the first deploy, register the public `ABLINER_CALLBACK_URL` in the
    Abliner dashboard and confirm the health checks below are reachable.
+
+#### Abliner payment testing
+
+Abliner does not provide a sandbox. Automated tests use the recorded fixtures
+in `server/test/fixtures/abliner-contract.fixtures.ts` and never make provider
+network calls. Before a production release, perform a controlled live smoke
+test with at least TZS 500 and the public callback registered in the Abliner
+dashboard; verify both the provider transaction status and Mori Pay ledger
+result. Do not use real customer funds for automated tests.
+
+#### Production operations checks
+
+- Use `/api/v1/health` for process liveness and `/api/v1/health/ready` for
+  readiness; Render routes traffic only after the readiness check succeeds.
+- Render's `preDeployCommand` applies forward-only Prisma migrations before
+  traffic reaches a release. Confirm the deploy log shows migration success,
+  especially when a release adds or changes fee rules.
+- Keep `RECONCILIATION_ENABLED=true`; the default sweeper checks provider
+  transactions older than 180 seconds every 120 seconds. Review Render logs for
+  `Reconciliation sweep failed`, `Sweep reconcile failed`, and repeated
+  `outcome is unknown` warnings.
+- For a delayed payment, check the transaction and Abliner status first, then
+  allow webhook delivery or reconciliation to finish. Never manually credit or
+  release a hold just because a webhook is late or absent.
+- Before a live release, verify the callback URL and signing secret in both
+  Render and Abliner, then run the controlled smoke test above and confirm the
+  customer-visible fee, provider amount, transaction total, and balanced ledger.
+- `SENTRY_DSN` is optional. Until an alert integration is configured, review
+  Render application logs and failed readiness/deploy events as the operational
+  signal.
 
 #### Railway deployment
 
@@ -692,4 +732,3 @@ This project is licensed under the MIT license. See [LICENSE](LICENSE) for detai
 Mori Pay is in active product-oriented development and is structured as a real-world fintech application starter with a mobile client, typed API contracts, and production-minded backend architecture.
 
 If you're building a wallet, mobile-money, or payments product, this repo is designed to give you a stronger foundation than a plain starter template.
-

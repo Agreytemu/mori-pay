@@ -43,7 +43,8 @@ export const amountSchema = z
   .number()
   .int('Amount must be a whole number')
   .positive('Amount must be positive')
-  .min(500, 'Minimum amount is 500 TZS');
+  .min(500, 'Minimum amount is 500 TZS')
+  .max(Number.MAX_SAFE_INTEGER, 'Amount is too large');
 
 export const mobileNetworkSchema = z.enum(MOBILE_NETWORKS);
 
@@ -188,6 +189,11 @@ export const payMerchantSchema = z.object({
   idempotencyKey: z.string().min(1).max(120).optional(),
 });
 
+export const merchantPaymentPreviewSchema = z.object({
+  merchantId: z.string().min(1),
+  amount: amountSchema,
+});
+
 export const recipientLookupSchema = z.object({
   phone: tzPhoneSchema,
 });
@@ -201,7 +207,8 @@ export const withdrawalPreviewQuerySchema = z.object({
     .number()
     .int('Amount must be a whole number')
     .positive('Amount must be positive')
-    .min(500, 'Minimum amount is 500 TZS'),
+    .min(500, 'Minimum amount is 500 TZS')
+    .max(Number.MAX_SAFE_INTEGER, 'Amount is too large'),
 });
 
 export const topupMobileMoneySchema = z.object({
@@ -209,6 +216,7 @@ export const topupMobileMoneySchema = z.object({
   mobileNumber: tzPhoneSchema,
   /** Display-only operator hint; Abliner routes the rail automatically. */
   network: mobileNetworkSchema.optional(),
+  idempotencyKey: z.string().min(1).max(120).optional(),
 });
 
 export const topupCardSchema = z.object({
@@ -218,6 +226,8 @@ export const topupCardSchema = z.object({
   customerPhone: tzPhoneSchema.optional(),
   billingAddress: z.string().max(200).optional(),
   postalCode: z.string().max(20).optional(),
+  idempotencyKey: z.string().min(1).max(120).optional(),
+  expectedFee: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
 });
 
 export const withdrawalSchema = z.object({
@@ -228,6 +238,7 @@ export const withdrawalSchema = z.object({
   accountName: z.string().max(120).optional(),
   pin: pinSchema,
   idempotencyKey: z.string().min(1).max(120).optional(),
+  expectedFee: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
 });
 
 export const ablinerWebhookSchema = z.object({
@@ -275,6 +286,7 @@ export type PreviewTransferInput = z.infer<typeof previewTransferSchema>;
 export type RequestMoneyInput = z.infer<typeof requestMoneySchema>;
 export type PayRequestInput = z.infer<typeof payRequestSchema>;
 export type PayMerchantInput = z.infer<typeof payMerchantSchema>;
+export type MerchantPaymentPreviewInput = z.infer<typeof merchantPaymentPreviewSchema>;
 export type RecipientLookupInput = z.infer<typeof recipientLookupSchema>;
 export type VerifyReceiveCodeInput = z.infer<typeof verifyReceiveCodeSchema>;
 export type WithdrawalPreviewQuery = z.infer<typeof withdrawalPreviewQuerySchema>;

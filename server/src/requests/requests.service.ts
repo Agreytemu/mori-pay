@@ -152,16 +152,16 @@ export class RequestsService {
     if (request.status !== 'pending') {
       throw new BadRequestException('This request is no longer payable');
     }
-    if (request.expiresAt && request.expiresAt < new Date()) {
-      await this.prisma.moneyRequest.update({
-        where: { id: request.id },
+    const now = new Date();
+    if (request.expiresAt && request.expiresAt <= now) {
+      await this.prisma.moneyRequest.updateMany({
+        where: { id: request.id, status: 'pending' },
         data: { status: 'expired' },
       });
       throw new BadRequestException('This request has expired');
     }
 
     await this.auth.verifyPin(userId, input.pin);
-    await this.limits.assertWithinLimits(userId, payer.tier, request.amount);
 
     const requester = await this.prisma.user.findUnique({
       where: { id: request.requesterId },
@@ -174,23 +174,46 @@ export class RequestsService {
       channel: 'wallet',
       amount: request.amount,
     });
+    await this.limits.assertWithinLimits(
+      userId,
+      payer.tier,
+      request.amount + feeDetail.fee,
+    );
 
-    const transaction = await this.payments.transferToUser({
-      from: payer,
-      to: requester,
-      amount: request.amount,
-      fee: feeDetail.fee,
-      feeDetail,
-      note: request.note ?? undefined,
-      type: 'send',
-      category: 'person',
-      idempotencyKey: input.idempotencyKey,
-    });
+    const { transaction, updated } = await this.prisma.$transaction(
+      async (client) => {
+        const claimed = await client.moneyRequest.updateMany({
+          where: {
+            id: request.id,
+            status: 'pending',
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+          },
+          data: { status: 'paid' },
+        });
+        if (claimed.count !== 1) {
+          throw new BadRequestException('This request is no longer payable');
+        }
 
-    const updated = await this.prisma.moneyRequest.update({
-      where: { id: request.id },
-      data: { status: 'paid' },
-    });
+        const transaction = await this.payments.transferToUser(
+          {
+            from: payer,
+            to: requester,
+            amount: request.amount,
+            fee: feeDetail.fee,
+            feeDetail,
+            note: request.note ?? undefined,
+            type: 'send',
+            category: 'person',
+            idempotencyKey: input.idempotencyKey,
+          },
+          client,
+        );
+        const updated = await client.moneyRequest.findUniqueOrThrow({
+          where: { id: request.id },
+        });
+        return { transaction, updated };
+      },
+    );
 
     return {
       request: this.toDto(updated, 'incoming', requester.fullName, payer.fullName),
@@ -212,10 +235,13 @@ export class RequestsService {
       throw new BadRequestException('Only pending requests can be cancelled');
     }
 
-    await this.prisma.moneyRequest.update({
-      where: { id: request.id },
+    const updated = await this.prisma.moneyRequest.updateMany({
+      where: { id: request.id, requesterId: userId, status: 'pending' },
       data: { status: 'cancelled' },
     });
+    if (updated.count !== 1) {
+      throw new BadRequestException('Only pending requests can be cancelled');
+    }
   }
 
   private toDto(

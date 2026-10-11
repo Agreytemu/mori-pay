@@ -2,6 +2,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 
 import type {
   Merchant,
+  MerchantPaymentPreview,
+  MerchantPaymentPreviewInput,
   PayMerchantInput,
   PayMerchantResult,
 } from '@mori-pay/contracts';
@@ -40,6 +42,30 @@ export class MerchantsService {
     }));
   }
 
+  async preview(input: MerchantPaymentPreviewInput): Promise<MerchantPaymentPreview> {
+    const merchant = await this.prisma.merchant.findFirst({
+      where: {
+        active: true,
+        OR: [{ id: input.merchantId }, { identifier: input.merchantId }],
+      },
+    });
+    if (!merchant) throw new NotFoundException('Merchant not found');
+
+    const amount = BigInt(input.amount);
+    const feeDetail = await this.fees.resolveFeeDetail({
+      type: 'payment',
+      channel: 'wallet',
+      amount,
+    });
+    return {
+      merchantName: merchant.name,
+      amount: input.amount,
+      fee: Number(feeDetail.fee),
+      feePercentage: feeDetail.percentage,
+      total: Number(amount + feeDetail.fee),
+    };
+  }
+
   async pay(userId: string, input: PayMerchantInput): Promise<PayMerchantResult> {
     const payer = await this.wallet.loadUserWithWallet(userId);
 
@@ -54,12 +80,16 @@ export class MerchantsService {
     await this.auth.verifyPin(userId, input.pin);
 
     const amount = BigInt(input.amount);
-    await this.limits.assertWithinLimits(payer.id, payer.tier, amount);
     const feeDetail = await this.fees.resolveFeeDetail({
       type: 'payment',
       channel: 'wallet',
       amount,
     });
+    await this.limits.assertWithinLimits(
+      payer.id,
+      payer.tier,
+      amount + feeDetail.fee,
+    );
 
     const transaction = await this.payments.paySystem({
       from: payer,

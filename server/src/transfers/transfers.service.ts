@@ -67,7 +67,7 @@ export class TransfersService {
     }
 
     const amount = BigInt(input.amount);
-    const fee = await this.fees.resolveFee({
+    const feeDetail = await this.fees.resolveFeeDetail({
       type: 'send',
       channel: 'wallet',
       amount,
@@ -76,8 +76,9 @@ export class TransfersService {
     return {
       recipient: { ...recipient, found: true },
       amount: input.amount,
-      fee: Number(fee),
-      total: input.amount + Number(fee),
+      fee: Number(feeDetail.fee),
+      feePercentage: feeDetail.percentage,
+      total: input.amount + Number(feeDetail.fee),
       currency: 'TZS',
     };
   }
@@ -102,12 +103,16 @@ export class TransfersService {
     await this.auth.verifyPin(userId, input.pin);
 
     const amount = BigInt(input.amount);
-    await this.limits.assertWithinLimits(sender.id, sender.tier, amount);
     const feeDetail = await this.fees.resolveFeeDetail({
       type: 'send',
       channel: 'wallet',
       amount,
     });
+    await this.limits.assertWithinLimits(
+      sender.id,
+      sender.tier,
+      amount + feeDetail.fee,
+    );
 
     const transaction = await this.payments.transferToUser({
       from: sender,

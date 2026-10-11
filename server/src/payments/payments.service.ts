@@ -9,7 +9,7 @@ import {
   type LedgerLeg,
   type SystemLedgerAccountKind,
 } from '../ledger/ledger.service.js';
-import type { Prisma } from '../generated/prisma/client.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { createTransactionNotification } from '../account/notification-writer.js';
 import type { FeeDetail } from './fees.service.js';
@@ -59,7 +59,10 @@ export class PaymentsService {
   ) {}
 
   /** Debits the sender and credits the recipient, recording both histories. */
-  async transferToUser(input: TransferToUserInput): Promise<TransactionDto> {
+  async transferToUser(
+    input: TransferToUserInput,
+    transactionClient?: Prisma.TransactionClient,
+  ): Promise<TransactionDto> {
     const fromAccountId = this.availableAccount(input.from);
     const toAccountId = this.availableAccount(input.to);
     if (fromAccountId === toAccountId) {
@@ -69,7 +72,7 @@ export class PaymentsService {
     const total = input.amount + input.fee;
     const reference = generateReference('TRF');
 
-    return this.prisma.$transaction(async (tx) => {
+    const execute = async (tx: Prisma.TransactionClient) => {
       if (input.idempotencyKey) {
         const existing = await tx.transaction.findUnique({
           where: {
@@ -153,7 +156,32 @@ export class PaymentsService {
       );
 
       return toTransaction(senderTransaction);
-    });
+    };
+
+    try {
+      return transactionClient
+        ? await execute(transactionClient)
+        : await this.prisma.$transaction(execute);
+    } catch (error) {
+      if (
+        transactionClient ||
+        !input.idempotencyKey ||
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2002'
+      ) {
+        throw error;
+      }
+      const existing = await this.prisma.transaction.findUnique({
+        where: {
+          userId_idempotencyKey: {
+            userId: input.from.id,
+            idempotencyKey: input.idempotencyKey,
+          },
+        },
+      });
+      if (!existing) throw error;
+      return toTransaction(existing);
+    }
   }
 
   /** Debits the payer and credits a wallet-less system account (e.g. merchant). */
@@ -162,7 +190,7 @@ export class PaymentsService {
     const total = input.amount + input.fee;
     const reference = generateReference('PAY');
 
-    return this.prisma.$transaction(async (tx) => {
+    const execute = async (tx: Prisma.TransactionClient) => {
       if (input.idempotencyKey) {
         const existing = await tx.transaction.findUnique({
           where: {
@@ -223,7 +251,29 @@ export class PaymentsService {
       );
 
       return toTransaction(payerTransaction);
-    });
+    };
+
+    try {
+      return await this.prisma.$transaction(execute);
+    } catch (error) {
+      if (
+        !input.idempotencyKey ||
+        !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+        error.code !== 'P2002'
+      ) {
+        throw error;
+      }
+      const existing = await this.prisma.transaction.findUnique({
+        where: {
+          userId_idempotencyKey: {
+            userId: input.from.id,
+            idempotencyKey: input.idempotencyKey,
+          },
+        },
+      });
+      if (!existing) throw error;
+      return toTransaction(existing);
+    }
   }
 
   private availableAccount(user: UserWithWallet): string {

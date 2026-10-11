@@ -311,5 +311,66 @@ describe(
 
       assert.equal(await balance(userA), 90_000);
     });
+
+    it('claims a money request once under concurrent pay attempts', async () => {
+      const created = await request(app.getHttpServer())
+        .post(`/${API_PREFIX}/requests`)
+        .set('Authorization', ['Bearer', tokenA].join(' '))
+        .send({ payerPhone: userA.phone, amount: 1_000, note: 'Concurrent pay' })
+        .expect(201);
+      const requestId = created.body.request.id as string;
+      const before = await balance(userA);
+
+      const attempts = await Promise.all([
+        request(app.getHttpServer())
+          .post(`/${API_PREFIX}/requests/${requestId}/pay`)
+          .set('Authorization', ['Bearer', tokenA].join(' '))
+          .send({ pin: PIN, idempotencyKey: `request-pay-${suffix}-a` }),
+        request(app.getHttpServer())
+          .post(`/${API_PREFIX}/requests/${requestId}/pay`)
+          .set('Authorization', ['Bearer', tokenA].join(' '))
+          .send({ pin: PIN, idempotencyKey: `request-pay-${suffix}-b` }),
+      ]);
+
+      assert.deepEqual(
+        attempts.map((response) => response.status).sort(),
+        [200, 400],
+      );
+      assert.equal(await balance(userA), before - 1_000);
+      const paid = await prisma.moneyRequest.findUniqueOrThrow({
+        where: { id: requestId },
+      });
+      assert.equal(paid.status, 'paid');
+    });
+
+    it('scopes matching idempotency keys to different users', async () => {
+      const key = `shared-${suffix}`;
+      const requestForA = await request(app.getHttpServer())
+        .post(`/${API_PREFIX}/requests`)
+        .set('Authorization', ['Bearer', tokenA].join(' '))
+        .send({ payerPhone: userA.phone, amount: 500, note: 'Scoped key A' })
+        .expect(201);
+      const paymentByA = await request(app.getHttpServer())
+        .post(`/${API_PREFIX}/requests/${requestForA.body.request.id}/pay`)
+        .set('Authorization', ['Bearer', tokenA].join(' '))
+        .send({ pin: PIN, idempotencyKey: key })
+        .expect(200);
+
+      const requestForB = await request(app.getHttpServer())
+        .post(`/${API_PREFIX}/requests`)
+        .set('Authorization', ['Bearer', tokenA].join(' '))
+        .send({ payerPhone: userB.phone, amount: 500, note: 'Scoped key B' })
+        .expect(201);
+      const paymentByB = await request(app.getHttpServer())
+        .post(`/${API_PREFIX}/requests/${requestForB.body.request.id}/pay`)
+        .set('Authorization', ['Bearer', tokenB].join(' '))
+        .send({ pin: PIN, idempotencyKey: key })
+        .expect(200);
+
+      assert.notEqual(
+        paymentByA.body.transaction.id,
+        paymentByB.body.transaction.id,
+      );
+    });
   },
 );
