@@ -14,6 +14,7 @@ import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
+import { DigitBoxesInput } from '@/components/ui/DigitBoxesInput';
 import type { IconName } from '@/constants/icons';
 import type {
   ProfileStatus as ProfileStatusValue,
@@ -438,30 +439,56 @@ export function ProfileField({
   label,
   error,
   hint,
+  digitBoxes = false,
   containerStyle,
+  style: inputStyle,
   ...inputProps
-}: { label: string; error?: string; hint?: string; containerStyle?: StyleProp<ViewStyle> } & ComponentProps<
-  typeof TextInput
->) {
+}: {
+  label: string;
+  error?: string;
+  hint?: string;
+  digitBoxes?: boolean;
+  containerStyle?: StyleProp<ViewStyle>;
+} & ComponentProps<typeof TextInput>) {
   const { colors, radius } = useAppTheme();
+  const flattenedInputStyle = StyleSheet.flatten(inputStyle);
 
   return (
     <View style={[styles.field, containerStyle]}>
       <AppText variant="bodySmallStrong">{label}</AppText>
-      <TextInput
-        placeholderTextColor={colors.textTertiary}
-        accessibilityLabel={label}
-        style={[
-          styles.input,
-          {
-            color: colors.text,
-            borderRadius: radius.md,
-            backgroundColor: colors.surface,
-            borderColor: error ? colors.error : colors.border,
-          },
-        ]}
-        {...inputProps}
-      />
+      {digitBoxes ? (
+        <DigitBoxesInput
+          accessibilityLabel={label}
+          placeholderTextColor={colors.textTertiary}
+          containerStyle={[
+            {
+              borderRadius: flattenedInputStyle?.borderRadius ?? radius.md,
+              backgroundColor: flattenedInputStyle?.backgroundColor ?? colors.surface,
+              borderColor: error ? colors.error : flattenedInputStyle?.borderColor ?? colors.border,
+              borderWidth: flattenedInputStyle?.borderWidth ?? 0,
+              minHeight: flattenedInputStyle?.minHeight ?? 50,
+            },
+            flattenedInputStyle?.height ? { height: flattenedInputStyle.height } : null,
+          ]}
+          {...inputProps}
+        />
+      ) : (
+        <TextInput
+          placeholderTextColor={colors.textTertiary}
+          accessibilityLabel={label}
+          style={[
+            styles.input,
+            {
+              color: colors.text,
+              borderRadius: radius.md,
+              backgroundColor: colors.surface,
+              borderColor: error ? colors.error : colors.border,
+            },
+            inputStyle,
+          ]}
+          {...inputProps}
+        />
+      )}
       {error ? (
         <View style={styles.fieldMessage}>
           <AppIcon name="warning" size={13} color={colors.error} weight="medium" />
@@ -615,25 +642,41 @@ export function ConfirmationDialog({
 
 /* -------------------------------------------------------------------- pin */
 
-/** Filled / empty dots for the PIN entry step. */
-export function PinDots({ length, revealed }: { length: number; revealed: boolean }) {
+/** Boxed entry display shared by PIN and one-time-code screens. */
+export function PinBoxes({
+  value,
+  secure = true,
+  length = 6,
+}: {
+  value: string;
+  secure?: boolean;
+  length?: number;
+}) {
   const { colors, radius } = useAppTheme();
 
   return (
-    <View style={styles.pinDots}>
-      {Array.from({ length }).map((_, index) => (
+    <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`${value.length} of ${length} digits entered`}
+      style={styles.pinBoxes}>
+      {Array.from({ length }, (_, index) => (
         <View
           key={index}
           style={[
-            styles.pinDot,
+            styles.pinBox,
             {
-              borderRadius: radius.circle,
-              borderColor: index < length ? colors.primary : colors.borderStrong,
-              backgroundColor: index < length ? colors.primary : 'transparent',
-              transform: [{ scale: index < length && revealed ? 0.55 : 1 }],
+              borderRadius: radius.sm,
+              borderColor: index < value.length ? colors.primary : colors.borderStrong,
+              backgroundColor: index < value.length ? colors.primarySoft : colors.surface,
             },
-          ]}
-        />
+          ]}>
+          {index < value.length ? (
+            <AppText variant="bodyStrong" color={colors.primary}>
+              {secure ? '•' : value[index]}
+            </AppText>
+          ) : null}
+        </View>
       ))}
     </View>
   );
@@ -867,16 +910,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
   },
-  pinDots: {
+  pinBoxes: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: spacing.lg,
+    gap: spacing.sm,
     paddingVertical: spacing.lg,
   },
-  pinDot: {
-    width: 16,
-    height: 16,
+  pinBox: {
+    width: 40,
+    height: 48,
     borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   keypad: {
     flexDirection: 'row',

@@ -1,16 +1,12 @@
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { AuthBrand } from '@/components/auth/auth-brand';
+import { AuthPage } from '@/components/auth/AuthPage';
 import { ProfileField, StatusBanner } from '@/components/profile/profile-components';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/button';
@@ -75,19 +71,7 @@ export default function SignInScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView
-        style={styles.fill}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          contentContainerStyle={[
-            styles.content,
-            { padding: space.lg, gap: space.xl },
-          ]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}>
-          <AuthBrand />
-
+    <AuthPage contentStyle={{ gap: space.xl }}>
           <View style={[styles.form, { gap: space.md }]}>
             <View style={styles.heading}>
               <AppText variant="title2">Welcome back</AppText>
@@ -198,6 +182,7 @@ export default function SignInScreen() {
                 }}
                 keyboardType="number-pad"
                 secureTextEntry
+                digitBoxes
                 autoComplete="off"
                 placeholder="••••••"
                 maxLength={6}
@@ -238,22 +223,11 @@ export default function SignInScreen() {
           <AppText variant="caption" color={colors.textTertiary} align="center">
             Your six-digit PIN remains available for sign-in and protects payments.
           </AppText>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    </AuthPage>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  fill: { flex: 1 },
-  content: {
-    flexGrow: 1,
-    width: '100%',
-    maxWidth: 560,
-    alignSelf: 'center',
-    justifyContent: 'center',
-  },
   form: {},
   heading: { gap: 4 },
   modeSwitch: {

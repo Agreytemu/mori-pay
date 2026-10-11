@@ -24,7 +24,7 @@ export type ProfileMenuRow = {
   /** Right-hand text, e.g. a masked phone number. */
   value?: string;
   /** Renders a switch instead of a chevron. */
-  toggle?: 'notifications' | 'biometrics';
+  toggle?: 'notifications' | 'appLock';
   /** Renders a three-option segmented control instead of a chevron. */
   appearance?: true;
   /** Renders a chevron when no value/toggle/appearance is set. */

@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { PinDots, PinKeypad, StatusBanner } from '@/components/profile/profile-components';
-import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { AuthPage } from '@/components/auth/AuthPage';
+import { PinBoxes, PinKeypad, StatusBanner } from '@/components/profile/profile-components';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/button';
 import { setPin } from '@/lib/mori-api';
@@ -84,7 +83,7 @@ export default function SetPinScreen() {
 
   if (step === 'success') {
     return (
-      <SafeAreaView edges={['top', 'bottom']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
+      <AuthPage>
         <View style={styles.success}>
           <View style={[styles.successIcon, { backgroundColor: colors.successSoft, borderRadius: radius.xl }]}>
             <AppText variant="title1" color={colors.success}>
@@ -99,15 +98,14 @@ export default function SetPinScreen() {
           </AppText>
           <PrimaryButton label="Get started" block onPress={() => router.replace('/(tabs)')} />
         </View>
-      </SafeAreaView>
+      </AuthPage>
     );
   }
 
   const copy = COPY[step];
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <ScreenHeader title="Set your PIN" subtitle="Payments and cash out" onBack={() => router.back()} />
+    <AuthPage onBack={() => router.back()}>
       <View style={styles.body}>
         <AppText variant="title3" align="center">
           {copy.title}
@@ -116,7 +114,7 @@ export default function SetPinScreen() {
           {copy.hint}
         </AppText>
 
-        <PinDots length={entry.length} revealed={false} />
+        <PinBoxes value={entry} />
 
         {error ? (
           <StatusBanner tone="error" title="Check your PIN" message={error} onDismiss={() => setError(null)} />
@@ -130,12 +128,11 @@ export default function SetPinScreen() {
           />
         </View>
       </View>
-    </SafeAreaView>
+    </AuthPage>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
   body: { flex: 1, padding: 16, gap: 16, alignItems: 'center' },
   footer: { marginTop: 'auto', width: '100%', gap: 16, alignItems: 'center' },
   success: { flex: 1, padding: 24, gap: 16, alignItems: 'center', justifyContent: 'center' },

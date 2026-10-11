@@ -262,7 +262,7 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
 
   return (
     <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView style={styles.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[styles.content, { padding: space.base, gap: space.lg }]}
@@ -325,21 +325,21 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
                     <ChoiceChip key={provider} label={provider} selected={fields.provider === provider} onPress={() => setField('provider', provider)} />
                   ))}
                 </View>
-                <FormField label="Phone number" placeholder="+255 7XX XXX XXX" value={fields.identifier} onChangeText={updateField('identifier')} keyboardType="phone-pad" />
+                <FormField label="Phone number" placeholder="+255 7XX XXX XXX" value={fields.identifier} onChangeText={updateField('identifier')} keyboardType="phone-pad" maxLength={16} />
               </>
             ) : currentKind === 'bank' ? (
               <>
                 <FormField label="Bank name" placeholder="e.g. NMB Bank" value={fields.provider} onChangeText={updateField('provider')} />
                 <FormField label="Account name" placeholder="Name on the account" value={fields.personName} onChangeText={updateField('personName')} />
-                <FormField label="Account number" placeholder="Enter account number" value={fields.identifier} onChangeText={updateField('identifier')} keyboardType="number-pad" />
+                <FormField label="Account number" placeholder="Enter account number" value={fields.identifier} onChangeText={updateField('identifier')} keyboardType="number-pad" maxLength={20} />
               </>
             ) : (
               <>
                 <FormField label="Cardholder name" placeholder="Name on card" value={fields.personName} onChangeText={updateField('personName')} />
-                <FormField label="Card number" placeholder="Card number" value={fields.identifier} onChangeText={updateField('identifier')} keyboardType="number-pad" />
+                <FormField label="Card number" placeholder="Card number" value={fields.identifier} onChangeText={updateField('identifier')} keyboardType="number-pad" maxLength={19} />
                 <View style={styles.inlineFields}>
-                  <View style={styles.inlineField}><FormField label="Expiry date" placeholder="MM/YY" value={fields.expiry} onChangeText={updateField('expiry')} /></View>
-                  <View style={styles.inlineField}><FormField label="CVV" placeholder="CVV" value={fields.cvv} onChangeText={updateField('cvv')} keyboardType="number-pad" secureTextEntry /></View>
+                  <View style={styles.inlineField}><FormField label="Expiry date" placeholder="MM/YY" value={fields.expiry} onChangeText={(value) => updateField('expiry')(value.replace(/\D/g, '').slice(0, 4).replace(/^(\d{2})(?=\d)/, '$1/'))} keyboardType="number-pad" maxLength={5} /></View>
+                  <View style={styles.inlineField}><FormField label="CVV" placeholder="CVV" value={fields.cvv} onChangeText={updateField('cvv')} keyboardType="number-pad" maxLength={4} secureTextEntry /></View>
                 </View>
               </>
             )}
@@ -463,6 +463,7 @@ function FormField({
     <View style={styles.field}>
       <AppText variant="bodySmallStrong">{label}</AppText>
       <TextInput
+        accessibilityLabel={label}
         placeholderTextColor={colors.textTertiary}
         autoCapitalize="words"
         style={[styles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md }]}

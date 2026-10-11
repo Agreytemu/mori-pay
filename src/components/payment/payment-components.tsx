@@ -99,6 +99,7 @@ export function AmountInput({
           TZS
         </AppText>
         <TextInput
+          accessibilityLabel={title}
           value={value}
           onChangeText={onChangeText}
           keyboardType="number-pad"
@@ -107,19 +108,7 @@ export function AmountInput({
           selectionColor={colors.primary}
           placeholder="0"
           placeholderTextColor={colors.textTertiary}
-          style={[
-            styles.amountInput,
-            {
-              color: colors.text,
-              fontSize: 42,
-              lineHeight: 48,
-              fontWeight: '700',
-              fontFamily: 'System',
-              width: 0,
-              minWidth: 0,
-            },
-          ]}
-          textAlign="left"
+          style={[styles.amountInput, { color: colors.text, fontSize: 32 }]}
         />
       </View>
       <View
@@ -195,21 +184,13 @@ export function RecipientSelector({
         ]}>
         <AppIcon name="phone" size={17} color={colors.textSecondary} />
         <TextInput
+          accessibilityLabel="Phone number"
           value={value}
           onChangeText={onPhoneChange}
           placeholder="Phone number"
           placeholderTextColor={colors.textTertiary}
           keyboardType="phone-pad"
-          style={[
-            styles.textInput,
-            {
-              color: colors.text,
-              fontSize: 16,
-              flex: 1,
-              minWidth: 0,
-              paddingVertical: space.sm,
-            },
-          ]}
+          style={[styles.textInput, { minHeight: 48, color: colors.text }]}
         />
       </View>
 

@@ -739,6 +739,10 @@ export class AuthService {
     return {
       pinSet: Boolean(user.pinHash),
       lockedUntil: user.pinLockedUntil?.toISOString() ?? null,
+      attemptsRemaining:
+        user.pinLockedUntil && user.pinLockedUntil > new Date()
+          ? 0
+          : Math.max(0, PIN_MAX_ATTEMPTS - user.pinFailedCount),
     };
   }
 
@@ -753,7 +757,11 @@ export class AuthService {
         pinLockedUntil: null,
       },
     });
-    return { pinSet: true, lockedUntil: null };
+    return {
+      pinSet: true,
+      lockedUntil: null,
+      attemptsRemaining: PIN_MAX_ATTEMPTS,
+    };
   }
 
   async verifyPin(userId: string, pin: string): Promise<PinStatus> {
@@ -793,7 +801,11 @@ export class AuthService {
       data: { pinFailedCount: 0, pinLockedUntil: null },
     });
 
-    return { pinSet: true, lockedUntil: null };
+    return {
+      pinSet: true,
+      lockedUntil: null,
+      attemptsRemaining: PIN_MAX_ATTEMPTS,
+    };
   }
 
   async changePin(

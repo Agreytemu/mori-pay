@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { PinDots, PinKeypad, StatusBanner } from '@/components/profile/profile-components';
-import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { AuthPage } from '@/components/auth/AuthPage';
+import { PinBoxes, PinKeypad, StatusBanner } from '@/components/profile/profile-components';
+import { AppText } from '@/components/ui/AppText';
 import { GhostButton, PrimaryButton } from '@/components/ui/button';
 import {
   resendEmailVerification,
@@ -91,14 +91,15 @@ export default function VerifyEmailScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <ScreenHeader
-        title="Verify your email"
-        subtitle={`We sent a 6-digit code to ${email}`}
-        onBack={() => router.back()}
-      />
+    <AuthPage onBack={() => router.back()}>
       <View style={styles.body}>
-        <PinDots length={code.length} revealed />
+        <View style={styles.heading}>
+          <AppText variant="title2">Verify your email</AppText>
+          <AppText variant="bodySmall" color={colors.textSecondary} align="center">
+            We sent a 6-digit code to {email}
+          </AppText>
+        </View>
+        <PinBoxes value={code} secure={false} />
 
         {devCode ? (
           <StatusBanner
@@ -138,12 +139,12 @@ export default function VerifyEmailScreen() {
           />
         </View>
       </View>
-    </SafeAreaView>
+    </AuthPage>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
   body: { flex: 1, padding: 16, gap: 16, alignItems: 'center' },
+  heading: { gap: 4, alignItems: 'center' },
   footer: { marginTop: 'auto', width: '100%', gap: 16, alignItems: 'center' },
 });

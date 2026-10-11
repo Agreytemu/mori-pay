@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  PinDots,
+  PinBoxes,
   PinKeypad,
   ProfileField,
   StatusBanner,
@@ -575,7 +575,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         </View>
       </View>
 
-      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[
@@ -591,14 +591,15 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
             <View style={styles.amountRow}>
               <AppText variant="bodyStrong" color={colors.textSecondary}>TZS</AppText>
               <TextInput
+                accessibilityLabel={isDeposit ? 'Amount to add' : 'Amount to withdraw'}
                 value={amount}
                 onChangeText={(value) => setAmount(value.replace(/[^0-9]/g, ''))}
                 keyboardType="number-pad"
                 returnKeyType="done"
-                placeholder="0"
-                placeholderTextColor={colors.textTertiary}
                 selectionColor={colors.primary}
                 style={[styles.amountInput, { color: colors.text }]}
+                placeholder="0"
+                placeholderTextColor={colors.textTertiary}
               />
             </View>
             <AppText variant="caption" color={colors.textTertiary}>
@@ -771,7 +772,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         {step === 'pin' ? (
           <View style={[styles.pinSheet, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
             <AppText variant="bodySmallStrong" align="center">Enter your PIN to confirm</AppText>
-            <PinDots length={entry.length} revealed={false} />
+            <PinBoxes value={entry} />
             {error ? <StatusBanner tone="error" title="PIN rejected" message={error} onDismiss={() => setError(null)} /> : null}
             <PinKeypad onDigit={onDigit} onBackspace={() => setEntry((v) => v.slice(0, -1))} disabled={busy} />
             <SecondaryButton label="Cancel" block disabled={busy} onPress={() => { setStep('form'); setEntry(''); setError(null); }} />

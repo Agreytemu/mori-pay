@@ -1,16 +1,8 @@
 import { useState } from 'react';
 import { useRouter } from 'expo-router';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, StyleSheet, View } from 'react-native';
 
-import { AuthBrand } from '@/components/auth/auth-brand';
+import { AuthPage } from '@/components/auth/AuthPage';
 import { ProfileField, StatusBanner } from '@/components/profile/profile-components';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/button';
@@ -79,13 +71,7 @@ export default function RegisterScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          contentContainerStyle={[styles.content, { padding: space.lg, gap: space.lg }]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}>
-          <AuthBrand />
+    <AuthPage onBack={() => router.back()} contentStyle={{ gap: space.lg }}>
           <View style={styles.heading}>
             <AppText variant="title2">Create your account</AppText>
             <AppText variant="bodySmall" color={colors.textSecondary}>
@@ -150,6 +136,7 @@ export default function RegisterScreen() {
             value={dateOfBirth}
             onChangeText={setDateOfBirth}
             keyboardType="numbers-and-punctuation"
+            maxLength={10}
             placeholder="1996-04-18"
             hint="Format: YYYY-MM-DD"
             error={dateOfBirth !== '' && !validDob ? 'Use a valid date in YYYY-MM-DD format.' : undefined}
@@ -177,16 +164,11 @@ export default function RegisterScreen() {
               </AppText>
             </Pressable>
           </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    </AuthPage>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  fill: { flex: 1 },
-  content: { flexGrow: 1, width: '100%', maxWidth: 560, alignSelf: 'center' },
   heading: { gap: 4 },
   passwordAction: { alignSelf: 'flex-end', marginTop: -8 },
   footer: { flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: 8 },

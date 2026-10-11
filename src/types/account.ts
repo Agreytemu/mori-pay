@@ -24,7 +24,7 @@ export type WalletAccount = {
 
 export type SecurityState = {
   pinSet: boolean;
-  biometricsEnabled: boolean;
+  appLockEnabled: boolean;
   twoFactorEnabled: boolean;
   /** Masked phone used for one-time codes. */
   recoveryPhone: string;

@@ -1,11 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MoneyRequest } from '@mori-pay/contracts';
 
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
+import { DigitBoxesInput } from '@/components/ui/DigitBoxesInput';
 import { Button, SecondaryButton } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { cancelRequest, listRequests, payRequest } from '@/lib/mori-api';
@@ -177,28 +186,38 @@ export function MoneyRequestsScreen() {
         transparent
         animationType="fade"
         onRequestClose={() => { setPendingPay(null); setActionError(null); }}>
-        <View style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}>
-          <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
-            <AppText variant="title3" align="center">Pay money request</AppText>
-            <AppText variant="bodySmall" color={colors.textSecondary} align="center">
-              {pendingPay ? `${formatMoney(pendingPay.amount, pendingPay.currency)} requested by ${pendingPay.requesterName}.` : ''}
-            </AppText>
-            <TextInput
-              accessibilityLabel="Six-digit PIN"
-              value={pin}
-              onChangeText={(value) => { setPin(value.replace(/\D/g, '').slice(0, 6)); setActionError(null); }}
-              keyboardType="number-pad"
-              secureTextEntry
-              maxLength={6}
-              placeholder="Enter six-digit PIN"
-              placeholderTextColor={colors.textTertiary}
-              style={[styles.pinInput, { color: colors.text, backgroundColor: colors.background, borderColor: colors.border, borderRadius: radius.md }]}
-            />
-            {actionError ? <AppText variant="caption" color={colors.error}>{actionError}</AppText> : null}
-            <Button label="Confirm payment" loading={busyId === pendingPay?.id} onPress={() => void confirmPay()} />
-            <SecondaryButton label="Not now" onPress={() => { setPendingPay(null); setPin(''); setActionError(null); }} />
-          </View>
-        </View>
+        <KeyboardAvoidingView
+          style={[styles.modalBackdrop, { backgroundColor: colors.overlay }]}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <ScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}>
+            <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.lg }]}>
+              <AppText variant="title3" align="center">Pay money request</AppText>
+              <AppText variant="bodySmall" color={colors.textSecondary} align="center">
+                {pendingPay ? `${formatMoney(pendingPay.amount, pendingPay.currency)} requested by ${pendingPay.requesterName}.` : ''}
+              </AppText>
+              <DigitBoxesInput
+                accessibilityLabel="Six-digit PIN"
+                value={pin}
+                onChangeText={(value) => { setPin(value.replace(/\D/g, '').slice(0, 6)); setActionError(null); }}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={6}
+                boxCount={6}
+                containerStyle={{
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                }}
+              />
+              {actionError ? <AppText variant="caption" color={colors.error}>{actionError}</AppText> : null}
+              <Button label="Confirm payment" loading={busyId === pendingPay?.id} onPress={() => void confirmPay()} />
+              <SecondaryButton label="Not now" onPress={() => { setPendingPay(null); setPin(''); setActionError(null); }} />
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
@@ -214,7 +233,7 @@ const styles = StyleSheet.create({
   cardCopy: { flex: 1, gap: 4 },
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   empty: { borderWidth: StyleSheet.hairlineWidth, padding: 24, alignItems: 'center', gap: 8 },
-  modalBackdrop: { flex: 1, justifyContent: 'center', padding: 24 },
+  modalBackdrop: { flex: 1 },
+  modalScrollContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
   modalCard: { width: '100%', maxWidth: 440, alignSelf: 'center', borderWidth: StyleSheet.hairlineWidth, padding: 20, gap: 14 },
-  pinInput: { borderWidth: StyleSheet.hairlineWidth, padding: 14, textAlign: 'center', letterSpacing: 8 },
 });

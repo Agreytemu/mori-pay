@@ -35,7 +35,7 @@ export function useProfileState(): ProfileState {
     user,
     devices,
     notificationPreferences,
-    biometricsEnabled,
+    appLockEnabled,
   } = useSession();
 
   const profile: UserProfile = {
@@ -59,7 +59,7 @@ export function useProfileState(): ProfileState {
     profile,
     security: {
       status: accountProfile?.status === 'restricted' ? 'attention' : 'protected',
-      biometricsEnabled,
+      appLockEnabled,
       loginAlertsEnabled: notificationPreferences?.securityAlerts ?? true,
       lastCheckedAt: accountProfile?.pinUpdatedAt ?? accountProfile?.memberSince ?? '',
     },

@@ -28,8 +28,7 @@ export type SecurityStatus = 'protected' | 'attention';
 
 export type SecuritySettings = {
   status: SecurityStatus;
-  /** UI only. No biometrics prompt is ever shown in this build. */
-  biometricsEnabled: boolean;
+  appLockEnabled: boolean;
   loginAlertsEnabled: boolean;
   lastCheckedAt: string;
 };
@@ -107,7 +106,7 @@ export const MOCK_PROFILE: UserProfile = {
 
 export const MOCK_SECURITY: SecuritySettings = {
   status: 'protected',
-  biometricsEnabled: false,
+  appLockEnabled: false,
   loginAlertsEnabled: true,
   lastCheckedAt: '2026-10-04T07:12:00',
 };
@@ -172,8 +171,8 @@ export const MOCK_SECURITY_ACTIVITY: readonly SecurityActivity[] = [
   },
   {
     id: 'act-4',
-    title: 'Biometric prompt disabled',
-    detail: 'Fingerprint unlock turned off',
+    title: 'App lock disabled',
+    detail: 'Device unlock is not required to open Mori Pay',
     at: '2026-09-18T08:30:00',
     icon: 'biometrics',
     tone: 'info',
@@ -272,9 +271,9 @@ export const MOCK_FAQS: readonly Faq[] = [
   {
     id: 'faq-7',
     category: 'security',
-    question: 'Is biometric authentication available?',
+    question: 'How does the app lock work?',
     answer:
-      'The biometric switch is part of the interface only in this release. It records your preference and does not yet read the fingerprint sensor on the device.',
+      'Turn on Biometric app lock under Security, then choose to lock immediately or after one minute away. Mori Pay asks for device biometrics when you return. On iOS, the system can fall back to your device passcode; on Android, use your Mori Pay PIN if biometrics are unavailable.',
   },
   {
     id: 'faq-8',

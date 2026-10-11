@@ -94,6 +94,8 @@ export type PinStatus = {
   pinSet: boolean;
   /** ISO timestamp while locked out after failed attempts, otherwise `null`. */
   lockedUntil: string | null;
+  /** Number of incorrect PIN entries remaining before temporary lockout. */
+  attemptsRemaining?: number;
 };
 
 export type DevicePlatform = 'android' | 'ios' | 'web';

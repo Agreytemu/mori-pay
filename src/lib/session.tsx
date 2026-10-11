@@ -4,9 +4,12 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
+import { AppState, Platform } from 'react-native';
+import * as SecureStore from 'expo-secure-store';
 
 import type {
   AuthSession,
@@ -24,6 +27,7 @@ import { callLogout, hydrateTokens, persistTokens } from './api';
 import * as api from './mori-api';
 
 export type SessionStatus = 'loading' | 'authenticated' | 'unauthenticated';
+export type AppLockDelay = 'immediate' | 'one-minute';
 
 export type SessionValue = {
   status: SessionStatus;
@@ -34,7 +38,11 @@ export type SessionValue = {
   devices: TrustedDevice[];
   notificationPreferences: NotificationPreference | null;
   accountDataError: Error | null;
-  biometricsEnabled: boolean;
+  appLockEnabled: boolean;
+  appLockDelay: AppLockDelay;
+  appLockReady: boolean;
+  appLockStorageError: Error | null;
+  isAppLocked: boolean;
   signIn: (session: AuthSession) => Promise<PinStatus>;
   signOut: () => Promise<void>;
   reload: () => Promise<void>;
@@ -42,12 +50,18 @@ export type SessionValue = {
   updateProfile: (input: UpdateAccountProfileInput) => Promise<void>;
   removeDevice: (id: string) => Promise<void>;
   updateNotificationPreferences: (input: UpdateNotificationPreferencesInput) => Promise<void>;
-  setBiometricsEnabled: (enabled: boolean) => void;
+  setAppLockEnabled: (enabled: boolean) => Promise<void>;
+  setAppLockDelay: (delay: AppLockDelay) => Promise<void>;
+  unlockApp: () => void;
+  reloadAppLock: () => Promise<void>;
   setWallet: (wallet: WalletAccount) => void;
   setPin: (pin: PinStatus) => void;
 };
 
 const SessionContext = createContext<SessionValue | null>(null);
+const APP_LOCK_KEY = 'mori-pay-app-lock-enabled';
+const APP_LOCK_DELAY_KEY = 'mori-pay-app-lock-delay';
+const APP_LOCK_DELAY_MS = 60_000;
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>('loading');
@@ -59,7 +73,116 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [notificationPreferences, setNotificationPreferences] =
     useState<NotificationPreference | null>(null);
   const [accountDataError, setAccountDataError] = useState<Error | null>(null);
-  const [biometricsEnabled, setBiometricsEnabledState] = useState(false);
+  const [appLockEnabled, setAppLockEnabledState] = useState(false);
+  const [appLockDelay, setAppLockDelayState] = useState<AppLockDelay>('immediate');
+  const [appLockReady, setAppLockReady] = useState(false);
+  const [appLockStorageError, setAppLockStorageError] = useState<Error | null>(null);
+  const [isAppLocked, setIsAppLocked] = useState(false);
+  const appLockEnabledRef = useRef(false);
+  const appLockDelayRef = useRef<AppLockDelay>('immediate');
+  const backgroundedAtRef = useRef<number | null>(null);
+  const statusRef = useRef<SessionStatus>('loading');
+
+  const reloadAppLock = useCallback(async () => {
+    setAppLockReady(false);
+    setAppLockStorageError(null);
+    if (Platform.OS === 'web') {
+      appLockEnabledRef.current = false;
+      appLockDelayRef.current = 'immediate';
+      setAppLockEnabledState(false);
+      setAppLockDelayState('immediate');
+      setIsAppLocked(false);
+      setAppLockReady(true);
+      return;
+    }
+    try {
+      const [storedEnabled, storedDelay] = await Promise.all([
+        SecureStore.getItemAsync(APP_LOCK_KEY),
+        SecureStore.getItemAsync(APP_LOCK_DELAY_KEY),
+      ]);
+      const enabled = storedEnabled === 'true';
+      const delay: AppLockDelay = storedDelay === 'one-minute' ? 'one-minute' : 'immediate';
+      appLockEnabledRef.current = enabled;
+      appLockDelayRef.current = delay;
+      setAppLockEnabledState(enabled);
+      setAppLockDelayState(delay);
+      setIsAppLocked(enabled && statusRef.current === 'authenticated');
+    } catch (error) {
+      setAppLockStorageError(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      setAppLockReady(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [storedEnabled, storedDelay] =
+          Platform.OS === 'web'
+            ? [null, null]
+            : await Promise.all([
+                SecureStore.getItemAsync(APP_LOCK_KEY),
+                SecureStore.getItemAsync(APP_LOCK_DELAY_KEY),
+              ]);
+        const enabled = storedEnabled === 'true';
+        const delay: AppLockDelay = storedDelay === 'one-minute' ? 'one-minute' : 'immediate';
+        if (cancelled) return;
+        appLockEnabledRef.current = enabled;
+        appLockDelayRef.current = delay;
+        setAppLockEnabledState(enabled);
+        setAppLockDelayState(delay);
+        setIsAppLocked(enabled && statusRef.current === 'authenticated');
+        setAppLockStorageError(null);
+      } catch (error) {
+        if (!cancelled) {
+          setAppLockStorageError(error instanceof Error ? error : new Error(String(error)));
+        }
+      } finally {
+        if (!cancelled) setAppLockReady(true);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    appLockEnabledRef.current = appLockEnabled;
+    statusRef.current = status;
+  }, [appLockEnabled, status]);
+
+  useEffect(() => {
+    let previousState = AppState.currentState;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active' && previousState === 'active') {
+        backgroundedAtRef.current = Date.now();
+        if (
+          appLockEnabledRef.current &&
+          appLockDelayRef.current === 'immediate' &&
+          statusRef.current === 'authenticated'
+        ) {
+          setIsAppLocked(true);
+        }
+      } else if (nextState === 'active' && previousState !== 'active') {
+        const backgroundedAt = backgroundedAtRef.current;
+        backgroundedAtRef.current = null;
+        if (
+          backgroundedAt !== null &&
+          appLockEnabledRef.current &&
+          appLockDelayRef.current === 'one-minute' &&
+          statusRef.current === 'authenticated' &&
+          Date.now() - backgroundedAt >= APP_LOCK_DELAY_MS
+        ) {
+          setIsAppLocked(true);
+        }
+      }
+      previousState = nextState;
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const reloadAccountData = useCallback(async () => {
     try {
@@ -86,7 +209,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setDevices([]);
     setNotificationPreferences(null);
     setAccountDataError(null);
-    setBiometricsEnabledState(false);
+    setIsAppLocked(false);
     setStatus('unauthenticated');
   }, []);
 
@@ -102,6 +225,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setWalletState(me.wallet);
       setPinState(pinStatus);
       setStatus('authenticated');
+      setIsAppLocked(appLockEnabledRef.current);
     } catch {
       await persistTokens(null);
       clear();
@@ -135,6 +259,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setWalletState(me.wallet);
         setPinState(pinStatus);
         setStatus('authenticated');
+        setIsAppLocked(appLockEnabledRef.current);
       } catch {
         await persistTokens(null);
         if (!cancelled) {
@@ -165,6 +290,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUser(session.user);
     setWalletState(session.wallet);
     setStatus('authenticated');
+    setIsAppLocked(false);
     try {
       await reloadAccountData();
     } catch {
@@ -175,7 +301,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       setPinState(pinStatus);
       return pinStatus;
     } catch {
-      const fallback: PinStatus = { pinSet: false, lockedUntil: null };
+      const fallback: PinStatus = {
+        pinSet: false,
+        lockedUntil: null,
+        attemptsRemaining: 0,
+      };
       setPinState(fallback);
       return fallback;
     }
@@ -199,9 +329,26 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     []
   );
 
-  const setBiometricsEnabled = useCallback((enabled: boolean) => {
-    setBiometricsEnabledState(enabled);
+  const setAppLockEnabled = useCallback(async (enabled: boolean) => {
+    if (Platform.OS === 'web') {
+      throw new Error('App lock is available in the iOS and Android apps only.');
+    }
+    await SecureStore.setItemAsync(APP_LOCK_KEY, enabled ? 'true' : 'false');
+    appLockEnabledRef.current = enabled;
+    setAppLockEnabledState(enabled);
+    setAppLockStorageError(null);
+    if (!enabled) setIsAppLocked(false);
   }, []);
+  const setAppLockDelay = useCallback(async (delay: AppLockDelay) => {
+    if (Platform.OS === 'web') {
+      throw new Error('App lock is available in the iOS and Android apps only.');
+    }
+    await SecureStore.setItemAsync(APP_LOCK_DELAY_KEY, delay);
+    appLockDelayRef.current = delay;
+    setAppLockDelayState(delay);
+    setAppLockStorageError(null);
+  }, []);
+  const unlockApp = useCallback(() => setIsAppLocked(false), []);
 
   const signOut = useCallback(async () => {
     await callLogout();
@@ -222,7 +369,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       devices,
       notificationPreferences,
       accountDataError,
-      biometricsEnabled,
+      appLockEnabled,
+      appLockDelay,
+      appLockReady,
+      appLockStorageError,
+      isAppLocked,
       signIn,
       signOut,
       reload,
@@ -230,7 +381,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateProfile,
       removeDevice,
       updateNotificationPreferences,
-      setBiometricsEnabled,
+      setAppLockEnabled,
+      setAppLockDelay,
+      unlockApp,
+      reloadAppLock,
       setWallet,
       setPin,
     }),
@@ -243,7 +397,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       devices,
       notificationPreferences,
       accountDataError,
-      biometricsEnabled,
+      appLockEnabled,
+      appLockDelay,
+      appLockReady,
+      appLockStorageError,
+      isAppLocked,
       signIn,
       signOut,
       reload,
@@ -251,7 +409,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateProfile,
       removeDevice,
       updateNotificationPreferences,
-      setBiometricsEnabled,
+      setAppLockEnabled,
+      setAppLockDelay,
+      unlockApp,
+      reloadAppLock,
       setWallet,
       setPin,
     ]

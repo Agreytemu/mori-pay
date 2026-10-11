@@ -1,15 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { StyleSheet, View } from 'react-native';
 
-import { AuthBrand } from '@/components/auth/auth-brand';
+import { AuthPage } from '@/components/auth/AuthPage';
 import { ProfileField, StatusBanner } from '@/components/profile/profile-components';
 import { AppText } from '@/components/ui/AppText';
 import { GhostButton, PrimaryButton } from '@/components/ui/button';
@@ -81,13 +74,7 @@ export default function ResetPasswordScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView style={styles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          contentContainerStyle={[styles.content, { padding: space.lg, gap: space.lg }]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}>
-          <AuthBrand />
+    <AuthPage onBack={() => router.back()} contentStyle={{ gap: space.lg }}>
           <View style={styles.heading}>
             <AppText variant="title2">
               {complete ? 'Password updated' : 'Reset your password'}
@@ -132,6 +119,7 @@ export default function ResetPasswordScreen() {
                     value={code}
                     onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 6))}
                     keyboardType="number-pad"
+                    digitBoxes
                     autoComplete="one-time-code"
                     maxLength={6}
                     placeholder="123456"
@@ -178,15 +166,10 @@ export default function ResetPasswordScreen() {
               onPress={() => router.replace('/(auth)/sign-in')}
             />
           )}
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    </AuthPage>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  fill: { flex: 1 },
-  content: { flexGrow: 1, width: '100%', maxWidth: 560, alignSelf: 'center', justifyContent: 'center' },
   heading: { gap: 4 },
 });

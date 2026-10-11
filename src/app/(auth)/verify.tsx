@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { PinDots, PinKeypad, StatusBanner } from '@/components/profile/profile-components';
-import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { AuthPage } from '@/components/auth/AuthPage';
+import { PinBoxes, PinKeypad, StatusBanner } from '@/components/profile/profile-components';
 import { GhostButton, PrimaryButton } from '@/components/ui/button';
+import { AppText } from '@/components/ui/AppText';
 import { requestOtp, verifyOtp } from '@/lib/mori-api';
 import { deviceInfo } from '@/lib/phone';
 import { useSession } from '@/lib/session';
@@ -104,15 +104,15 @@ export default function VerifyScreen() {
   };
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <ScreenHeader
-        title="Enter the code"
-        subtitle={`Sent to ${formatPhone(phone)}`}
-        onBack={() => router.back()}
-      />
-
+    <AuthPage onBack={() => router.back()}>
       <View style={styles.body}>
-        <PinDots length={code.length} revealed />
+        <View style={styles.heading}>
+          <AppText variant="title2">Enter the code</AppText>
+          <AppText variant="bodySmall" color={colors.textSecondary} align="center">
+            Sent to {formatPhone(phone)}
+          </AppText>
+        </View>
+        <PinBoxes value={code} secure={false} />
 
         {devCode ? (
           <StatusBanner
@@ -156,12 +156,12 @@ export default function VerifyScreen() {
           <PinKeypad onDigit={onDigit} onBackspace={() => setCode((v) => v.slice(0, -1))} disabled={busy} />
         </View>
       </View>
-    </SafeAreaView>
+    </AuthPage>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
   body: { flex: 1, padding: 16, gap: 16, alignItems: 'center' },
+  heading: { gap: 4, alignItems: 'center' },
   footer: { marginTop: 'auto', width: '100%', gap: 16, alignItems: 'center' },
 });

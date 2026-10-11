@@ -48,7 +48,7 @@ export function getMockAccount(): WalletAccount {
 export function getMockSecurityState(): SecurityState {
   return {
     pinSet: true,
-    biometricsEnabled: false,
+    appLockEnabled: false,
     twoFactorEnabled: false,
     recoveryPhone: '255712•••678',
   };

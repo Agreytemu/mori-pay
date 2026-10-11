@@ -17,7 +17,7 @@ import {
   type DetailRow,
 } from '@/components/payment/payment-components';
 import {
-  PinDots,
+  PinBoxes,
   PinKeypad,
   ProfileField,
   StatusBanner,
@@ -1119,7 +1119,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       <AppText variant="bodySmallStrong" align="center">
         Enter your PIN to confirm
       </AppText>
-      <PinDots length={pinEntry.length} revealed={false} />
+      <PinBoxes value={pinEntry} />
       {error ? (
         <StatusBanner tone="error" title="PIN rejected" message={error} onDismiss={() => setError(null)} />
       ) : null}

@@ -1,5 +1,13 @@
 import { type ReactNode } from 'react';
-import { ScrollView, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { gutter, layout, spacing, useAppTheme } from '@/theme';
@@ -71,7 +79,11 @@ export function ScreenContainer({
           </View>
         ) : null}
 
-        {body}
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          {body}
+        </KeyboardAvoidingView>
 
         {footer ? <View style={styles.footerSlot}>{footer}</View> : null}
       </View>
