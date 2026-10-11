@@ -12,6 +12,7 @@ import { QuickActionRow } from '@/components/ui/QuickAction';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { TransactionItem } from '@/components/ui/TransactionItem';
 import type { IconName } from '@/constants/icons';
+import { PAYMENT_FLOW_ROUTES } from '@/constants/payment-routes';
 import { toUiTransaction, toWalletData, userStatusToAccountStatus } from '@/lib/adapters';
 import { listTransactions } from '@/lib/mori-api';
 import { useSession } from '@/lib/session';
@@ -57,13 +58,13 @@ export default function HomeScreen() {
         ...action,
         onPress: () => {
           if (action.label === 'Send') {
-            router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'send' } });
+            router.push(PAYMENT_FLOW_ROUTES.send);
           } else if (action.label === 'Receive') {
-            router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'receive' } });
+            router.push(PAYMENT_FLOW_ROUTES.receive);
           } else if (action.label === 'Request') {
-            router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'request' } });
+            router.push(PAYMENT_FLOW_ROUTES.request);
           } else {
-            router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'pay' } });
+            router.push(PAYMENT_FLOW_ROUTES.pay);
           }
         },
       })),

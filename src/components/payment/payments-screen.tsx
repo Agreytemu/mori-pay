@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
+import { useFocusEffect, useNavigation, useRouter, type Href } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { Pressable, Share, StyleSheet, View } from 'react-native';
+import { BackHandler, Pressable, Share, StyleSheet, View } from 'react-native';
 
 import {
   AmountInput,
@@ -27,6 +27,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button, SecondaryButton } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
+import { PAYMENT_FLOW_ROUTES, type PaymentFlow } from '@/constants/payment-routes';
 import type {
   MoneyRequest,
   MerchantPaymentPreview,
@@ -77,21 +78,34 @@ type FlowName =
 
 type PinReason = 'send' | 'pay';
 
-const MIN_AMOUNT = 500;
+export const MIN_AMOUNT = 500;
 
 function prettyPhone(phone: string): string {
   return `+${phone.slice(0, 3)} ${phone.slice(3, 6)} ${phone.slice(6, 9)} ${phone.slice(9)}`;
 }
 
-export default function PaymentsScreen() {
+function initialScreenForFlow(flow?: PaymentFlow): FlowName {
+  switch (flow) {
+    case 'send':
+      return 'send-recipient';
+    case 'receive':
+      return 'receive';
+    case 'request':
+      return 'request-recipient';
+    case 'pay':
+      return 'merchant';
+    default:
+      return 'overview';
+  }
+}
+
+export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   const { colors, radius, space } = useAppTheme();
   const router = useRouter();
-  const { startFlow } = useLocalSearchParams<{
-    startFlow?: 'send' | 'receive' | 'request' | 'pay';
-  }>();
+  const navigation = useNavigation();
   const session = useSession();
 
-  const [screen, setScreen] = useState<FlowName>('overview');
+  const [screen, setScreen] = useState<FlowName>(() => initialScreenForFlow(initialFlow));
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
 
   /* Send money */
@@ -197,20 +211,21 @@ export default function PaymentsScreen() {
 
   /* ---------------------------------------------------------------- helpers */
 
-  const goHome = () => {
-    router.setParams({ startFlow: undefined });
-    setScreen('overview');
-  };
+  const goHome = useCallback(() => {
+    if (initialFlow) {
+      if (router.canGoBack()) router.back();
+      else router.replace('/(tabs)/payments');
+    } else {
+      setScreen('overview');
+    }
+  }, [initialFlow, router]);
 
-  const openFlow = (flow: 'send' | 'receive' | 'request' | 'pay') => {
+  const openFlow = useCallback((flow: PaymentFlow) => {
     setError(null);
-    if (flow === 'send') setScreen('send-recipient');
-    else if (flow === 'receive') setScreen('receive');
-    else if (flow === 'request') setScreen('request-recipient');
-    else if (flow === 'pay') setScreen('merchant');
-  };
+    router.push(PAYMENT_FLOW_ROUTES[flow]);
+  }, [router]);
 
-  const handleBack = () => {
+  const handleBack = useCallback(() => {
     setError(null);
     switch (screen) {
       case 'send-receipt':
@@ -227,8 +242,7 @@ export default function PaymentsScreen() {
         break;
       case 'send-recipient':
       case 'receive':
-        if (startFlow) router.back();
-        else goHome();
+        goHome();
         break;
       case 'request-review':
         setScreen('request-amount');
@@ -255,18 +269,9 @@ export default function PaymentsScreen() {
       default:
         setScreen('overview');
     }
-  };
+  }, [goHome, screen]);
 
-  const activeScreen: FlowName =
-    screen === 'overview' && startFlow === 'send'
-      ? 'send-recipient'
-      : screen === 'overview' && startFlow === 'receive'
-        ? 'receive'
-        : screen === 'overview' && startFlow === 'request'
-          ? 'request-recipient'
-          : screen === 'overview' && startFlow === 'pay'
-            ? 'merchant'
-            : screen;
+  const activeScreen = screen;
 
   /* -------------------------------------------------------------- receive QR */
 
@@ -454,11 +459,53 @@ export default function PaymentsScreen() {
     }
   };
 
-  const closePin = () => {
+  const closePin = useCallback(() => {
     setPinReason(null);
     setPinEntry('');
     setError(null);
-  };
+  }, []);
+
+  const isFlowStart =
+    screen === 'send-recipient' ||
+    screen === 'receive' ||
+    screen === 'request-recipient' ||
+    screen === 'merchant';
+
+  useEffect(
+    () =>
+      navigation.addListener('beforeRemove', (event) => {
+        if (!pinReason && isFlowStart) return;
+        event.preventDefault();
+        if (pinReason) {
+          if (!busy) closePin();
+          return;
+        }
+        handleBack();
+      }),
+    [navigation, pinReason, isFlowStart, busy, closePin, handleBack]
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!initialFlow) return;
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (pinReason) {
+          if (!busy) closePin();
+          return true;
+        }
+        if (!isFlowStart) {
+          handleBack();
+          return true;
+        }
+        if (!router.canGoBack()) {
+          router.replace('/(tabs)/payments');
+          return true;
+        }
+        return false;
+      });
+      return () => subscription.remove();
+    }, [initialFlow, pinReason, busy, isFlowStart, closePin, handleBack, router])
+  );
 
   const copyText = async (label: string, value: string) => {
     try {

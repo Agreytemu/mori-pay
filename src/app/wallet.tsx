@@ -10,6 +10,7 @@ import {
   WalletAction,
   WalletActivityItem,
 } from '@/components/wallet/wallet-components';
+import { PAYMENT_FLOW_ROUTES } from '@/constants/payment-routes';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
@@ -105,12 +106,12 @@ export function WalletScreen({ isTab = false }: { isTab?: boolean }) {
                 <WalletAction
                   label="Send"
                   icon="send"
-                  onPress={() => router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'send' } })}
+                  onPress={() => router.push(PAYMENT_FLOW_ROUTES.send)}
                 />
                 <WalletAction
                   label="Receive"
                   icon="receive"
-                  onPress={() => router.push({ pathname: '/(tabs)/payments', params: { startFlow: 'receive' } })}
+                  onPress={() => router.push(PAYMENT_FLOW_ROUTES.receive)}
                 />
               </View>
             </View>
