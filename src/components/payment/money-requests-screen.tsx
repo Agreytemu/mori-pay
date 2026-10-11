@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MoneyRequest } from '@mori-pay/contracts';
 
 import { AppDialog } from '@/components/ui/app-dialog';
-import { AppIcon } from '@/components/ui/AppIcon';
+import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
 import { Button, SecondaryButton } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
@@ -96,6 +96,7 @@ export function MoneyRequestsScreen() {
         {actionError && !pendingPay ? <AppText variant="bodySmall" color={colors.error}>{actionError}</AppText> : null}
         {error ? (
           <View style={styles.stack}>
+            <AppIllustration name="noSignal" width={176} height={124} />
             <AppText variant="bodySmall" color={colors.error}>{error}</AppText>
             <SecondaryButton label="Retry" onPress={() => void reload()} />
           </View>
@@ -103,7 +104,7 @@ export function MoneyRequestsScreen() {
           <AppText variant="bodySmall" color={colors.textSecondary}>Loading money requests…</AppText>
         ) : requests.length === 0 ? (
           <View style={[styles.empty, { borderColor: colors.border, backgroundColor: colors.surface, borderRadius: radius.lg }]}>
-            <AppIcon name="request" size={28} color={colors.textTertiary} />
+            <AppIllustration name="transferMoney" width={176} height={116} />
             <AppText variant="bodyStrong">No money requests</AppText>
             <AppText variant="bodySmall" color={colors.textSecondary} align="center">
               Requests you send or receive will appear here.

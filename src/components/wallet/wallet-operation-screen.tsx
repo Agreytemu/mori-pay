@@ -22,6 +22,7 @@ import {
 } from '@/components/profile/profile-components';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
+import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
 import { Button, PrimaryButton, SecondaryButton } from '@/components/ui/button';
 import {
@@ -465,6 +466,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
         <ScrollView contentContainerStyle={styles.resultWrap}>
+          {success ? <AppIllustration name="moneyReceived" width={188} height={132} /> : null}
           <View
             style={[
               styles.resultIcon,
@@ -581,6 +583,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
             { paddingHorizontal: space.base, paddingTop: space.lg, paddingBottom: space.xl, gap: space.lg },
           ]}
           showsVerticalScrollIndicator={false}>
+          {isDeposit ? <AppIllustration name="addingFunds" width={204} height={136} /> : null}
           <View style={styles.amountBlock}>
             <AppText variant="bodySmall" color={colors.textSecondary}>
               {isDeposit ? 'Amount to add' : 'Amount to withdraw'}

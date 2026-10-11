@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppIcon } from '@/components/ui/AppIcon';
+import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/button';
 import type { IconName } from '@/constants/icons';
@@ -430,6 +431,7 @@ export function PaymentSuccess({
 
   return (
     <View style={styles.resultPanel}>
+      <AppIllustration name="moneyReceived" width={168} height={112} />
       <View
         style={[
           styles.successIconWrap,
@@ -605,6 +607,7 @@ export function ReceiptDetails({
   return (
     <View style={styles.stack}>
       <View style={styles.receiptHeader}>
+        <AppIllustration name="receipt" width={144} height={92} />
         <View style={[styles.logoBox, { backgroundColor: colors.primarySoft }]}>
           <AppText variant="bodyStrong" color={colors.primary}>
             LNA

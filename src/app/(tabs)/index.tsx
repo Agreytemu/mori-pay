@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { AccountCard } from '@/components/wallet/wallet-components';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
+import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { QuickActionRow } from '@/components/ui/QuickAction';
@@ -143,6 +144,25 @@ export default function HomeScreen() {
           </AppText>
         )}
 
+        <View
+          style={[
+            styles.financeBanner,
+            {
+              borderRadius: radius.lg,
+              borderColor: colors.border,
+              backgroundColor: colors.surface,
+              padding: space.base,
+            },
+          ]}>
+          <View style={styles.financeCopy}>
+            <AppText variant="bodySmallStrong">Your money, in one place</AppText>
+            <AppText variant="caption" color={colors.textSecondary}>
+              Send, receive and keep track of every payment.
+            </AppText>
+          </View>
+          <AppIllustration name="personalFinance" width={108} height={82} />
+        </View>
+
         <View style={styles.section}>
           <SectionHeader title="Move money" />
           <QuickActionRow actions={actions} gap={space.xs} />
@@ -182,6 +202,7 @@ export default function HomeScreen() {
           ) : (
             <EmptyState
               icon="emptyInbox"
+              illustration="receipt"
               title="No transactions yet"
               description="Your recent activity will appear here."
             />
@@ -257,6 +278,17 @@ const styles = StyleSheet.create({
   informationCopy: {
     flex: 1,
     gap: 2,
+  },
+  financeBanner: {
+    minHeight: 106,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    gap: 8,
+  },
+  financeCopy: {
+    flex: 1,
+    gap: 4,
   },
   pressed: {
     opacity: 0.72,

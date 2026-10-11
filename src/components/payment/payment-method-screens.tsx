@@ -15,6 +15,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
+import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/button';
 import { PaymentMethodSelector } from '@/components/payment/payment-components';
@@ -141,9 +142,7 @@ export function PaymentMethodsScreen() {
           </View>
         ) : (
           <View style={[styles.emptyState, { borderColor: colors.border, backgroundColor: colors.surfaceMuted }]}>
-            <View style={[styles.emptyIcon, { backgroundColor: colors.primarySoft }]}>
-              <AppIcon name="payments" size={24} color={colors.primary} />
-            </View>
+            <AppIllustration name="creditCard" width={176} height={112} />
             <AppText variant="bodyStrong">No payment methods yet</AppText>
             <AppText variant="bodySmall" color={colors.textSecondary} align="center">
               Add a mobile wallet, bank account, or card to get started.
@@ -285,6 +284,13 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
             onSelect={(method) => { setKind(method.id); setErrors([]); }}
           />
           )}
+          {!edit ? (
+            <AppIllustration
+              name={currentKind === 'card' ? 'creditCard' : 'paymentDetails'}
+              width={196}
+              height={116}
+            />
+          ) : null}
           <View style={styles.form}>
             {edit && original ? (
               <>

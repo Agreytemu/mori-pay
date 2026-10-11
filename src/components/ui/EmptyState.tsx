@@ -1,5 +1,6 @@
 import { StyleSheet, View } from 'react-native';
 
+import { AppIllustration, type AppIllustrationName } from '@/components/ui/AppIllustration';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
 import { SecondaryButton } from '@/components/ui/button';
@@ -8,6 +9,7 @@ import { useAppTheme } from '@/theme';
 
 export type EmptyStateProps = {
   icon?: IconName;
+  illustration?: AppIllustrationName;
   title: string;
   description?: string;
   actionLabel?: string;
@@ -22,6 +24,7 @@ export type EmptyStateProps = {
  */
 export function EmptyState({
   icon = 'emptyInbox',
+  illustration,
   title,
   description,
   actionLabel,
@@ -35,13 +38,22 @@ export function EmptyState({
       accessible
       accessibilityLabel={`${title}. ${description ?? ''}`}
       style={[styles.container, { gap: space.md, paddingVertical: compact ? space.xl : space.xxl }]}>
-      <View
-        style={[
-          styles.badge,
-          { backgroundColor: colors.surfaceMuted, borderRadius: radius.circle },
-        ]}>
-        <AppIcon name={icon} size={compact ? 26 : 30} color={colors.textTertiary} weight="regular" />
-      </View>
+      {illustration ? (
+        <AppIllustration
+          name={illustration}
+          width={compact ? 132 : 176}
+          height={compact ? 96 : 128}
+          style={styles.illustration}
+        />
+      ) : (
+        <View
+          style={[
+            styles.badge,
+            { backgroundColor: colors.surfaceMuted, borderRadius: radius.circle },
+          ]}>
+          <AppIcon name={icon} size={compact ? 26 : 30} color={colors.textTertiary} weight="regular" />
+        </View>
+      )}
 
       <View style={[styles.copy, { gap: space.xs }]}>
         <AppText variant="title3" align="center">
@@ -73,6 +85,9 @@ const styles = StyleSheet.create({
     height: 64,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  illustration: {
+    alignSelf: 'center',
   },
   copy: {
     maxWidth: 300,

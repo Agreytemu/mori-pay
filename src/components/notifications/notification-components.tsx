@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AppIcon } from '@/components/ui/AppIcon';
+import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
 import type { IconName } from '@/constants/icons';
 import type { AppNotification, NotificationStatus, NotificationType } from '@/data/mock-notifications';
@@ -129,6 +130,7 @@ export function NotificationEmptyState() {
 
   return (
     <View style={[styles.emptyState, { padding: space.xl }]}>
+      <AppIllustration name="payments" width={168} height={108} />
       <View style={[styles.emptyIcon, { backgroundColor: colors.surfaceMuted }]}>
         <AppIcon name="notificationOutline" size={32} color={colors.textTertiary} />
       </View>

@@ -12,6 +12,7 @@ import {
 import { Avatar } from '@/components/ui/avatar';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
+import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
 import type { IconName } from '@/constants/icons';
 import type {
@@ -61,7 +62,7 @@ export function ProfileStatus({ status }: { status: ProfileStatusValue }) {
 /* ------------------------------------------------------------------ header */
 
 export function ProfileHeader({ profile }: { profile: UserProfile }) {
-  const { colors, radius } = useAppTheme();
+  const { colors, radius, isCompact } = useAppTheme();
 
   return (
     <View
@@ -88,6 +89,11 @@ export function ProfileHeader({ profile }: { profile: UserProfile }) {
           </AppText>
         </View>
       </View>
+      <AppIllustration
+        name="profileData"
+        width={isCompact ? 52 : 68}
+        height={isCompact ? 50 : 64}
+      />
     </View>
   );
 }

@@ -13,6 +13,7 @@ import {
 import { PAYMENT_FLOW_ROUTES } from '@/constants/payment-routes';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
+import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { toWalletActivity, toWalletData, userStatusToAccountStatus } from '@/lib/adapters';
@@ -98,6 +99,25 @@ export function WalletScreen({ isTab = false }: { isTab?: boolean }) {
               onPress={() => setBalanceVisible((visible) => !visible)}
             />
 
+            <View
+              style={[
+                styles.walletBanner,
+                {
+                  borderRadius: radius.lg,
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                  padding: space.base,
+                },
+              ]}>
+              <View style={styles.walletBannerCopy}>
+                <AppText variant="bodySmallStrong">Your wallet</AppText>
+                <AppText variant="caption" color={colors.textSecondary}>
+                  Manage your balance and everyday money.
+                </AppText>
+              </View>
+              <AppIllustration name="wallet" width={104} height={82} />
+            </View>
+
             <View style={styles.actionsSection}>
               <SectionHeader title="Wallet actions" />
               <View style={styles.actionRow}>
@@ -172,6 +192,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   headerCopy: { flex: 1, gap: 1 },
+  walletBanner: { minHeight: 104, flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1 },
+  walletBannerCopy: { flex: 1, gap: 4 },
   actionsSection: { gap: 10 },
   actionRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   infoCard: { paddingHorizontal: 16, paddingTop: 16 },

@@ -23,6 +23,7 @@ import {
 } from '@/components/profile/profile-components';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
+import { AppIllustration, type AppIllustrationName } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
 import { Button, SecondaryButton } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -520,6 +521,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
 
   const renderOverview = () => (
     <View style={styles.stack}>
+      <AppIllustration name="payments" width={220} height={142} />
       <View style={styles.overviewIntro}>
         <AppText variant="title2">Move money</AppText>
         <AppText variant="bodySmall" color={colors.textSecondary}>
@@ -570,6 +572,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
     value,
     onChange,
     hint,
+    illustration,
     lookup,
     onContinue,
   }: {
@@ -577,10 +580,12 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
     value: string;
     onChange: (value: string) => void;
     hint: string;
+    illustration: AppIllustrationName;
     lookup?: RecipientLookup | null;
     onContinue: () => void;
   }) => (
     <View style={styles.stack}>
+      <AppIllustration name={illustration} width={220} height={132} />
       <ProfileField
         label="Phone number"
         value={value}
@@ -618,6 +623,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       value: sendPhone,
       onChange: setSendPhone,
       hint: 'We will verify the account owner before you continue.',
+      illustration: 'sendMoney',
       lookup: activeLookup,
       onContinue: continueSendRecipient,
     });
@@ -751,6 +757,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
     const qrValue = receiveCode?.code ?? null;
     return (
       <View style={styles.stack}>
+        <AppIllustration name="qrScan" width={196} height={116} />
         <View style={styles.qrCard}>
           <AppText variant="title2">Your wallet</AppText>
           <View style={[styles.qrWrap, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -818,6 +825,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       value: requestPhone,
       onChange: setRequestPhone,
       hint: 'You can request from anyone with a Tanzanian phone number.',
+      illustration: 'transferMoney',
       onContinue: continueRequestRecipient,
     });
 
@@ -896,13 +904,28 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       return <EmptyState icon="payments" title="Loading merchants…" description="Fetching approved merchant accounts." />;
     }
     if (merchants.error) {
-      return <EmptyState icon="payments" title="Could not load merchants" description="Pull down or try again later." />;
+      return (
+        <EmptyState
+          icon="payments"
+          illustration="noSignal"
+          title="Could not load merchants"
+          description="Pull down or try again later."
+        />
+      );
     }
     if (!merchants.data || merchants.data.length === 0) {
-      return <EmptyState icon="payments" title="No merchants yet" description="Approved merchants will appear here." />;
+      return (
+        <EmptyState
+          icon="payments"
+          illustration="mobilePay"
+          title="No merchants yet"
+          description="Approved merchants will appear here."
+        />
+      );
     }
     return (
       <View style={styles.stack}>
+        <AppIllustration name="mobilePay" width={204} height={132} />
         <AppText variant="bodySmall" color={colors.textSecondary}>
           Choose where you want to pay.
         </AppText>
