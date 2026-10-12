@@ -7,6 +7,47 @@ import nodemailer, { type Transporter } from 'nodemailer';
 
 import { AppConfigService } from '../config/app-config.service.js';
 
+function getSmtpFailureDetails(
+  error: unknown,
+  secrets: readonly string[],
+): { code?: string; command?: string; response?: string; responseCode?: number } {
+  if (typeof error !== 'object' || error === null) return {};
+
+  const smtpError = error as Record<string, unknown>;
+  const redact = (value: unknown): string | undefined => {
+    if (typeof value !== 'string') return undefined;
+
+    let safeValue = value;
+    for (const secret of secrets) {
+      if (!secret) continue;
+      safeValue = safeValue.replaceAll(secret, '[redacted]');
+      const compactSecret = secret.replace(/\s/g, '');
+      if (compactSecret !== secret) {
+        safeValue = safeValue.replaceAll(compactSecret, '[redacted]');
+      }
+    }
+
+    return safeValue
+      .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[redacted-email]')
+      .replace(/\b\d{4,8}\b/g, '[redacted-number]')
+      .replace(/\b[A-Z0-9_-]{24,}\b/gi, '[redacted-token]')
+      .slice(0, 500);
+  };
+
+  const code = redact(smtpError.code);
+  const command = redact(smtpError.command);
+  const response = redact(smtpError.response);
+  const responseCode =
+    typeof smtpError.responseCode === 'number' ? smtpError.responseCode : undefined;
+
+  return {
+    ...(code ? { code } : {}),
+    ...(command ? { command } : {}),
+    ...(response ? { response } : {}),
+    ...(responseCode !== undefined ? { responseCode } : {}),
+  };
+}
+
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
@@ -60,8 +101,15 @@ export class EmailService {
           subject,
           text,
         });
-      } catch {
-        this.logger.error('SMTP email delivery failed');
+      } catch (error) {
+        const details = getSmtpFailureDetails(error, [
+          smtp.user ?? '',
+          smtp.pass ?? '',
+          from,
+          email,
+          code,
+        ]);
+        this.logger.error(`SMTP email delivery failed ${JSON.stringify(details)}`);
         throw new ServiceUnavailableException(
           'Could not deliver the email. Please try again later.',
         );
