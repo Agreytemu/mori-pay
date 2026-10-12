@@ -62,10 +62,9 @@ describe('environment validation', () => {
     );
   });
 
-  it('accepts Gmail SMTP credentials as the production email provider', () => {
+  it('accepts Resend as the production provider with SMTP fallback configured', () => {
     const env = validateEnv({
       ...productionConfig,
-      RESEND_API_KEY: '',
       SMTP_HOST: 'smtp.gmail.com',
       SMTP_PORT: '465',
       SMTP_SECURE: 'true',
@@ -76,6 +75,20 @@ describe('environment validation', () => {
 
     assert.equal(env.SMTP_PORT, 465);
     assert.equal(env.SMTP_SECURE, true);
+  });
+
+  it('requires Resend as the production email provider', () => {
+    assert.throws(
+      () =>
+        validateEnv({
+          ...productionConfig,
+          RESEND_API_KEY: '',
+          SMTP_HOST: 'smtp.gmail.com',
+          SMTP_USER: 'payments@example.com',
+          SMTP_PASS: 'google-app-password',
+        }),
+      /RESEND_API_KEY and EMAIL_FROM are required in production/,
+    );
   });
 
   it('rejects incomplete SMTP credentials when they are partially configured', () => {

@@ -143,10 +143,10 @@ export function validateEnv(config: Record<string, unknown>): Env {
   }
   if (
     result.data.NODE_ENV === 'production' &&
-    ((!result.data.RESEND_API_KEY && !smtpConfigured) || !result.data.EMAIL_FROM)
+    (!result.data.RESEND_API_KEY || !result.data.EMAIL_FROM)
   ) {
     throw new Error(
-      'Invalid environment configuration:\n  - Configure SMTP_HOST, SMTP_USER, SMTP_PASS and EMAIL_FROM, or RESEND_API_KEY and EMAIL_FROM in production',
+      'Invalid environment configuration:\n  - RESEND_API_KEY and EMAIL_FROM are required in production; configure complete SMTP credentials to enable fallback delivery',
     );
   }
 

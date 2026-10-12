@@ -84,6 +84,32 @@ export class EmailService {
     const expiresInMinutes = Math.max(1, Math.ceil(expiresInSeconds / 60));
     const text = `${heading}\n\nYour Mori Pay verification code is ${code}. It expires in ${expiresInMinutes} minutes. If you did not request this, you can ignore this email.`;
 
+    if (apiKey) {
+      try {
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: `Mori Pay <${from}>`,
+            to: [email],
+            subject,
+            text,
+          }),
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (response.ok) return;
+
+        this.logger.error(
+          `Resend email delivery failed with status ${response.status}`,
+        );
+      } catch {
+        this.logger.error('Resend email delivery request failed');
+      }
+    }
+
     if (smtpConfigured) {
       try {
         this.smtpTransport ??= nodemailer.createTransport({
@@ -101,6 +127,7 @@ export class EmailService {
           subject,
           text,
         });
+        return;
       } catch (error) {
         const details = getSmtpFailureDetails(error, [
           smtp.user ?? '',
@@ -110,41 +137,11 @@ export class EmailService {
           code,
         ]);
         this.logger.error(`SMTP email delivery failed ${JSON.stringify(details)}`);
-        throw new ServiceUnavailableException(
-          'Could not deliver the email. Please try again later.',
-        );
       }
-      return;
     }
 
-    let response: Response;
-    try {
-      response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          from: `Mori Pay <${from}>`,
-          to: [email],
-          subject,
-          text,
-        }),
-        signal: AbortSignal.timeout(10_000),
-      });
-    } catch {
-      this.logger.error('Resend email delivery request failed');
-      throw new ServiceUnavailableException(
-        'Could not deliver the email. Please try again later.',
-      );
-    }
-
-    if (!response.ok) {
-      this.logger.error(`Resend email delivery failed with status ${response.status}`);
-      throw new ServiceUnavailableException(
-        'Could not deliver the email. Please try again later.',
-      );
-    }
+    throw new ServiceUnavailableException(
+      'Could not deliver the email. Please try again later.',
+    );
   }
 }
