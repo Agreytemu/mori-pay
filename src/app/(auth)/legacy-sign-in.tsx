@@ -53,6 +53,7 @@ export default function LegacySignInScreen() {
           </View>
           <ProfileField
             label="Mobile number"
+            floatingLabel
             value={phone}
             onChangeText={(value) => {
               setPhone(value);

@@ -120,6 +120,7 @@ export default function SignInScreen() {
 
             <ProfileField
               label="Email address"
+              floatingLabel
               value={email}
               onChangeText={(value) => {
                 setEmail(value);
@@ -138,6 +139,7 @@ export default function SignInScreen() {
               <View>
                 <ProfileField
                   label="Password"
+                  floatingLabel
                   value={password}
                   onChangeText={(value) => {
                     setPassword(value);
@@ -175,6 +177,7 @@ export default function SignInScreen() {
             ) : (
               <ProfileField
                 label="6-digit PIN"
+                floatingLabel
                 value={pin}
                 onChangeText={(value) => {
                   setPin(value.replace(/\D/g, '').slice(0, 6));

@@ -66,6 +66,7 @@ export default function SetupCredentialsScreen() {
 
           <ProfileField
             label="Email address"
+            floatingLabel
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -76,6 +77,7 @@ export default function SetupCredentialsScreen() {
           />
           <ProfileField
             label="Password"
+            floatingLabel
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPassword}
@@ -93,6 +95,7 @@ export default function SetupCredentialsScreen() {
           </Pressable>
           <ProfileField
             label="Confirm password"
+            floatingLabel
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry={!showPassword}

@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Image,
   ImageBackground,
@@ -18,7 +19,12 @@ import { AppText } from '@/components/ui/AppText';
 import { APP } from '@/constants/app';
 import { useAppTheme } from '@/theme';
 
-const heroImage = require('../../../assets/images/authimage.jpg');
+const heroImages = [
+  require('../../../assets/images/authimage.jpg'),
+  require('../../../assets/images/auth-hero-shillings.jpg'),
+  require('../../../assets/images/auth-hero-cash-stack.jpg'),
+  require('../../../assets/images/auth-hero-notes-in-hand.jpg'),
+] as const;
 const appLogo = require('../../../assets/images/mori pay official logo.png');
 
 export function AuthPage({
@@ -30,11 +36,20 @@ export function AuthPage({
   onBack?: () => void;
   contentStyle?: StyleProp<ViewStyle>;
 }) {
-  const { colors, space } =   useAppTheme();
+  const { colors, space } = useAppTheme();
+  const [heroImageIndex, setHeroImageIndex] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setHeroImageIndex((index) => (index + 1) % heroImages.length);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: colors.background }]}>
-      <ImageBackground source={heroImage} resizeMode="cover" style={styles.hero}>
+      <ImageBackground source={heroImages[heroImageIndex]} resizeMode="cover" style={styles.hero}>
         <View style={styles.heroOverlay} />
         {onBack ? (
           <Pressable
@@ -54,6 +69,14 @@ export function AuthPage({
           <AppText variant="caption" style={styles.brandTagline}>
             Move money simply and securely.
           </AppText>
+        </View>
+        <View style={styles.pagination} accessibilityElementsHidden>
+          {heroImages.map((_, index) => (
+            <View
+              key={index}
+              style={[styles.paginationDot, index === heroImageIndex && styles.activePaginationDot]}
+            />
+          ))}
         </View>
       </ImageBackground>
 
@@ -120,6 +143,23 @@ const styles = StyleSheet.create({
   },
   brandName: { color: '#FFFFFF' },
   brandTagline: { color: 'rgba(255,255,255,0.8)' },
+  pagination: {
+    position: 'absolute',
+    bottom: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  paginationDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.58)',
+  },
+  activePaginationDot: {
+    width: 16,
+    backgroundColor: '#FFFFFF',
+  },
   keyboardArea: {
     flex: 1,
     marginTop: -28,

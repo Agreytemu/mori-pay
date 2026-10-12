@@ -90,6 +90,7 @@ export default function ResetPasswordScreen() {
             <>
               <ProfileField
                 label="Email address"
+                floatingLabel
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -116,6 +117,7 @@ export default function ResetPasswordScreen() {
                   ) : null}
                   <ProfileField
                     label="6-digit code"
+                    floatingLabel
                     value={code}
                     onChangeText={(value) => setCode(value.replace(/\D/g, '').slice(0, 6))}
                     keyboardType="number-pad"
@@ -126,6 +128,7 @@ export default function ResetPasswordScreen() {
                   />
                   <ProfileField
                     label="New password"
+                    floatingLabel
                     value={password}
                     onChangeText={setPassword}
                     secureTextEntry
@@ -135,6 +138,7 @@ export default function ResetPasswordScreen() {
                   />
                   <ProfileField
                     label="Confirm new password"
+                    floatingLabel
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry
