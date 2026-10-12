@@ -112,6 +112,13 @@ export class AppConfigService {
     return {
       apiKey: this.get('RESEND_API_KEY'),
       from: this.get('EMAIL_FROM'),
+      smtp: {
+        host: this.get('SMTP_HOST'),
+        port: this.get('SMTP_PORT') ?? 465,
+        secure: this.get('SMTP_SECURE') ?? (this.get('SMTP_PORT') ?? 465) === 465,
+        user: this.get('SMTP_USER'),
+        pass: this.get('SMTP_PASS'),
+      },
     };
   }
 

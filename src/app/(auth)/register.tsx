@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { AuthPage } from '@/components/auth/AuthPage';
 import { DateOfBirthField } from '@/components/auth/DateOfBirthField';
 import { ProfileField, StatusBanner } from '@/components/profile/profile-components';
+import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/button';
 import { registerEmail } from '@/lib/mori-api';
@@ -25,6 +26,7 @@ export default function RegisterScreen() {
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [acceptedPolicy, setAcceptedPolicy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -37,7 +39,8 @@ export default function RegisterScreen() {
     validEmail &&
     validDob &&
     validPassword &&
-    confirmPassword === password;
+    confirmPassword === password &&
+    acceptedPolicy;
 
   const submit = async () => {
     if (!ready) {
@@ -138,6 +141,27 @@ export default function RegisterScreen() {
             error={dateOfBirth !== '' && !validDob ? 'Use a valid date in YYYY-MM-DD format.' : undefined}
           />
 
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: acceptedPolicy }}
+            onPress={() => setAcceptedPolicy((accepted) => !accepted)}
+            style={styles.policy}>
+            <View
+              style={[
+                styles.checkbox,
+                {
+                  borderColor: acceptedPolicy ? colors.primary : colors.border,
+                  backgroundColor: acceptedPolicy ? colors.primary : 'transparent',
+                  borderRadius: 5,
+                },
+              ]}>
+              {acceptedPolicy ? <AppIcon name="check" size={15} color={colors.onPrimary} /> : null}
+            </View>
+            <AppText variant="caption" color={colors.textSecondary} style={styles.policyText}>
+              I agree to the Terms of Service and Privacy Policy.
+            </AppText>
+          </Pressable>
+
           {error ? (
             <StatusBanner tone="error" title="Could not create account" message={error} />
           ) : null}
@@ -167,5 +191,8 @@ export default function RegisterScreen() {
 const styles = StyleSheet.create({
   heading: { gap: 4 },
   passwordAction: { alignSelf: 'flex-end', marginTop: -8 },
+  policy: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
+  checkbox: { width: 22, height: 22, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  policyText: { flex: 1 },
   footer: { flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: 8 },
 });

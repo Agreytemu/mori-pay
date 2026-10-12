@@ -210,18 +210,11 @@ export default function SignInScreen() {
                   Create an account
                 </AppText>
               </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => router.push('/(auth)/legacy-sign-in')}>
-                <AppText variant="caption" color={colors.textTertiary}>
-                  Existing account? Use phone code
-                </AppText>
-              </Pressable>
             </View>
           </View>
 
           <AppText variant="caption" color={colors.textTertiary} align="center">
-            Your six-digit PIN remains available for sign-in and protects payments.
+            Secured by Mori Pay.
           </AppText>
     </AuthPage>
   );

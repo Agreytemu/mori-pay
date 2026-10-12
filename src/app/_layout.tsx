@@ -4,7 +4,7 @@ import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -180,6 +180,8 @@ function AppLockStorageError({ onRetry }: { onRetry: () => void }) {
 }
 
 function SplashScreen() {
+  const insets = useSafeAreaInsets();
+
   return (
     <View style={[styles.root, styles.splash, { backgroundColor: '#07162E' }]}>
       <StatusBar style="light" />
@@ -203,6 +205,13 @@ function SplashScreen() {
           Getting things ready
         </AppText>
       </View>
+      <AppText
+        variant="caption"
+        color="rgba(255,255,255,0.48)"
+        align="center"
+        style={[styles.splashCredit, { bottom: Math.max(insets.bottom, 8) + 10 }]}>
+        by agreytemu
+      </AppText>
     </View>
   );
 }
@@ -277,5 +286,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  splashCredit: { position: 'absolute', alignSelf: 'center' },
   storageError: { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 },
 });

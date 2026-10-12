@@ -23,6 +23,15 @@ describe('environment validation', () => {
         'https://mori-pay.onrender.com/api/v1/webhooks/abliner',
     });
 
+    it('defaults the Abliner callback to the Railway API host', () => {
+      const env = validateEnv(productionConfig);
+
+      assert.equal(
+        env.ABLINER_CALLBACK_URL,
+        'https://moripay.up.railway.app/api/v1/webhooks/abliner',
+      );
+    });
+
     assert.equal(env.ABLINER_WEBHOOK_SECRET, 'whsec_test');
     assert.equal(
       env.ABLINER_CALLBACK_URL,
@@ -50,6 +59,36 @@ describe('environment validation', () => {
             'http://localhost:4000/api/v1/webhooks/abliner',
         }),
       /ABLINER_CALLBACK_URL: must be a public HTTPS URL in production/,
+    );
+  });
+
+  it('accepts Gmail SMTP credentials as the production email provider', () => {
+    const env = validateEnv({
+      ...productionConfig,
+      RESEND_API_KEY: '',
+      SMTP_HOST: 'smtp.gmail.com',
+      SMTP_PORT: '465',
+      SMTP_SECURE: 'true',
+      SMTP_USER: 'payments@example.com',
+      SMTP_PASS: 'google-app-password',
+      EMAIL_FROM: 'payments@example.com',
+    });
+
+    assert.equal(env.SMTP_PORT, 465);
+    assert.equal(env.SMTP_SECURE, true);
+  });
+
+  it('rejects incomplete SMTP credentials when they are partially configured', () => {
+    assert.throws(
+      () =>
+        validateEnv({
+          ...productionConfig,
+          RESEND_API_KEY: '',
+          SMTP_HOST: 'smtp.gmail.com',
+          SMTP_USER: 'payments@example.com',
+          SMTP_PASS: '',
+        }),
+      /SMTP_PASS: required when configuring SMTP/,
     );
   });
 });

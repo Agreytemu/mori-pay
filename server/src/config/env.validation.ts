@@ -36,7 +36,7 @@ export const envSchema = z.object({
   /** Public HTTPS endpoint Abliner POSTs transaction events to. */
   ABLINER_CALLBACK_URL: z
     .string()
-    .default('https://mori-pay.onrender.com/api/v1/webhooks/abliner'),
+    .default('https://moripay.up.railway.app/api/v1/webhooks/abliner'),
   /** Approved Abliner Sender ID for outbound SMS (optional). */
   ABLINER_SMS_SENDER_ID: z.string().optional(),
 
@@ -53,6 +53,26 @@ export const envSchema = z.object({
 
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().email().optional(),
+  SMTP_HOST: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().min(1).optional(),
+  ),
+  SMTP_PORT: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.coerce.number().int().positive().optional(),
+  ),
+  SMTP_SECURE: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.enum(['true', 'false']).transform((value) => value === 'true').optional(),
+  ),
+  SMTP_USER: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().min(1).optional(),
+  ),
+  SMTP_PASS: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(1).optional(),
+  ),
 
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
@@ -99,15 +119,34 @@ export function validateEnv(config: Record<string, unknown>): Env {
     }
   }
 
-  if (result.data.RESEND_API_KEY && !result.data.EMAIL_FROM) {
-    throw new Error('Invalid environment configuration:\n  - EMAIL_FROM: required when RESEND_API_KEY is set');
+  const smtpInputProvided = Boolean(
+    result.data.SMTP_HOST || result.data.SMTP_USER || result.data.SMTP_PASS,
+  );
+  const smtpConfigured = Boolean(
+    result.data.SMTP_HOST && result.data.SMTP_USER && result.data.SMTP_PASS,
+  );
+  if (smtpInputProvided && !smtpConfigured) {
+    const missing = [
+      ['SMTP_HOST', result.data.SMTP_HOST],
+      ['SMTP_USER', result.data.SMTP_USER],
+      ['SMTP_PASS', result.data.SMTP_PASS],
+    ]
+      .filter(([, value]) => !value)
+      .map(([key]) => `  - ${key}: required when configuring SMTP`)
+      .join('\n');
+    throw new Error(`Invalid environment configuration:\n${missing}`);
+  }
+  if ((result.data.RESEND_API_KEY || smtpConfigured) && !result.data.EMAIL_FROM) {
+    throw new Error(
+      'Invalid environment configuration:\n  - EMAIL_FROM: required when configuring email delivery',
+    );
   }
   if (
     result.data.NODE_ENV === 'production' &&
-    (!result.data.RESEND_API_KEY || !result.data.EMAIL_FROM)
+    ((!result.data.RESEND_API_KEY && !smtpConfigured) || !result.data.EMAIL_FROM)
   ) {
     throw new Error(
-      'Invalid environment configuration:\n  - RESEND_API_KEY and EMAIL_FROM are required in production',
+      'Invalid environment configuration:\n  - Configure SMTP_HOST, SMTP_USER, SMTP_PASS and EMAIL_FROM, or RESEND_API_KEY and EMAIL_FROM in production',
     );
   }
 

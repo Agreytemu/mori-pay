@@ -45,7 +45,7 @@
       "reactCompiler": true
     },
     "extra": {
-      "apiUrl": "https://mori-pay.onrender.com/api/v1",
+      "apiUrl": "https://moripay.up.railway.app/api/v1",
       "router": {},
       "eas": {
         "projectId": "5ff03196-ddcc-49a5-a880-ca3bb289a551"

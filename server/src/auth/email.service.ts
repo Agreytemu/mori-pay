@@ -3,12 +3,14 @@ import {
   Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import nodemailer, { type Transporter } from 'nodemailer';
 
 import { AppConfigService } from '../config/app-config.service.js';
 
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
+  private smtpTransport: Transporter | null = null;
 
   constructor(private readonly config: AppConfigService) {}
 
@@ -18,8 +20,9 @@ export class EmailService {
     purpose: 'verify' | 'password_reset',
     expiresInSeconds: number,
   ): Promise<void> {
-    const { apiKey, from } = this.config.email;
-    if (!apiKey || !from) {
+    const { apiKey, from, smtp } = this.config.email;
+    const smtpConfigured = Boolean(smtp.host && smtp.user && smtp.pass);
+    if ((!apiKey && !smtpConfigured) || !from) {
       if (!this.config.isProduction) {
         this.logger.warn(
           `Email delivery is not configured; ${purpose} code is available only in the development response`,
@@ -39,6 +42,32 @@ export class EmailService {
       purpose === 'verify' ? 'Verify your email' : 'Reset your password';
     const expiresInMinutes = Math.max(1, Math.ceil(expiresInSeconds / 60));
     const text = `${heading}\n\nYour Mori Pay verification code is ${code}. It expires in ${expiresInMinutes} minutes. If you did not request this, you can ignore this email.`;
+
+    if (smtpConfigured) {
+      try {
+        this.smtpTransport ??= nodemailer.createTransport({
+          host: smtp.host,
+          port: smtp.port,
+          secure: smtp.secure,
+          auth: { user: smtp.user, pass: smtp.pass },
+          connectionTimeout: 10_000,
+          greetingTimeout: 10_000,
+          socketTimeout: 10_000,
+        });
+        await this.smtpTransport.sendMail({
+          from: { name: 'Mori Pay', address: from },
+          to: email,
+          subject,
+          text,
+        });
+      } catch {
+        this.logger.error('SMTP email delivery failed');
+        throw new ServiceUnavailableException(
+          'Could not deliver the email. Please try again later.',
+        );
+      }
+      return;
+    }
 
     let response: Response;
     try {
