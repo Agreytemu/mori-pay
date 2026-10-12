@@ -1,5 +1,6 @@
-import { useState, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
 import {
+  Animated,
   Pressable,
   StyleSheet,
   Switch,
@@ -441,6 +442,7 @@ export function ProfileField({
   error,
   hint,
   digitBoxes = false,
+  floatingLabel = true,
   containerStyle,
   style: inputStyle,
   value,
@@ -453,11 +455,25 @@ export function ProfileField({
   error?: string;
   hint?: string;
   digitBoxes?: boolean;
+  floatingLabel?: boolean;
   containerStyle?: StyleProp<ViewStyle>;
 } & ComponentProps<typeof TextInput>) {
   const { colors, radius } = useAppTheme();
   const flattenedInputStyle = StyleSheet.flatten(inputStyle);
   const [focused, setFocused] = useState(false);
+  const hasValue = typeof value === 'string' && value.length > 0;
+  const labelFloated = focused || hasValue;
+  const [labelProgress] = useState(() => new Animated.Value(labelFloated ? 1 : 0));
+
+  useEffect(() => {
+    const animation = Animated.timing(labelProgress, {
+      toValue: labelFloated ? 1 : 0,
+      duration: 160,
+      useNativeDriver: false,
+    });
+    animation.start();
+    return () => animation.stop();
+  }, [labelFloated, labelProgress]);
 
   const handleFocus: ComponentProps<typeof TextInput>['onFocus'] = (event) => {
     setFocused(true);
@@ -470,8 +486,91 @@ export function ProfileField({
 
   return (
     <View style={[styles.field, containerStyle]}>
-      <AppText variant="bodySmallStrong">{label}</AppText>
-      {digitBoxes ? (
+      {!floatingLabel ? <AppText variant="bodySmallStrong">{label}</AppText> : null}
+      {floatingLabel ? (
+        <View
+          style={[
+            styles.floatingInputCard,
+            {
+              minHeight: flattenedInputStyle?.minHeight ?? (digitBoxes ? 64 : 58),
+              borderRadius: flattenedInputStyle?.borderRadius ?? radius.md,
+              backgroundColor: flattenedInputStyle?.backgroundColor ?? colors.surface,
+              borderColor: error
+                ? colors.error
+                : focused
+                  ? colors.primary
+                  : flattenedInputStyle?.borderColor ?? colors.border,
+              borderWidth: flattenedInputStyle?.borderWidth ?? 1,
+            },
+            flattenedInputStyle?.height ? { height: flattenedInputStyle.height } : null,
+          ]}>
+          {digitBoxes ? (
+            <DigitBoxesInput
+              accessibilityLabel={label}
+              placeholder={labelFloated ? placeholder : ''}
+              placeholderTextColor={colors.textTertiary}
+              containerStyle={[
+                styles.floatingDigitInput,
+                {
+                  minHeight: flattenedInputStyle?.minHeight ?? 64,
+                  backgroundColor: 'transparent',
+                  borderWidth: 0,
+                  paddingTop: 12,
+                },
+              ]}
+              value={value}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              {...inputProps}
+            />
+          ) : (
+            <TextInput
+              {...inputProps}
+              value={value}
+              placeholder={labelFloated ? placeholder : ''}
+              placeholderTextColor={colors.textTertiary}
+              accessibilityLabel={label}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              style={[
+                styles.floatingTextInput,
+                { color: colors.text },
+                inputStyle,
+              ]}
+            />
+          )}
+          <Animated.View
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={[
+              styles.floatingLabelIdle,
+              {
+                pointerEvents: 'none',
+                opacity: labelProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }),
+                transform: [
+                  { translateY: labelProgress.interpolate({ inputRange: [0, 1], outputRange: [0, -7] }) },
+                ],
+              },
+            ]}>
+            <AppText variant="bodySmallStrong" color={colors.textSecondary}>{label}</AppText>
+          </Animated.View>
+          <Animated.View
+            accessibilityElementsHidden
+            importantForAccessibility="no-hide-descendants"
+            style={[
+              styles.floatingLabelRaised,
+              {
+                pointerEvents: 'none',
+                opacity: labelProgress,
+                transform: [
+                  { translateY: labelProgress.interpolate({ inputRange: [0, 1], outputRange: [7, 0] }) },
+                ],
+              },
+            ]}>
+            <AppText variant="caption" color={focused ? colors.primary : colors.textSecondary}>{label}</AppText>
+          </Animated.View>
+        </View>
+      ) : digitBoxes ? (
         <DigitBoxesInput
           accessibilityLabel={label}
           placeholderTextColor={colors.textTertiary}
@@ -894,6 +993,39 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: spacing.md,
     ...typography.input,
+  },
+  floatingInputCard: {
+    position: 'relative',
+    justifyContent: 'center',
+    marginTop: 20,
+  },
+  floatingTextInput: {
+    width: '100%',
+    minHeight: 56,
+    paddingHorizontal: spacing.md,
+    paddingTop: 15,
+    paddingBottom: 4,
+    borderWidth: 0,
+    fontSize: 16,
+    backgroundColor: 'transparent',
+  },
+  floatingDigitInput: {
+    width: '100%',
+    borderWidth: 0,
+  },
+  floatingLabelIdle: {
+    position: 'absolute',
+    top: 0,
+    right: spacing.md,
+    bottom: 0,
+    left: spacing.md,
+    justifyContent: 'center',
+  },
+  floatingLabelRaised: {
+    position: 'absolute',
+    top: -20,
+    right: spacing.md,
+    left: spacing.md,
   },
   fieldMessage: {
     flexDirection: 'row',
