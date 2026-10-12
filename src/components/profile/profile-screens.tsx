@@ -1587,6 +1587,20 @@ export function AboutScreen() {
       </View>
 
       <ProfileSection title="Legal">
+        <ProfileMenuItem
+          icon="receipt"
+          label="Terms of Service"
+          description="Terms for using Mori Pay"
+          onPress={() => router.push('/terms-of-service')}
+          showDivider
+        />
+        <ProfileMenuItem
+          icon="security"
+          label="Privacy Policy"
+          description="How Mori Pay handles your information"
+          onPress={() => router.push('/privacy-policy')}
+          showDivider
+        />
         {MOCK_LEGAL_SECTIONS.map((section) => (
           <FaqItem
             key={section.id}

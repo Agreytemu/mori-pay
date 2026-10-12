@@ -86,7 +86,7 @@ export type SupportCategory = {
 export type ReportCategory = 'payment' | 'account' | 'security' | 'other';
 
 export type LegalSection = {
-  id: 'terms' | 'privacy' | 'licences';
+  id: 'licences';
   title: string;
   icon: IconName;
   body: string;
@@ -285,20 +285,6 @@ export const MOCK_FAQS: readonly Faq[] = [
 ];
 
 export const MOCK_LEGAL_SECTIONS: readonly LegalSection[] = [
-  {
-    id: 'terms',
-    title: 'Terms of service',
-    icon: 'receipt',
-    body:
-      'These terms describe how the account may be used. Keep your PIN private, confirm every payment before approving it, and report anything unfamiliar to support within 24 hours. Balances shown in the app reflect settled transactions only.',
-  },
-  {
-    id: 'privacy',
-    title: 'Privacy policy',
-    icon: 'security',
-    body:
-      'Personal information is used to operate the wallet, keep the account secure and send the notifications you enable. Nothing in this build leaves the device: profile, security and device data are stored locally.',
-  },
   {
     id: 'licences',
     title: 'Open-source licences',

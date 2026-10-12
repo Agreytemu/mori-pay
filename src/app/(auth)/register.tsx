@@ -158,9 +158,22 @@ export default function RegisterScreen() {
               {acceptedPolicy ? <AppIcon name="check" size={15} color={colors.onPrimary} /> : null}
             </View>
             <AppText variant="caption" color={colors.textSecondary} style={styles.policyText}>
-              I agree to the Terms of Service and Privacy Policy.
+              I agree to the Terms of Service and acknowledge the Privacy Policy.
             </AppText>
           </Pressable>
+          <View style={styles.policyLinks}>
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => router.push('/terms-of-service')}>
+              <AppText variant="caption" color={colors.primary}>Read Terms of Service</AppText>
+            </Pressable>
+            <AppText variant="caption" color={colors.textTertiary}>·</AppText>
+            <Pressable
+              accessibilityRole="link"
+              onPress={() => router.push('/privacy-policy')}>
+              <AppText variant="caption" color={colors.primary}>Read Privacy Policy</AppText>
+            </Pressable>
+          </View>
 
           {error ? (
             <StatusBanner tone="error" title="Could not create account" message={error} />
@@ -194,5 +207,13 @@ const styles = StyleSheet.create({
   policy: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 4 },
   checkbox: { width: 22, height: 22, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
   policyText: { flex: 1 },
+  policyLinks: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: -12,
+    marginLeft: 32,
+  },
   footer: { flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: 8 },
 });

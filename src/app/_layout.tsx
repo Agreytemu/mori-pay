@@ -136,6 +136,9 @@ function useAuthGuard() {
   const { status, pin } = useSession();
 
   const inAuthGroup = segments[0] === '(auth)';
+  const inLegalDocument =
+    inAuthGroup &&
+    (segments[1] === 'terms-of-service' || segments[1] === 'privacy-policy');
 
   useEffect(() => {
     if (status === 'loading') return;
@@ -145,10 +148,10 @@ function useAuthGuard() {
       return;
     }
 
-    if (status === 'authenticated' && inAuthGroup && pin?.pinSet) {
+    if (status === 'authenticated' && inAuthGroup && !inLegalDocument && pin?.pinSet) {
       router.replace('/(tabs)');
     }
-  }, [status, inAuthGroup, pin?.pinSet, router]);
+  }, [status, inAuthGroup, inLegalDocument, pin?.pinSet, router]);
 }
 
 function GuardedStack() {
