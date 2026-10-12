@@ -5,7 +5,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 
 import { AppIcon } from '@/components/ui/AppIcon';
 import { APP } from '@/constants/app';
-import { spacing, useAppTheme } from '@/theme';
+import { spacing, typography, useAppTheme } from '@/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const ROUTES = [
@@ -97,8 +97,7 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
   label: {
-    fontSize: 11,
-    fontWeight: '600',
+    ...typography.tabLabel,
     marginTop: 2,
   },
 });

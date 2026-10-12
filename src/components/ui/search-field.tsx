@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { AppIcon } from '@/components/ui/app-icon';
 import { hitTarget, radius, spacing, useAppTheme } from '@/theme';
+import { typography } from '@/theme/typography';
 
 export type SearchFieldProps = {
   value: string;
@@ -65,9 +66,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '500',
+    ...typography.inputMedium,
     paddingVertical: spacing.md,
   },
   clear: {

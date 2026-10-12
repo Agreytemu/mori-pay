@@ -1,10 +1,12 @@
-import { Text, type TextProps, type TextStyle } from 'react-native';
+import { StyleSheet, Text, type TextProps, type TextStyle } from 'react-native';
 
-import { useAppTheme, type TypographyVariant } from '@/theme';
+import { numericText, useAppTheme, type TypographyVariant } from '@/theme';
 
 export type AppTextProps = TextProps & {
   variant?: TypographyVariant;
   color?: string;
+  /** Renders tabular digits, e.g. for financial values and account details. */
+  numeric?: boolean;
   align?: TextStyle['textAlign'];
   /** Truncates after one line; used for counterparty names. */
   numberOfLines?: number;
@@ -17,6 +19,7 @@ export type AppTextProps = TextProps & {
 export function AppText({
   variant = 'body',
   color,
+  numeric = false,
   align,
   style,
   numberOfLines,
@@ -30,6 +33,7 @@ export function AppText({
       style={[
         typography[variant],
         { color: color ?? colors.text },
+        numeric && styles.numeric,
         align ? { textAlign: align } : null,
         style,
       ]}
@@ -37,3 +41,7 @@ export function AppText({
     />
   );
 }
+
+const styles = StyleSheet.create({
+  numeric: numericText,
+});

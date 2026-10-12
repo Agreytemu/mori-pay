@@ -883,7 +883,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
             </View>
             <View style={styles.inputInline}>
               <AppText variant="bodySmall" color={colors.textSecondary}>Amount</AppText>
-              <AppText variant="bodyStrong">{formatMoney(request.amount, request.currency)}</AppText>
+              <AppText variant="bodyStrong" numeric>{formatMoney(request.amount, request.currency)}</AppText>
             </View>
             <View style={styles.inputInline}>
               <AppText variant="bodySmall" color={colors.textSecondary}>Reference</AppText>

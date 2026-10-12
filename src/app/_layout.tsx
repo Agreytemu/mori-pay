@@ -1,18 +1,31 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
+import { useFonts } from 'expo-font';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+} from '@expo-google-fonts/inter';
 
 import { AppLockPrompt } from '@/components/auth/AppLockPrompt';
 import { AppText } from '@/components/ui/AppText';
-import { PrimaryButton } from '@/components/ui/button';
+import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
 import { APP } from '@/constants/app';
 import { SessionProvider, useSession } from '@/lib/session';
 import { ThemeProvider, useAppTheme } from '@/theme';
 
 const appLogo = require('../../assets/images/brand-mark.png');
+const interFonts = {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+};
 
 /**
  * Root navigator. Owns the theme, the safe-area context, the session provider
@@ -23,12 +36,76 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <SessionProvider>
-            <GuardedStack />
-          </SessionProvider>
+          <FontGate />
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+  );
+}
+
+function FontGate() {
+  const [attempt, setAttempt] = useState(0);
+  const [continueWithoutFonts, setContinueWithoutFonts] = useState(false);
+
+  if (continueWithoutFonts) {
+    return (
+      <SessionProvider>
+        <GuardedStack />
+      </SessionProvider>
+    );
+  }
+
+  return (
+    <FontLoadAttempt
+      key={attempt}
+      onRetry={() => setAttempt((current) => current + 1)}
+      onContinue={() => setContinueWithoutFonts(true)}
+    />
+  );
+}
+
+function FontLoadAttempt({
+  onRetry,
+  onContinue,
+}: {
+  onRetry: () => void;
+  onContinue: () => void;
+}) {
+  const [fontsLoaded, fontError] = useFonts(interFonts);
+
+  useEffect(() => {
+    if (fontError) {
+      console.error('Mori Pay could not load the Inter font family.', fontError);
+    }
+  }, [fontError]);
+
+  if (fontError) {
+    return <FontLoadError onRetry={onRetry} onContinue={onContinue} />;
+  }
+
+  if (!fontsLoaded) {
+    return <SplashScreen />;
+  }
+
+  return (
+    <SessionProvider>
+      <GuardedStack />
+    </SessionProvider>
+  );
+}
+
+function FontLoadError({ onRetry, onContinue }: { onRetry: () => void; onContinue: () => void }) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={[styles.root, styles.storageError, { backgroundColor: colors.background }]}>
+      <AppText variant="title3" align="center">Could not load Mori Pay fonts</AppText>
+      <AppText variant="bodySmall" color={colors.textSecondary} align="center">
+        Inter could not be loaded. Retry, or continue with your device font.
+      </AppText>
+      <PrimaryButton label="Retry" block onPress={onRetry} />
+      <SecondaryButton label="Continue with device font" block onPress={onContinue} />
+    </View>
   );
 }
 

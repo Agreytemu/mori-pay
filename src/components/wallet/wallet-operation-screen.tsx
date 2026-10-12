@@ -46,6 +46,7 @@ import {
 import { normalizeTzPhone } from '@/lib/phone';
 import { useSession } from '@/lib/session';
 import { useAppTheme } from '@/theme';
+import { typography } from '@/theme/typography';
 import { formatAmount, formatDateTime } from '@/utils/format';
 
 type WalletOperation = 'deposit' | 'withdraw';
@@ -504,15 +505,15 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               ]}>
               <View style={styles.receiptRow}>
                 <AppText variant="bodySmall" color={colors.textSecondary}>Amount</AppText>
-                <AppText variant="bodySmallStrong">{formatAmount(resultTransaction.amount)}</AppText>
+                <AppText variant="bodySmallStrong" numeric>{formatAmount(resultTransaction.amount)}</AppText>
               </View>
               <View style={styles.receiptRow}>
                 <AppText variant="bodySmall" color={colors.textSecondary}>Fee</AppText>
-                <AppText variant="bodySmallStrong">{formatAmount(resultTransaction.fee)}</AppText>
+                <AppText variant="bodySmallStrong" numeric>{formatAmount(resultTransaction.fee)}</AppText>
               </View>
               <View style={styles.receiptRow}>
                 <AppText variant="bodySmall" color={colors.textSecondary}>Total debited</AppText>
-                <AppText variant="bodySmallStrong">
+                <AppText variant="bodySmallStrong" numeric>
                   {formatAmount(resultTransaction.amount + resultTransaction.fee)}
                 </AppText>
               </View>
@@ -719,7 +720,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                 <AppText variant="bodySmall" color={colors.textSecondary}>
                   {isDeposit ? 'Wallet credit' : 'Amount'}
                 </AppText>
-                <AppText variant="bodySmallStrong">{formatAmount(activePreview.amount)}</AppText>
+                <AppText variant="bodySmallStrong" numeric>{formatAmount(activePreview.amount)}</AppText>
               </View>
               <View style={styles.feeRow}>
                 <AppText variant="bodySmall" color={colors.textSecondary}>
@@ -727,19 +728,19 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                     ? `Fee (${activePreview.feePercentage}%)`
                     : 'Fee'}
                 </AppText>
-                <AppText variant="bodySmallStrong">{formatAmount(activePreview.fee)}</AppText>
+                <AppText variant="bodySmallStrong" numeric>{formatAmount(activePreview.fee)}</AppText>
               </View>
               {!isDeposit ? (
                 <View style={styles.feeRow}>
                   <AppText variant="bodySmallStrong">You receive</AppText>
-                  <AppText variant="title3">{formatAmount(activePreview.amount)}</AppText>
+                  <AppText variant="title3" numeric>{formatAmount(activePreview.amount)}</AppText>
                 </View>
               ) : null}
               <View style={styles.feeRow}>
                 <AppText variant="bodySmall" color={colors.textSecondary}>
                   {isDeposit ? 'Total sent to card checkout' : 'Total debited'}
                 </AppText>
-                <AppText variant="bodySmallStrong">{formatAmount(activePreview.total)}</AppText>
+                <AppText variant="bodySmallStrong" numeric>{formatAmount(activePreview.total)}</AppText>
               </View>
               {isDeposit ? (
                 <AppText variant="caption" color={colors.textTertiary}>
@@ -800,7 +801,7 @@ const styles = StyleSheet.create({
   content: { width: '100%', maxWidth: 560, alignSelf: 'center' },
   amountBlock: { gap: 10 },
   amountRow: { flexDirection: 'row', alignItems: 'baseline', gap: 10 },
-  amountInput: { flex: 1, minWidth: 0, width: 0, fontWeight: '700', fontSize: 38, paddingVertical: 0, minHeight: 52 },
+  amountInput: { flex: 1, minWidth: 0, width: 0, ...typography.amountInputLarge, paddingVertical: 0, minHeight: 52 },
   methods: { gap: 10 },
   methodRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   methodIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },

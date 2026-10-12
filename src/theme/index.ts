@@ -1,5 +1,4 @@
-import { typography as metricTypography } from '@/theme/metrics';
-import { typography as appTypography } from '@/theme/typography';
+import { typography } from '@/theme/typography';
 
 export {
   AppThemeProvider,
@@ -18,6 +17,5 @@ export type { AppIconName, AppIconWeight } from '@/theme/icons';
 export { borderWidth, layout, radius, space } from '@/theme/spacing';
 export { gutter, hitTarget, numericText, shadows, spacing } from '@/theme/metrics';
 export { fontFamily, fontSize } from '@/theme/typography';
-
-export const typography = { ...metricTypography, ...appTypography };
+export { typography };
 export type TypographyVariant = keyof typeof typography;

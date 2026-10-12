@@ -14,10 +14,7 @@ import { useWindowDimensions } from 'react-native';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { getColorTokens, type ColorScheme, type ColorTokens } from '@/theme/colors';
 import { borderWidth, layout, radius, space } from '@/theme/spacing';
-import { typography as appTypography, type TypographyVariant } from '@/theme/typography';
-import { typography as metricTypography } from '@/theme/metrics';
-
-const typography = { ...metricTypography, ...appTypography };
+import { typography, type TypographyVariant } from '@/theme/typography';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 export type StateTone = 'neutral' | 'success' | 'warning' | 'error' | 'info' | 'primary';

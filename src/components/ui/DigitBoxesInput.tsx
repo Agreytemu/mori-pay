@@ -11,6 +11,7 @@ import {
 
 import { AppText } from '@/components/ui/AppText';
 import { useAppTheme } from '@/theme';
+import { typography } from '@/theme/typography';
 
 type DigitBoxesInputProps = Omit<TextInputProps, 'style'> & {
   boxCount?: number;
@@ -123,7 +124,7 @@ export function DigitBoxesInput({
           setFocused(false);
           onBlur?.(event);
         }}
-        style={styles.hiddenInput}
+        style={[styles.hiddenInput, typography.input]}
       />
     </View>
   );

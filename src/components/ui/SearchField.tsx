@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, TextInput, View, type TextInputProps } from 'rea
 
 import { AppIcon } from '@/components/ui/AppIcon';
 import { useAppTheme } from '@/theme';
+import { typography } from '@/theme/typography';
 
 export type SearchFieldProps = Omit<TextInputProps, 'style'> & {
   onClear?: () => void;
@@ -69,8 +70,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    fontSize: 15,
-    lineHeight: 20,
+    ...typography.inputSmall,
     padding: 0,
     minWidth: 0,
   },

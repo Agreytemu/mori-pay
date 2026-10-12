@@ -27,6 +27,7 @@ import {
   usePaymentMethods,
 } from '@/data/payment-method-store';
 import { useAppTheme } from '@/theme';
+import { typography } from '@/theme/typography';
 
 type MethodKind = SavedPaymentMethod['kind'];
 type MethodFields = { provider: string; personName: string; identifier: string; expiry: string; cvv: string };
@@ -521,7 +522,7 @@ const styles = StyleSheet.create({
   emptyIcon: { width: 52, height: 52, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginBottom: 2 },
   form: { gap: 14 },
   field: { gap: 7, flex: 1 },
-  input: { minHeight: 50, borderWidth: 1, paddingHorizontal: 14, fontSize: 16 },
+  input: { minHeight: 50, borderWidth: 1, paddingHorizontal: 14, ...typography.input },
   providerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   choiceChip: { minHeight: 38, paddingHorizontal: 12, borderWidth: 1, justifyContent: 'center' },
   inlineFields: { flexDirection: 'row', gap: 12 },

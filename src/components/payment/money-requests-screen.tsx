@@ -140,7 +140,7 @@ export function MoneyRequestsScreen() {
                         {incoming ? 'Incoming request' : 'Request sent'} · {formatDate(request.createdAt)}
                       </AppText>
                     </View>
-                    <AppText variant="bodyStrong" color={colors.primary}>
+                    <AppText variant="bodyStrong" color={colors.primary} numeric>
                       {formatMoney(request.amount, request.currency)}
                     </AppText>
                   </View>

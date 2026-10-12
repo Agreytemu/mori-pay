@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { AppIcon } from '@/components/ui/app-icon';
 import { AppText } from '@/components/ui/app-text';
 import { APP_TABS_BY_NAME, type AppTabName } from '@/navigation/tab-meta';
-import { hitTarget, radius, spacing, useAppTheme } from '@/theme';
+import { hitTarget, radius, spacing, typography, useAppTheme } from '@/theme';
 
 const ICON_TILE_WIDTH = 44;
 const ICON_TILE_HEIGHT = 28;
@@ -98,7 +98,7 @@ export function AppTabBar({ state, descriptors, navigation, insets }: BottomTabB
             </View>
 
             <AppText
-              variant="caption"
+              variant="tabLabel"
               numberOfLines={1}
               tone={isFocused ? 'brand' : 'muted'}
               style={[styles.label, isFocused && styles.labelActive]}>
@@ -134,10 +134,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   label: {
-    fontSize: 11,
     letterSpacing: -0.1,
   },
-  labelActive: {
-    fontWeight: '700',
-  },
+  labelActive: typography.tabLabelActive,
 });

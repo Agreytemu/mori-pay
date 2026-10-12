@@ -6,6 +6,7 @@ import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
 import type { IconName } from '@/constants/icons';
 import { useAppTheme } from '@/theme';
+import { typography } from '@/theme/typography';
 
 export type AppHeaderAction = {
   icon: IconName;
@@ -179,8 +180,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 3,
   },
   badgeText: {
-    fontSize: 9,
-    lineHeight: 11,
+    ...typography.badgeLabel,
     letterSpacing: 0,
     color: '#FFFFFF',
   },

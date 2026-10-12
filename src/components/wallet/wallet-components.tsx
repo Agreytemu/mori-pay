@@ -5,6 +5,7 @@ import { AppText } from '@/components/ui/AppText';
 import type { IconName } from '@/constants/icons';
 import type { WalletAccountData, WalletAccountStatus, WalletActivity } from '@/data/wallet-account';
 import { useAppTheme } from '@/theme';
+import { typography } from '@/theme/typography';
 import { formatMoney } from '@/utils/format-money';
 
 const CARD_INK = '#F3FAF7';
@@ -75,6 +76,7 @@ export function BalanceDisplay({
         <AppText
           variant="display"
           color={CARD_INK}
+          numeric
           numberOfLines={1}
           adjustsFontSizeToFit
           minimumFontScale={0.7}
@@ -229,7 +231,7 @@ export function AccountInfoRow({
         </AppText>
       </View>
       <View style={styles.infoValue}>
-        <AppText variant="bodySmallStrong" align="right">
+        <AppText variant="bodySmallStrong" align="right" numeric>
           {value}
         </AppText>
         {onPress ? <AppIcon name="copy" size={16} color={colors.textTertiary} /> : null}
@@ -297,7 +299,7 @@ export function WalletActivityItem({ item }: { item: WalletActivity }) {
           {item.date} · {item.status}
         </AppText>
       </View>
-      <AppText variant="bodySmallStrong" color={credit ? colors.success : colors.text}>
+      <AppText variant="bodySmallStrong" color={credit ? colors.success : colors.text} numeric>
         {credit ? '+' : '−'}{formatMoney(item.amount, 'TZS')}
       </AppText>
     </View>
@@ -347,9 +349,7 @@ const styles = StyleSheet.create({
   brandLine: {
     color: CARD_INK,
     letterSpacing: 2.5,
-    fontSize: 19,
-    lineHeight: 24,
-    fontWeight: '800',
+    ...typography.brandWordmark,
   },
   brandLineAccent: {
     color: CARD_GREEN,
@@ -399,9 +399,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   maskedNumber: {
-    fontFamily: 'monospace',
-    fontSize: 14,
-    letterSpacing: 1.5,
+    ...typography.identifier,
     color: CARD_MUTED,
   },
   visibilityButton: {
@@ -441,8 +439,7 @@ const styles = StyleSheet.create({
   verticalBrand: {
     width: 176,
     textAlign: 'center',
-    fontSize: 14,
-    fontWeight: '800',
+    ...typography.brandWordmarkVertical,
     letterSpacing: 6,
     color: `rgba(${GREEN}, 0.30)`,
     textTransform: 'uppercase',

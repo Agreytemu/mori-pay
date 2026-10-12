@@ -1,27 +1,21 @@
-import { Platform, type TextStyle } from 'react-native';
+import type { TextStyle } from 'react-native';
 
-export const fontFamily = {
-  sans: Platform.select({
-    ios: 'system-ui',
-    default: 'sans-serif',
-    web: 'var(--font-display)',
-  }) as string,
-  medium: Platform.select({
-    ios: 'system-ui',
-    default: 'sans-serif-medium',
-    web: 'var(--font-display)',
-  }) as string,
-  mono: Platform.select({
-    ios: 'ui-monospace',
-    default: 'monospace',
-    web: 'var(--font-mono)',
-  }) as string,
+const inter = {
+  regular: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  semiBold: 'Inter_600SemiBold',
+  bold: 'Inter_700Bold',
 } as const;
 
-/**
- * Type ramp. Sizes are deliberately restrained (13–34) so the app stays legible
- * on 5" Android handsets without horizontal overflow.
- */
+export const fontFamily = {
+  sans: inter.regular,
+  regular: inter.regular,
+  medium: inter.medium,
+  semiBold: inter.semiBold,
+  bold: inter.bold,
+  mono: inter.regular,
+} as const;
+
 export const fontSize = {
   xs: 12,
   sm: 13,
@@ -34,76 +28,121 @@ export const fontSize = {
   hero: 34,
 } as const;
 
-/** Numeric columns use tabular figures so amounts align vertically. */
 const tabular = { fontVariant: ['tabular-nums' as const] };
 
 export const typography = {
-  /** Greeting / screen headline. */
   display: {
-    fontFamily: fontFamily.sans,
+    fontFamily: fontFamily.bold,
     fontSize: fontSize.display,
     lineHeight: 38,
     fontWeight: '700',
     letterSpacing: -0.6,
   } satisfies TextStyle,
-  /** Card headline, e.g. section title. */
   title1: {
-    fontFamily: fontFamily.sans,
+    fontFamily: fontFamily.bold,
     fontSize: fontSize.xl,
     lineHeight: 26,
     fontWeight: '700',
     letterSpacing: -0.3,
   } satisfies TextStyle,
+  title: {
+    fontFamily: fontFamily.bold,
+    fontSize: fontSize.xxl,
+    lineHeight: 30,
+    fontWeight: '700',
+    letterSpacing: -0.4,
+  } satisfies TextStyle,
   title2: {
-    fontFamily: fontFamily.sans,
+    fontFamily: fontFamily.semiBold,
     fontSize: fontSize.lg,
     lineHeight: 23,
     fontWeight: '600',
     letterSpacing: -0.2,
   } satisfies TextStyle,
   title3: {
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semiBold,
     fontSize: fontSize.base,
     lineHeight: 21,
     fontWeight: '600',
   } satisfies TextStyle,
-  /** Default body copy. */
+  heading: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 17,
+    lineHeight: 23,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  } satisfies TextStyle,
+  subheading: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: fontSize.base,
+    lineHeight: 21,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+  } satisfies TextStyle,
   body: {
-    fontFamily: fontFamily.sans,
+    fontFamily: fontFamily.regular,
     fontSize: fontSize.base,
     lineHeight: 22,
     fontWeight: '400',
   } satisfies TextStyle,
-  bodyStrong: {
+  bodyMedium: {
     fontFamily: fontFamily.medium,
+    fontSize: fontSize.base,
+    lineHeight: 21,
+    fontWeight: '500',
+  } satisfies TextStyle,
+  bodyStrong: {
+    fontFamily: fontFamily.semiBold,
     fontSize: fontSize.base,
     lineHeight: 22,
     fontWeight: '600',
   } satisfies TextStyle,
   bodySmall: {
-    fontFamily: fontFamily.sans,
+    fontFamily: fontFamily.regular,
     fontSize: fontSize.sm,
     lineHeight: 19,
     fontWeight: '400',
   } satisfies TextStyle,
   bodySmallStrong: {
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semiBold,
     fontSize: fontSize.sm,
     lineHeight: 19,
     fontWeight: '600',
   } satisfies TextStyle,
-  /** All-caps micro label above groups of content. */
   overline: {
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semiBold,
     fontSize: fontSize.xs,
     lineHeight: 16,
     fontWeight: '600',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
   } satisfies TextStyle,
-  /** Primary balance figure. */
+  label: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: fontSize.sm,
+    lineHeight: 18,
+    fontWeight: '600',
+  } satisfies TextStyle,
+  caption: {
+    fontFamily: fontFamily.medium,
+    fontSize: fontSize.xs,
+    lineHeight: 16,
+    fontWeight: '500',
+  } satisfies TextStyle,
+  microLabel: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 10,
+    lineHeight: 14,
+    fontWeight: '600',
+  } satisfies TextStyle,
+  badgeLabel: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 9,
+    lineHeight: 11,
+    fontWeight: '600',
+  } satisfies TextStyle,
   amountHero: {
-    fontFamily: fontFamily.sans,
+    fontFamily: fontFamily.bold,
     fontSize: fontSize.hero,
     lineHeight: 42,
     fontWeight: '700',
@@ -111,53 +150,156 @@ export const typography = {
     ...tabular,
   } satisfies TextStyle,
   amount: {
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semiBold,
     fontSize: fontSize.md,
     lineHeight: 21,
     fontWeight: '600',
     ...tabular,
   } satisfies TextStyle,
   amountSmall: {
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semiBold,
     fontSize: fontSize.base,
     lineHeight: 20,
     fontWeight: '600',
     ...tabular,
   } satisfies TextStyle,
+  amountInput: {
+    fontFamily: fontFamily.bold,
+    fontSize: 32,
+    lineHeight: 40,
+    fontWeight: '700',
+    ...tabular,
+  } satisfies TextStyle,
+  amountInputLarge: {
+    fontFamily: fontFamily.bold,
+    fontSize: 38,
+    lineHeight: 46,
+    fontWeight: '700',
+    ...tabular,
+  } satisfies TextStyle,
+  input: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.md,
+    fontWeight: '400',
+  } satisfies TextStyle,
+  inputSmall: {
+    fontFamily: fontFamily.regular,
+    fontSize: fontSize.base,
+    lineHeight: 20,
+    fontWeight: '400',
+  } satisfies TextStyle,
+  inputMedium: {
+    fontFamily: fontFamily.medium,
+    fontSize: fontSize.base,
+    lineHeight: 20,
+    fontWeight: '500',
+  } satisfies TextStyle,
+  identifier: {
+    fontFamily: fontFamily.medium,
+    fontSize: fontSize.sm,
+    lineHeight: 19,
+    fontWeight: '500',
+    letterSpacing: 1.5,
+    ...tabular,
+  } satisfies TextStyle,
   mono: {
-    fontFamily: fontFamily.mono,
+    fontFamily: fontFamily.regular,
     fontSize: fontSize.sm,
     lineHeight: 19,
     fontWeight: '500',
   } satisfies TextStyle,
-  /** Button labels. */
   button: {
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semiBold,
     fontSize: fontSize.md,
     lineHeight: 20,
     fontWeight: '600',
     letterSpacing: 0.1,
   } satisfies TextStyle,
   buttonSmall: {
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semiBold,
     fontSize: fontSize.base,
     lineHeight: 18,
     fontWeight: '600',
   } satisfies TextStyle,
-  /** Tab bar labels. */
   tabLabel: {
-    fontFamily: fontFamily.medium,
+    fontFamily: fontFamily.semiBold,
     fontSize: 11,
     lineHeight: 14,
     fontWeight: '600',
   } satisfies TextStyle,
-  /** Balance card heading. */
+  tabLabelActive: {
+    fontFamily: fontFamily.bold,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '700',
+  } satisfies TextStyle,
+  brandWordmark: {
+    fontFamily: fontFamily.bold,
+    fontSize: 19,
+    lineHeight: 24,
+    fontWeight: '700',
+  } satisfies TextStyle,
+  brandWordmarkVertical: {
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    fontWeight: '700',
+  } satisfies TextStyle,
   cardLabel: {
     fontFamily: fontFamily.medium,
     fontSize: fontSize.sm,
     lineHeight: 18,
     fontWeight: '500',
     letterSpacing: 0.2,
+  } satisfies TextStyle,
+  themedDefault: {
+    fontFamily: fontFamily.medium,
+    fontSize: 16,
+    lineHeight: 24,
+    fontWeight: '500',
+  } satisfies TextStyle,
+  themedSmall: {
+    fontFamily: fontFamily.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '400',
+  } satisfies TextStyle,
+  themedSmallBold: {
+    fontFamily: fontFamily.bold,
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: '700',
+  } satisfies TextStyle,
+  themedTitle: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 48,
+    lineHeight: 52,
+    fontWeight: '600',
+  } satisfies TextStyle,
+  themedSubtitle: {
+    fontFamily: fontFamily.semiBold,
+    fontSize: 32,
+    lineHeight: 44,
+    fontWeight: '600',
+  } satisfies TextStyle,
+  themedLink: {
+    fontFamily: fontFamily.regular,
+    fontSize: 14,
+    lineHeight: 30,
+    fontWeight: '400',
+  } satisfies TextStyle,
+  themedLinkPrimary: {
+    fontFamily: fontFamily.regular,
+    fontSize: 14,
+    lineHeight: 30,
+    fontWeight: '400',
+    color: '#3c87f7',
+  } satisfies TextStyle,
+  themedCode: {
+    fontFamily: fontFamily.medium,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '500',
+    ...tabular,
   } satisfies TextStyle,
 } as const;
 

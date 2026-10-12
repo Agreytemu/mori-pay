@@ -4,6 +4,7 @@ import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
 import type { IconName } from '@/constants/icons';
 import { useAppTheme, useStateTone, type StateTone } from '@/theme';
+import { typography } from '@/theme/typography';
 
 export type StatusBadgeProps = {
   label: string;
@@ -59,8 +60,7 @@ const styles = StyleSheet.create({
     paddingVertical: 1,
   },
   labelCompact: {
-    fontSize: 10,
-    lineHeight: 14,
+    ...typography.microLabel,
     letterSpacing: 0.4,
   },
   chip: {

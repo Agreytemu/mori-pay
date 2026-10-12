@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import type { IconName } from '@/constants/icons';
 import type { PaymentMethod, PaymentRecipient } from '@/data/payment-data';
 import { useAppTheme } from '@/theme';
+import { typography } from '@/theme/typography';
 import { formatMoney } from '@/utils/format-money';
 
 export type PaymentState = 'success' | 'failed' | 'pending';
@@ -108,7 +109,7 @@ export function AmountInput({
           selectionColor={colors.primary}
           placeholder="0"
           placeholderTextColor={colors.textTertiary}
-          style={[styles.amountInput, { color: colors.text, fontSize: 32 }]}
+          style={[styles.amountInput, typography.amountInput, { color: colors.text }]}
         />
       </View>
       <View
@@ -134,9 +135,9 @@ export function AmountInput({
           placeholderTextColor={colors.textTertiary}
           style={[
             styles.noteInput,
+            typography.inputSmall,
             {
               color: colors.text,
-              fontSize: 15,
               lineHeight: 22,
               minHeight: 48,
               width: '100%',
@@ -190,7 +191,7 @@ export function RecipientSelector({
           placeholder="Phone number"
           placeholderTextColor={colors.textTertiary}
           keyboardType="phone-pad"
-          style={[styles.textInput, { minHeight: 48, color: colors.text }]}
+          style={[styles.textInput, typography.input, { minHeight: 48, color: colors.text }]}
         />
       </View>
 
@@ -371,6 +372,7 @@ export function PaymentReview({
               variant={row.muted ? 'bodySmallStrong' : 'bodyStrong'}
               color={row.muted ? colors.textSecondary : colors.text}
               align="right"
+              numeric
               style={styles.reviewValue}
             >
               {row.value}
@@ -424,7 +426,7 @@ export function PaymentSuccess({
       <AppText variant="title1" align="center">
         Payment successful
       </AppText>
-      <AppText variant="display" align="center" style={{ marginTop: space.xs }}>
+      <AppText variant="display" align="center" numeric style={{ marginTop: space.xs }}>
         {formatMoney(amount, 'TZS')}
       </AppText>
       <View
@@ -479,7 +481,7 @@ export function PaymentFailed({
       <AppText variant="title1" align="center">
         Payment failed
       </AppText>
-      <AppText variant="display" align="center" style={{ marginTop: space.xs }}>
+      <AppText variant="display" align="center" numeric style={{ marginTop: space.xs }}>
         {formatMoney(amount, 'TZS')}
       </AppText>
       <View
@@ -532,7 +534,7 @@ export function PaymentPending({
       <AppText variant="title1" align="center">
         Payment pending
       </AppText>
-      <AppText variant="display" align="center" style={{ marginTop: space.xs }}>
+      <AppText variant="display" align="center" numeric style={{ marginTop: space.xs }}>
         {formatMoney(amount, 'TZS')}
       </AppText>
       <View
@@ -613,7 +615,7 @@ export function ReceiptDetails({
         <AppText variant="bodySmall" color={colors.textSecondary}>
           {kind}
         </AppText>
-        <AppText variant="display" style={{ marginTop: space.xs }}>
+        <AppText variant="display" numeric style={{ marginTop: space.xs }}>
           {formatMoney(amount, 'TZS')}
         </AppText>
         <View style={styles.receiptRows}>
@@ -643,7 +645,7 @@ function DetailCell({ label, value }: { label: string; value: string }) {
       <AppText variant="bodySmall" color={colors.textSecondary}>
         {label}
       </AppText>
-      <AppText variant="bodyStrong" align="right" numberOfLines={2}>
+      <AppText variant="bodyStrong" align="right" numberOfLines={2} numeric>
         {value}
       </AppText>
     </View>
@@ -814,7 +816,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
     width: 0,
-    fontWeight: '700',
     paddingVertical: 0,
     minHeight: 52,
   },

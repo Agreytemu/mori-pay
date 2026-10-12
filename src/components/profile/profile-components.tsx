@@ -25,6 +25,7 @@ import type {
   UserProfile,
 } from '@/data/profile';
 import { radius, spacing, useAppTheme } from '@/theme';
+import { typography } from '@/theme/typography';
 import { formatRelativeTime, maskPhone } from '@/utils/format';
 
 /* ------------------------------------------------------------------ status */
@@ -991,7 +992,7 @@ const styles = StyleSheet.create({
     minHeight: 50,
     borderWidth: 1,
     paddingHorizontal: spacing.md,
-    fontSize: 16,
+    ...typography.input,
   },
   floatingInputCard: {
     position: 'relative',
@@ -1005,7 +1006,7 @@ const styles = StyleSheet.create({
     paddingTop: 15,
     paddingBottom: 4,
     borderWidth: 0,
-    fontSize: 16,
+    ...typography.input,
     backgroundColor: 'transparent',
   },
   floatingDigitInput: {
