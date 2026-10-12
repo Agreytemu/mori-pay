@@ -40,6 +40,7 @@ const WEB_PATHS: Partial<Record<IconName, string[]>> = {
   chevronRight: ['m9 18 6-6-6-6'],
   chevronLeft: ['m15 18-6-6 6-6'],
   chevronDown: ['m6 9 6 6 6-6'],
+  calendar: ['M7 3v3', 'M17 3v3', 'M4 9h16', 'M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 1 1-1Z', 'M8 13h2', 'M14 13h2', 'M8 17h2'],
   externalLink: ['M14 4h6v6', 'M20 4 11 13', 'M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6'],
   close: ['m6 6 12 12', 'M18 6 6 18'],
   eye: ['M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z', 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z'],

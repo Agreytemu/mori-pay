@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { AuthPage } from '@/components/auth/AuthPage';
+import { DateOfBirthField } from '@/components/auth/DateOfBirthField';
 import { ProfileField, StatusBanner } from '@/components/profile/profile-components';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/button';
@@ -81,7 +82,6 @@ export default function RegisterScreen() {
 
           <ProfileField
             label="Full name"
-            floatingLabel
             value={fullName}
             onChangeText={setFullName}
             autoCapitalize="words"
@@ -91,7 +91,6 @@ export default function RegisterScreen() {
           />
           <ProfileField
             label="Email address"
-            floatingLabel
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -103,7 +102,6 @@ export default function RegisterScreen() {
           />
           <ProfileField
             label="Password"
-            floatingLabel
             value={password}
             onChangeText={setPassword}
             secureTextEntry={!showPassword}
@@ -122,7 +120,6 @@ export default function RegisterScreen() {
           </Pressable>
           <ProfileField
             label="Confirm password"
-            floatingLabel
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry={!showPassword}
@@ -135,15 +132,9 @@ export default function RegisterScreen() {
                 : undefined
             }
           />
-          <ProfileField
-            label="Date of birth (optional)"
-            floatingLabel
+          <DateOfBirthField
             value={dateOfBirth}
             onChangeText={setDateOfBirth}
-            keyboardType="numbers-and-punctuation"
-            maxLength={10}
-            placeholder="1996-04-18"
-            hint="Format: YYYY-MM-DD"
             error={dateOfBirth !== '' && !validDob ? 'Use a valid date in YYYY-MM-DD format.' : undefined}
           />
 

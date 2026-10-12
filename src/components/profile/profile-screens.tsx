@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
+import { DateOfBirthField } from '@/components/auth/DateOfBirthField';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
@@ -554,14 +555,9 @@ export function PersonalInformationScreen() {
               placeholder="No email added"
               hint="Your sign-in email can only be changed after verification."
             />
-            <ProfileField
-              label="Date of birth"
+            <DateOfBirthField
               value={currentDraft.dateOfBirth}
               onChangeText={update('dateOfBirth')}
-              keyboardType="numbers-and-punctuation"
-              maxLength={10}
-              placeholder="1996-04-18"
-              hint="Format: YYYY-MM-DD"
               error={submitted ? errors.dateOfBirth : undefined}
             />
           </View>

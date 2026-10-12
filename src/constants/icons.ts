@@ -35,6 +35,7 @@ export const ICONS = {
   notificationOutline: { ios: 'bell', android: 'notifications_none' },
   notificationActive: { ios: 'bell.badge.fill', android: 'notifications_active' },
   chevronRight: { ios: 'chevron.right', android: 'chevron_right' },
+  calendar: { ios: 'calendar', android: 'calendar_month' },
   chevronLeft: { ios: 'chevron.left', android: 'chevron_left' },
   chevronDown: { ios: 'chevron.down', android: 'keyboard_arrow_down' },
   externalLink: { ios: 'arrow.up.right.square', android: 'open_in_new' },
