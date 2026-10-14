@@ -44,6 +44,11 @@ export type PaySystemInput = {
   counterpartyDetail?: string;
   idempotencyKey?: string;
   metadata?: Prisma.InputJsonValue;
+  destinationLedgerAccountId?: string;
+  onSettled?: (
+    transactionClient: Prisma.TransactionClient,
+    transactionId: string,
+  ) => Promise<void>;
 };
 
 /**
@@ -185,7 +190,10 @@ export class PaymentsService {
   }
 
   /** Debits the payer and credits a wallet-less system account (e.g. merchant). */
-  async paySystem(input: PaySystemInput): Promise<TransactionDto> {
+  async paySystem(
+    input: PaySystemInput,
+    transactionClient?: Prisma.TransactionClient,
+  ): Promise<TransactionDto> {
     const fromAccountId = this.availableAccount(input.from);
     const total = input.amount + input.fee;
     const reference = generateReference('PAY');
@@ -227,7 +235,9 @@ export class PaymentsService {
       });
       await createTransactionNotification(tx, payerTransaction);
 
-      const systemAccount = await this.ledger.getSystemAccount(input.system, tx);
+      const systemAccount = input.destinationLedgerAccountId
+        ? { id: input.destinationLedgerAccountId }
+        : await this.ledger.getSystemAccount(input.system, tx);
       const legs: LedgerLeg[] = [
         { ledgerAccountId: fromAccountId, direction: 'debit', amount: total },
         { ledgerAccountId: systemAccount.id, direction: 'credit', amount: input.amount },
@@ -249,14 +259,18 @@ export class PaymentsService {
         { reference, transactionId: payerTransaction.id, legs },
         tx,
       );
+      await input.onSettled?.(tx, payerTransaction.id);
 
       return toTransaction(payerTransaction);
     };
 
     try {
-      return await this.prisma.$transaction(execute);
+      return transactionClient
+        ? await execute(transactionClient)
+        : await this.prisma.$transaction(execute);
     } catch (error) {
       if (
+        transactionClient ||
         !input.idempotencyKey ||
         !(error instanceof Prisma.PrismaClientKnownRequestError) ||
         error.code !== 'P2002'

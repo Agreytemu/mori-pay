@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { PinBoxes, PinKeypad, StatusBanner, ProfileField } from '@/components/profile/profile-components';
+import { PinBoxes, StatusBanner, ProfileField } from '@/components/profile/profile-components';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
 import { requestPhoneLink, verifyPhoneLink } from '@/lib/mori-api';
@@ -68,9 +68,8 @@ export default function LinkPhoneScreen() {
     }
   };
 
-  const enterDigit = (digit: string) => {
-    if (busy || code.length >= CODE_LENGTH || !normalizedPhone) return;
-    const next = code + digit;
+  const onCodeChange = (next: string) => {
+    if (busy || !normalizedPhone) return;
     setCode(next);
     setError(null);
     if (next.length === CODE_LENGTH) void verify(next);
@@ -120,7 +119,13 @@ export default function LinkPhoneScreen() {
             </>
           ) : (
             <>
-              <PinBoxes value={code} secure={false} />
+              <PinBoxes
+                value={code}
+                secure={false}
+                onChangeText={onCodeChange}
+                autoFocus
+                editable={!busy}
+              />
               {devCode ? (
                 <StatusBanner
                   tone="info"
@@ -142,11 +147,6 @@ export default function LinkPhoneScreen() {
                   loading={busy}
                   disabled={busy || code.length !== CODE_LENGTH}
                   onPress={() => void verify(code)}
-                />
-                <PinKeypad
-                  onDigit={enterDigit}
-                  onBackspace={() => setCode((value) => value.slice(0, -1))}
-                  disabled={busy}
                 />
               </View>
             </>

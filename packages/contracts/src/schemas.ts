@@ -217,7 +217,7 @@ export const withdrawalPreviewQuerySchema = z.object({
     .max(Number.MAX_SAFE_INTEGER, 'Amount is too large'),
 });
 
-export const topupCardPreviewQuerySchema = z.object({
+export const topupDepositPreviewQuerySchema = z.object({
   amount: z.coerce
     .number()
     .int('Amount must be a whole number')
@@ -226,12 +226,15 @@ export const topupCardPreviewQuerySchema = z.object({
     .max(3_000_000, 'Maximum deposit is 3,000,000 TZS'),
 });
 
+export const topupCardPreviewQuerySchema = topupDepositPreviewQuerySchema;
+
 export const topupMobileMoneySchema = z.object({
   amount: ablinerDepositAmountSchema,
   mobileNumber: tzPhoneSchema,
   /** Display-only operator hint; Abliner routes the rail automatically. */
   network: mobileNetworkSchema.optional(),
   idempotencyKey: z.string().min(1).max(120).optional(),
+  expectedFee: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
 });
 
 export const topupCardSchema = z.object({
@@ -306,6 +309,7 @@ export type RecipientLookupInput = z.infer<typeof recipientLookupSchema>;
 export type VerifyReceiveCodeInput = z.infer<typeof verifyReceiveCodeSchema>;
 export type WithdrawalPreviewQuery = z.infer<typeof withdrawalPreviewQuerySchema>;
 export type TopupCardPreviewQuery = z.infer<typeof topupCardPreviewQuerySchema>;
+export type TopupDepositPreviewQuery = z.infer<typeof topupDepositPreviewQuerySchema>;
 export type TopupMobileMoneyInput = z.infer<typeof topupMobileMoneySchema>;
 export type TopupCardInput = z.infer<typeof topupCardSchema>;
 export type WithdrawalInput = z.infer<typeof withdrawalSchema>;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect, useNavigation, useRouter, type Href } from 'expo-router';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { BackHandler, Pressable, Share, StyleSheet, View } from 'react-native';
+import { BackHandler, Keyboard, Pressable, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
@@ -18,10 +18,10 @@ import {
 } from '@/components/payment/payment-components';
 import {
   PinBoxes,
-  PinKeypad,
   ProfileField,
   StatusBanner,
 } from '@/components/profile/profile-components';
+import { QRCodeScanner } from '@/components/payment/QRCodeScanner';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppIllustration, type AppIllustrationName } from '@/components/ui/AppIllustration';
@@ -33,6 +33,8 @@ import { PAYMENT_FLOW_ROUTES, type PaymentFlow } from '@/constants/payment-route
 import type {
   MoneyRequest,
   MerchantPaymentPreview,
+  MerchantQrPreview,
+  PayMerchantQrResult,
   PayMerchantResult,
   ReceiveCode,
   RecipientLookup,
@@ -50,9 +52,12 @@ import {
   listMerchants,
   lookupRecipient,
   payMerchant,
+  payMerchantQr,
   previewMerchantPayment,
+  previewMerchantQr,
   previewTransfer,
   sendMoney,
+  verifyReceiveCode,
 } from '@/lib/mori-api';
 import { normalizeTzPhone } from '@/lib/phone';
 import { useSession } from '@/lib/session';
@@ -76,9 +81,13 @@ type FlowName =
   | 'merchant'
   | 'pay-amount'
   | 'pay-review'
-  | 'pay-result';
+  | 'pay-result'
+  | 'qr-scan'
+  | 'qr-amount'
+  | 'qr-review'
+  | 'qr-result';
 
-type PinReason = 'send' | 'pay';
+type PinReason = 'send' | 'pay' | 'qr';
 
 export const MIN_AMOUNT = 500;
 
@@ -114,6 +123,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   /* Send money */
   const [sendPhone, setSendPhone] = useState('');
   const [sendPhoneNorm, setSendPhoneNorm] = useState<string | null>(null);
+  const [scanningSendCode, setScanningSendCode] = useState(false);
   const [recipientLookup, setRecipientLookup] = useState<
     (RecipientLookup & { phone: string }) | null
   >(null);
@@ -135,6 +145,13 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   const [payNote, setPayNote] = useState('');
   const [payPreview, setPayPreview] = useState<MerchantPaymentPreview | null>(null);
   const [payResult, setPayResult] = useState<PayMerchantResult | null>(null);
+
+  /* Customer merchant QR payment */
+  const [merchantQrCode, setMerchantQrCode] = useState<string | null>(null);
+  const [merchantQrAmount, setMerchantQrAmount] = useState('');
+  const [merchantQrAmountRequired, setMerchantQrAmountRequired] = useState(false);
+  const [merchantQrPreview, setMerchantQrPreview] = useState<MerchantQrPreview | null>(null);
+  const [merchantQrResult, setMerchantQrResult] = useState<PayMerchantQrResult | null>(null);
 
   /* Receive QR */
   const [receiveCode, setReceiveCode] = useState<ReceiveCode | null>(null);
@@ -260,6 +277,18 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       case 'pay-result':
         setScreen('pay-review');
         break;
+      case 'qr-result':
+        setScreen('qr-review');
+        break;
+      case 'qr-review':
+        setScreen(merchantQrAmountRequired ? 'qr-amount' : 'merchant');
+        break;
+      case 'qr-amount':
+        setScreen('qr-scan');
+        break;
+      case 'qr-scan':
+        setScreen('merchant');
+        break;
       case 'pay-review':
         setScreen('pay-amount');
         break;
@@ -272,7 +301,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       default:
         setScreen('overview');
     }
-  }, [goHome, screen]);
+  }, [goHome, merchantQrAmountRequired, screen]);
 
   const activeScreen = screen;
 
@@ -307,6 +336,38 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       setScreen('send-amount');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not look up that number.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resolveSendReceiveCode = async (code: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const lookup = await verifyReceiveCode(code.trim());
+      const normalized = normalizeTzPhone(lookup.phoneNumber);
+      if (!lookup.found || !normalized) {
+        setError(
+          'This receive code is invalid or expired. Ask the recipient to refresh their QR code, then scan it again.',
+        );
+        setScanningSendCode(false);
+        return;
+      }
+
+      setSendPhone(lookup.phoneNumber);
+      setSendPhoneNorm(normalized);
+      setRecipientLookup({ ...lookup, phone: normalized, phoneNumber: normalized });
+      setTransferPreview(null);
+      setScanningSendCode(false);
+      setScreen('send-amount');
+    } catch (err) {
+      setError(
+        err instanceof ApiError && [400, 404, 410, 422].includes(err.status)
+          ? 'This receive code is invalid or expired. Ask the recipient to refresh their QR code, then scan it again.'
+          : 'Could not verify this receive code. Check your connection and scan again.',
+      );
+      setScanningSendCode(false);
     } finally {
       setBusy(false);
     }
@@ -452,13 +513,85 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
     }
   };
 
-  const onPinDigit = (digit: string) => {
-    if (busy || pinEntry.length >= 6) return;
-    const next = pinEntry + digit;
+  const resolveMerchantQr = async (code: string) => {
+    setBusy(true);
+    setError(null);
+    setMerchantQrCode(code.trim());
+    setMerchantQrAmount('');
+    setMerchantQrAmountRequired(false);
+    try {
+      const preview = await previewMerchantQr({ code: code.trim() });
+      setMerchantQrPreview(preview);
+      setScreen('qr-review');
+    } catch (err) {
+      if (
+        err instanceof ApiError &&
+        err.status === 400 &&
+        err.message.toLowerCase().includes('amount is required')
+      ) {
+        setMerchantQrAmountRequired(true);
+        setScreen('qr-amount');
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not verify this merchant QR code.');
+        setScreen('merchant');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const continueMerchantQrAmount = async () => {
+    const amount = Number(merchantQrAmount);
+    if (!merchantQrCode || !Number.isSafeInteger(amount) || amount < MIN_AMOUNT) {
+      setError(`Enter an amount of at least ${formatMoney(MIN_AMOUNT, 'TZS')}.`);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const preview = await previewMerchantQr({ code: merchantQrCode, amount });
+      setMerchantQrPreview(preview);
+      setScreen('qr-review');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not verify this merchant QR code.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitMerchantQrPay = async (pin: string) => {
+    if (!merchantQrCode || !merchantQrPreview) return;
+    const intent = `merchant-qr:${merchantQrCode}:${merchantQrPreview.amount}`;
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await payMerchantQr({
+        code: merchantQrCode,
+        amount: merchantQrAmountRequired ? merchantQrPreview.amount : undefined,
+        pin,
+        idempotencyKey: idempotencyKeys.current.get(intent, 'merchant-qr'),
+      });
+      idempotencyKeys.current.clear(intent);
+      setMerchantQrResult(result);
+      setPinReason(null);
+      setPinEntry('');
+      await refreshWallet();
+      setScreen('qr-result');
+    } catch (err) {
+      setPinEntry('');
+      setError(err instanceof ApiError ? err.message : 'Merchant QR payment failed. Please try again.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onPinChange = (next: string) => {
+    if (busy) return;
     setPinEntry(next);
     if (next.length === 6) {
       if (pinReason === 'send') void submitSend(next);
       else if (pinReason === 'pay') void submitPay(next);
+      else if (pinReason === 'qr') void submitMerchantQrPay(next);
     }
   };
 
@@ -620,15 +753,36 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   );
 
   const renderSendRecipient = () =>
-    renderRecipientStep({
-      title: 'The recipient must have a Mori Pay account to receive the transfer.',
-      value: sendPhone,
-      onChange: setSendPhone,
-      hint: 'We will verify the account owner before you continue.',
-      illustration: 'sendMoney',
-      lookup: activeLookup,
-      onContinue: continueSendRecipient,
-    });
+    scanningSendCode ? (
+      <QRCodeScanner
+        onScan={(code) => void resolveSendReceiveCode(code)}
+        onCancel={() => {
+          setScanningSendCode(false);
+          setError(null);
+        }}
+      />
+    ) : (
+      <>
+        {renderRecipientStep({
+          title: 'The recipient must have a Mori Pay account to receive the transfer.',
+          value: sendPhone,
+          onChange: setSendPhone,
+          hint: 'We will verify the account owner before you continue.',
+          illustration: 'sendMoney',
+          lookup: activeLookup,
+          onContinue: continueSendRecipient,
+        })}
+        <SecondaryButton
+          label="Scan recipient QR"
+          block
+          disabled={busy}
+          onPress={() => {
+            setError(null);
+            setScanningSendCode(true);
+          }}
+        />
+      </>
+    );
 
   const renderSendAmount = () => (
     <View style={styles.stack}>
@@ -667,7 +821,10 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       rows={sendRows}
       primaryLabel="Confirm"
       secondaryLabel="Edit"
-      onPrimary={() => setPinReason('send')}
+      onPrimary={() => {
+        Keyboard.dismiss();
+        setPinReason('send');
+      }}
       onSecondary={() => setScreen('send-amount')}
     />
   );
@@ -902,35 +1059,57 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   };
 
   const renderMerchant = () => {
+    const scanQrButton = (
+      <SecondaryButton
+        label="Scan merchant QR"
+        block
+        onPress={() => {
+          setError(null);
+          setScreen('qr-scan');
+        }}
+      />
+    );
     if (merchants.loading) {
-      return <EmptyState icon="payments" title="Loading merchants…" description="Fetching approved merchant accounts." />;
+      return (
+        <View style={styles.stack}>
+          {scanQrButton}
+          <EmptyState icon="payments" title="Loading merchants…" description="Fetching approved merchant accounts." />
+        </View>
+      );
     }
     if (merchants.error) {
       return (
-        <EmptyState
-          icon="payments"
-          illustration="noSignal"
-          title="Could not load merchants"
-          description="Pull down or try again later."
-        />
+        <View style={styles.stack}>
+          {scanQrButton}
+          <EmptyState
+            icon="payments"
+            illustration="noSignal"
+            title="Could not load merchants"
+            description="Pull down or try again later."
+          />
+        </View>
       );
     }
     if (!merchants.data || merchants.data.length === 0) {
       return (
-        <EmptyState
-          icon="payments"
-          illustration="mobilePay"
-          title="No merchants yet"
-          description="Approved merchants will appear here."
-        />
+        <View style={styles.stack}>
+          {scanQrButton}
+          <EmptyState
+            icon="payments"
+            illustration="mobilePay"
+            title="No merchants yet"
+            description="Approved merchants will appear here."
+          />
+        </View>
       );
     }
     return (
       <View style={styles.stack}>
         <AppIllustration name="mobilePay" width={204} height={132} />
         <AppText variant="bodySmall" color={colors.textSecondary}>
-          Choose where you want to pay.
+          Choose where you want to pay or scan a merchant QR code.
         </AppText>
+        {scanQrButton}
         {merchants.data.map((merchant) => {
           const selected = merchant.id === payMerchantId;
           return (
@@ -973,6 +1152,74 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
     );
   };
 
+  const renderMerchantQrAmount = () => (
+    <View style={styles.stack}>
+      <AppText variant="bodySmall" color={colors.textSecondary}>
+        This static merchant QR does not set an amount. Enter the amount you want to pay.
+      </AppText>
+      <ProfileField
+        label="Amount (TZS)"
+        value={merchantQrAmount}
+        onChangeText={setMerchantQrAmount}
+        keyboardType="number-pad"
+        accessibilityLabel="Merchant QR payment amount in Tanzanian shillings"
+      />
+      {error ? <StatusBanner tone="error" title="Check the amount" message={error} onDismiss={() => setError(null)} /> : null}
+      <Button label="Verify payment" loading={busy} onPress={() => void continueMerchantQrAmount()} />
+    </View>
+  );
+
+  const merchantQrRows: DetailRow[] = [
+    { label: 'Verified merchant', value: merchantQrPreview?.merchantName ?? '' },
+    { label: 'Amount', value: formatMoney(merchantQrPreview?.amount ?? 0, 'TZS') },
+    { label: 'Fee', value: formatMoney(merchantQrPreview?.fee ?? 0, 'TZS'), muted: true },
+    { label: 'Total', value: formatMoney(merchantQrPreview?.total ?? 0, 'TZS') },
+  ];
+
+  const renderMerchantQrReview = () => (
+    <View style={styles.stack}>
+      <StatusBanner
+        tone="success"
+        title="Merchant verified"
+        message="Review the merchant and amount returned by Mori Pay before confirming."
+      />
+      <PaymentReview
+        title="Review merchant QR payment"
+        subtitle="Your payment is sent to this verified merchant."
+        rows={merchantQrRows}
+        primaryLabel="Confirm payment"
+        secondaryLabel="Cancel"
+        onPrimary={() => {
+          Keyboard.dismiss();
+          setPinReason('qr');
+        }}
+        onSecondary={() => {
+          setMerchantQrPreview(null);
+          setMerchantQrCode(null);
+          setScreen('merchant');
+        }}
+      />
+    </View>
+  );
+
+  const renderMerchantQrResult = () => {
+    if (!merchantQrResult) return <EmptyState icon="transactions" title="Payment complete" description="" />;
+    const { transaction } = merchantQrResult;
+    return (
+      <PaymentSuccess
+        amount={transaction.amount}
+        fee={merchantQrResult.fee}
+        total={transaction.amount + merchantQrResult.fee}
+        transactionId={transaction.id}
+        recipient={merchantQrResult.merchantName}
+        reference={transaction.reference}
+        dateTime={formatDateTime(transaction.createdAt)}
+        onPrimary={goHome}
+        onSecondary={goHome}
+      />
+    );
+  };
+
   const renderPayAmount = () => (
     <View style={styles.stack}>
       <AmountInput
@@ -993,7 +1240,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
     { label: 'Amount', value: formatMoney(Number(payAmount || '0'), 'TZS') },
     {
       label: payPreview && payPreview.feePercentage > 0
-        ? `Fee (${payPreview.feePercentage}%)`
+        ? `Fee (${Number((payPreview.feePercentage * 100).toFixed(2))}%)`
         : 'Fee',
       value: payPreview ? formatMoney(payPreview.fee, 'TZS') : '…',
       muted: true,
@@ -1012,7 +1259,10 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       rows={payRows}
       primaryLabel="Confirm"
       secondaryLabel="Edit"
-      onPrimary={() => setPinReason('pay')}
+      onPrimary={() => {
+        Keyboard.dismiss();
+        setPinReason('pay');
+      }}
       onSecondary={() => setScreen('pay-amount')}
     />
   );
@@ -1074,6 +1324,13 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
         return { title: 'Pay', step: 'Review', icon: 'pay' as const };
       case 'pay-result':
         return { title: 'Pay', step: 'Result', icon: 'pay' as const };
+      case 'qr-scan':
+      case 'qr-amount':
+        return { title: 'Pay', step: 'Scan merchant QR', icon: 'pay' as const };
+      case 'qr-review':
+        return { title: 'Pay', step: 'Review QR payment', icon: 'pay' as const };
+      case 'qr-result':
+        return { title: 'Pay', step: 'Result', icon: 'pay' as const };
       default:
         return { title: 'Payments', step: 'Overview', icon: 'payments' as const };
     }
@@ -1103,6 +1360,19 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
         return renderRequestResult();
       case 'merchant':
         return renderMerchant();
+      case 'qr-scan':
+        return (
+          <QRCodeScanner
+            onScan={(code) => void resolveMerchantQr(code)}
+            onCancel={() => setScreen('merchant')}
+          />
+        );
+      case 'qr-amount':
+        return renderMerchantQrAmount();
+      case 'qr-review':
+        return renderMerchantQrReview();
+      case 'qr-result':
+        return renderMerchantQrResult();
       case 'pay-amount':
         return renderPayAmount();
       case 'pay-review':
@@ -1117,17 +1387,17 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   const pinSheet = pinReason ? (
     <View style={styles.pinSheet}>
       <AppText variant="bodySmallStrong" align="center">
-        Enter your PIN to confirm
+        {pinReason === 'qr' ? 'Enter your PIN to pay this verified merchant' : 'Enter your PIN to confirm'}
       </AppText>
-      <PinBoxes value={pinEntry} />
+      <PinBoxes
+        value={pinEntry}
+        onChangeText={onPinChange}
+        autoFocus
+        editable={!busy}
+      />
       {error ? (
         <StatusBanner tone="error" title="PIN rejected" message={error} onDismiss={() => setError(null)} />
       ) : null}
-      <PinKeypad
-        onDigit={onPinDigit}
-        onBackspace={() => setPinEntry((value) => value.slice(0, -1))}
-        disabled={busy}
-      />
       <SecondaryButton label="Cancel" block disabled={busy} onPress={closePin} />
     </View>
   ) : null;
@@ -1154,10 +1424,10 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
         </View>
       }
       contentContainerStyle={styles.contentContainer}
+      scroll={!(activeScreen === 'send-recipient' && scanningSendCode) && activeScreen !== 'qr-scan'}
       bottomInset={18}
-      footer={pinSheet}
     >
-      {content}
+      {pinSheet ?? content}
       <AppDialog
         visible={dialog !== null}
         title={dialog?.title ?? ''}

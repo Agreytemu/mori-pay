@@ -361,7 +361,7 @@ the API, a managed Postgres database and a Render Key Value (Redis) instance.
    | `ABLINER_API_KEY` | Enabled Abliner key, starts with `tsl_live_`. |
    | `ABLINER_WEBHOOK_SECRET` | Exact webhook signing secret generated in Abliner Dashboard (starts with `whsec_`); do not use or prepend the API key. |
    | `ABLINER_CALLBACK_URL` | `https://mori-pay.onrender.com/api/v1/webhooks/abliner` (set in the Render Dashboard and register with Abliner). |
-   | `RESEND_API_KEY` / `EMAIL_FROM` | Transactional email; required in production. Verify the sender domain in Resend first. |
+   | `RESEND_API_KEY` / `EMAIL_FROM` | Transactional email; required in production. Verify the sender domain in Resend first; use an address such as `noreply@agreyflix.online`. |
    | `SMS_API_KEY` | Credentials for the configured `SMS_PROVIDER`. |
    | `SENTRY_DSN` | Optional error reporting. |
 

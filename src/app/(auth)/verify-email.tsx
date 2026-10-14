@@ -3,7 +3,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { AuthPage } from '@/components/auth/AuthPage';
-import { PinBoxes, PinKeypad, StatusBanner } from '@/components/profile/profile-components';
+import { PinBoxes, StatusBanner } from '@/components/profile/profile-components';
 import { AppText } from '@/components/ui/AppText';
 import { GhostButton, PrimaryButton } from '@/components/ui/button';
 import {
@@ -66,9 +66,8 @@ export default function VerifyEmailScreen() {
     [busy, email, router, signIn]
   );
 
-  const onDigit = (digit: string) => {
-    if (busy || code.length >= CODE_LENGTH) return;
-    const next = code + digit;
+  const onCodeChange = (next: string) => {
+    if (busy) return;
     setCode(next);
     setError(null);
     if (next.length === CODE_LENGTH) void submit(next);
@@ -99,7 +98,13 @@ export default function VerifyEmailScreen() {
             We sent a 6-digit code to {email}
           </AppText>
         </View>
-        <PinBoxes value={code} secure={false} />
+        <PinBoxes
+          value={code}
+          secure={false}
+          onChangeText={onCodeChange}
+          autoFocus
+          editable={!busy}
+        />
 
         {devCode ? (
           <StatusBanner
@@ -131,11 +136,6 @@ export default function VerifyEmailScreen() {
             loading={busy}
             disabled={busy || code.length !== CODE_LENGTH}
             onPress={() => void submit(code)}
-          />
-          <PinKeypad
-            onDigit={onDigit}
-            onBackspace={() => setCode((value) => value.slice(0, -1))}
-            disabled={busy}
           />
         </View>
       </View>

@@ -24,6 +24,29 @@ enum AccountTier {
   Verified
 }
 
+enum UserRole {
+  user
+  admin
+}
+
+enum MerchantApplicationStatus {
+  pending_payment
+  awaiting_review
+  approved
+  rejected
+}
+
+enum MerchantAccountStatus {
+  active
+  suspended
+  revoked
+}
+
+enum MerchantQrKind {
+  static
+  fixed
+}
+
 model User {
   id             String        @id @default(cuid())
   phone          String?       @unique
@@ -39,6 +62,7 @@ model User {
   memberId       String        @unique
   status         UserStatus    @default(active)
   tier           AccountTier   @default(Standard)
+  role           UserRole      @default(user)
   kycLevel       Int           @default(0)
   nationalId     String?
   pinHash        String?
@@ -60,6 +84,9 @@ model User {
   limitUsages            LimitUsage[]
   otpChallenges          OtpChallenge[]
   emailChallenges        EmailChallenge[]
+  merchantApplications  MerchantApplication[]
+  merchantAccounts       MerchantAccount[]
+  reviewedApplications   MerchantApplication[] @relation("MerchantApplicationReviewer")
 
   @@index([phone])
 }
@@ -148,6 +175,7 @@ model LedgerAccount {
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   entries   LedgerEntry[]
+  merchantAccount MerchantAccount?
 
   @@unique([walletId, kind])
   @@index([kind])
@@ -231,6 +259,72 @@ model Merchant {
   phone      String?
   active     Boolean  @default(true)
   createdAt  DateTime @default(now())
+}
+
+model MerchantApplication {
+  id                       String                    @id @default(cuid())
+  userId                   String
+  user                     User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName             String
+  category                 String
+  phone                    String?
+  status                   MerchantApplicationStatus @default(pending_payment)
+  registrationFeeAmount    BigInt?
+  registrationPaymentId    String?                   @unique
+  paidAt                   DateTime?
+  reviewedById             String?
+  reviewedBy               User?                     @relation("MerchantApplicationReviewer", fields: [reviewedById], references: [id])
+  reviewedAt               DateTime?
+  reviewNote               String?
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  merchantAccount          MerchantAccount?
+
+  @@index([userId, status])
+  @@index([status, createdAt])
+}
+
+model MerchantAccount {
+  id                String               @id @default(cuid())
+  applicationId     String               @unique
+  application       MerchantApplication  @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  ownerId           String
+  owner             User                 @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  name              String
+  identifier        String               @unique
+  category          String
+  phone             String?
+  status            MerchantAccountStatus @default(active)
+  ledgerAccountId   String               @unique
+  ledgerAccount     LedgerAccount        @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
+  qrCodes           MerchantQrCode[]
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  @@index([ownerId, status])
+}
+
+model MerchantQrCode {
+  id               String          @id @default(cuid())
+  merchantAccountId String
+  merchantAccount   MerchantAccount @relation(fields: [merchantAccountId], references: [id], onDelete: Cascade)
+  codeHash         String          @unique
+  kind             MerchantQrKind
+  fixedAmount      BigInt?
+  reusable         Boolean         @default(false)
+  uses             Int             @default(0)
+  expiresAt        DateTime?
+  revokedAt        DateTime?
+  createdAt        DateTime        @default(now())
+
+  @@index([merchantAccountId, revokedAt])
+  @@index([expiresAt])
+}
+
+model MerchantConfiguration {
+  id                       String   @id @default("merchant-registration")
+  registrationFeeAmount    BigInt?
+  updatedAt                DateTime @updatedAt
 }
 
 model SavedPaymentMethod {

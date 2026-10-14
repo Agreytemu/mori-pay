@@ -26,7 +26,6 @@ import {
   DeviceCard,
   FaqItem,
   PinBoxes,
-  PinKeypad,
   ProfileField,
   ProfileHeader,
   ProfileMenuItem,
@@ -150,6 +149,13 @@ export function ProfileScreen() {
 
       <ProfileSection title="Account">
         <ProfileMenuItem
+          icon="payments"
+          label="Merchant account"
+          description="Apply, track review, and create merchant QR codes"
+          onPress={() => router.push('/merchant')}
+          showDivider
+        />
+        <ProfileMenuItem
           icon="id"
           label="Personal information"
           description="Name, phone, email and date of birth"
@@ -204,8 +210,8 @@ export function ProfileScreen() {
         />
         <ProfileMenuItem
           icon="biometrics"
-          label="Biometric app lock"
-          description="Lock Mori Pay when you leave the app"
+          label="App lock"
+          description="Require your Mori Pay PIN, with optional biometrics"
           value={appLockEnabled ? 'On' : 'Off'}
           onPress={() => router.push('/account/security')}
         />
@@ -604,7 +610,7 @@ export function SecurityScreen() {
       <ProfileSection title="Account protection">
         <ProfileMenuItem
           icon="biometrics"
-          label="Biometric app lock"
+          label="App lock"
           value={appLockEnabled ? 'On' : 'Off'}
           description={
             appLockEnabled
@@ -743,7 +749,15 @@ export function AppLockSettingsScreen() {
 function AppLockSettingsToggle() {
   const router = useRouter();
   const { colors, radius } = useAppTheme();
-  const { appLockEnabled, setAppLockEnabled, pin, setPin } = useSession();
+  const {
+    appLockEnabled,
+    setAppLockEnabled,
+    pin,
+    setPin,
+    biometricUnlockEnabled,
+    biometricUnlockStorageError,
+    setBiometricUnlockEnabled,
+  } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [disablePinOpen, setDisablePinOpen] = useState(false);
@@ -751,55 +765,15 @@ function AppLockSettingsToggle() {
   const [disablePinError, setDisablePinError] = useState<string | null>(null);
   const [pinLocked, setPinLocked] = useState(false);
 
-  const requestDisable = async () => {
-    setBusy(true);
+  const requestDisable = () => {
     setError(null);
-    try {
-      if (Platform.OS !== 'web') {
-        const enrolledLevel = await LocalAuthentication.getEnrolledLevelAsync();
-        const canUseDeviceAuthentication =
-          Platform.OS === 'ios'
-            ? enrolledLevel !== LocalAuthentication.SecurityLevel.NONE
-            : enrolledLevel >= LocalAuthentication.SecurityLevel.BIOMETRIC_WEAK;
-        if (canUseDeviceAuthentication) {
-          const result = await LocalAuthentication.authenticateAsync({
-            promptMessage: 'Confirm to disable Mori Pay app lock',
-            promptDescription: 'Authenticate to change this security setting.',
-            fallbackLabel: 'Use device passcode',
-            cancelLabel: 'Use Mori Pay PIN',
-          });
-          if (result.success) {
-            await setAppLockEnabled(false);
-            setDisablePinOpen(false);
-            setDisablePin('');
-            return;
-          }
-          setDisablePinError('Device authentication was not completed. Enter your Mori Pay PIN to continue.');
-        } else {
-          setDisablePinError('Enter your Mori Pay PIN to disable app lock.');
-        }
-      }
-      setDisablePin('');
-      setPinLocked(
-        Boolean(pin?.lockedUntil && Date.parse(pin.lockedUntil) > Date.now()) ||
-          pin?.attemptsRemaining === 0,
-      );
-      setDisablePinOpen(true);
-    } catch (authError) {
-      setDisablePinError(
-        authError instanceof Error
-          ? `Device authentication failed. Enter your Mori Pay PIN to continue. ${authError.message}`
-          : 'Device authentication failed. Enter your Mori Pay PIN to continue.',
-      );
-      setDisablePin('');
-      setPinLocked(
-        Boolean(pin?.lockedUntil && Date.parse(pin.lockedUntil) > Date.now()) ||
-          pin?.attemptsRemaining === 0,
-      );
-      setDisablePinOpen(true);
-    } finally {
-      setBusy(false);
-    }
+    setDisablePinError(null);
+    setDisablePin('');
+    setPinLocked(
+      Boolean(pin?.lockedUntil && Date.parse(pin.lockedUntil) > Date.now()) ||
+        pin?.attemptsRemaining === 0,
+    );
+    setDisablePinOpen(true);
   };
 
   const verifyDisablePin = async (candidate: string) => {
@@ -858,7 +832,7 @@ function AppLockSettingsToggle() {
     if (!pin?.pinSet) {
       Alert.alert(
         'Set a Mori Pay PIN first',
-        'Your PIN is needed as a fallback if device biometrics are unavailable.',
+        'A six-digit Mori Pay PIN is required for app lock. Biometrics can be enabled as an optional unlock method.',
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Set PIN', onPress: () => router.push('/(auth)/set-pin') },
@@ -869,25 +843,6 @@ function AppLockSettingsToggle() {
 
     setBusy(true);
     try {
-      if (Platform.OS !== 'web') {
-        const enrolledLevel = await LocalAuthentication.getEnrolledLevelAsync();
-        const canUseDeviceAuthentication =
-          Platform.OS === 'ios'
-            ? enrolledLevel !== LocalAuthentication.SecurityLevel.NONE
-            : enrolledLevel >= LocalAuthentication.SecurityLevel.BIOMETRIC_WEAK;
-        if (canUseDeviceAuthentication) {
-          const result = await LocalAuthentication.authenticateAsync({
-            promptMessage: 'Enable Mori Pay app lock',
-            promptDescription: 'Confirm your device authentication to protect the app.',
-            fallbackLabel: 'Use device passcode',
-            cancelLabel: 'Cancel',
-          });
-          if (!result.success) {
-            setError('App lock was not enabled because device authentication was cancelled or failed.');
-            return;
-          }
-        }
-      }
       await setAppLockEnabled(true);
     } catch (enableError) {
       setError(enableError instanceof Error ? enableError.message : 'Could not enable app lock.');
@@ -899,20 +854,64 @@ function AppLockSettingsToggle() {
   return (
     <>
       {error ? <StatusBanner tone="error" title="App lock not changed" message={error} /> : null}
+      {biometricUnlockStorageError ? (
+        <StatusBanner
+          tone="error"
+          title="Biometric preference unavailable"
+          message="Biometric unlock is off until its account setting can be saved. PIN unlock is still available."
+        />
+      ) : null}
       <SettingsToggle
-        icon="biometrics"
-        label="Biometric app lock"
-        description={
-          Platform.OS === 'web'
-            ? 'Available in the iOS and Android app.'
-            : Platform.OS === 'ios'
-              ? 'Locks when you leave. Uses Face ID or Touch ID, with your device passcode and Mori Pay PIN as fallbacks.'
-              : 'Locks when you leave. Uses device biometrics when enrolled, with your Mori Pay PIN as fallback.'
-        }
+        icon="security"
+        label="App lock"
+        description="When you return, unlock with your six-digit Mori Pay PIN or your optional biometric setting."
         value={appLockEnabled}
         disabled={busy || Platform.OS === 'web'}
         onValueChange={(enabled) => void changeLock(enabled)}
       />
+      {appLockEnabled ? (
+        <SettingsToggle
+          icon="biometrics"
+          label="Unlock with biometrics"
+          description="Optional Face ID or fingerprint on this device. Your biometric data stays on the device."
+          value={biometricUnlockEnabled}
+          disabled={busy || Platform.OS === 'web'}
+          onValueChange={(enabled) => {
+            void (async () => {
+              setError(null);
+              setBusy(true);
+              try {
+                if (enabled) {
+                  const enrolled = await LocalAuthentication.isEnrolledAsync();
+                  if (!enrolled) {
+                    setError('Enroll Face ID or a fingerprint in your device settings before enabling biometric unlock.');
+                    return;
+                  }
+                  const result = await LocalAuthentication.authenticateAsync({
+                    promptMessage: 'Enable biometric unlock for Mori Pay',
+                    promptDescription: 'Your biometric is checked on this device and is never sent to Mori Pay.',
+                    cancelLabel: 'Cancel',
+                    disableDeviceFallback: true,
+                  });
+                  if (!result.success) {
+                    setError('Biometric unlock was not enabled because verification did not succeed.');
+                    return;
+                  }
+                }
+                await setBiometricUnlockEnabled(enabled);
+              } catch (biometricError) {
+                setError(
+                  biometricError instanceof Error
+                    ? biometricError.message
+                    : 'Could not update biometric unlock.',
+                );
+              } finally {
+                setBusy(false);
+              }
+            })();
+          }}
+        />
+      ) : null}
       <Modal
         visible={disablePinOpen}
         transparent
@@ -938,21 +937,22 @@ function AppLockSettingsToggle() {
               ]}>
               <AppText variant="title3" align="center">Confirm it&apos;s you</AppText>
               <AppText variant="bodySmall" color={colors.textSecondary} align="center">
-                Choose a verification method to turn off app lock. You can cancel and keep the lock on.
+                Enter your Mori Pay PIN to turn off app lock. You can cancel and keep the lock on.
               </AppText>
-              <SecondaryButton
-                label="Try device unlock again"
-                block
-                disabled={busy}
-                onPress={() => void requestDisable()}
-              />
-              <View style={[styles.appLockPinDivider, { borderTopColor: colors.border }]}>
-                <AppText variant="caption" color={colors.textTertiary}>OR USE YOUR MORI PAY PIN</AppText>
-              </View>
               <AppText variant="bodySmall" color={colors.textSecondary} align="center">
                 Only enter your PIN if you remember it. Guessing incorrectly can temporarily lock PIN payments.
               </AppText>
-              <PinBoxes value={disablePin} />
+              <PinBoxes
+                value={disablePin}
+                onChangeText={(next) => {
+                  if (busy || !pin?.pinSet || pinLocked) return;
+                  setDisablePin(next);
+                  setDisablePinError(null);
+                  if (next.length === PIN_LENGTH) void verifyDisablePin(next);
+                }}
+                autoFocus
+                editable={!busy && Boolean(pin?.pinSet) && !pinLocked}
+              />
               <View style={styles.appLockPinEntryMeta}>
                 <AppText
                   variant="caption"
@@ -983,7 +983,7 @@ function AppLockSettingsToggle() {
                 <StatusBanner
                   tone="error"
                   title="PIN temporarily locked"
-                  message={`Try again after ${new Date(pin.lockedUntil).toLocaleTimeString()}. You can still try device unlock.`}
+                  message={`Try again after ${new Date(pin.lockedUntil).toLocaleTimeString()}.`}
                 />
               ) : null}
               {disablePinError ? (
@@ -996,19 +996,6 @@ function AppLockSettingsToggle() {
                   message="You cannot use PIN verification because a Mori Pay PIN is not set."
                 />
               ) : null}
-              <PinKeypad
-                onDigit={(digit) => {
-                  if (busy || !pin?.pinSet || pinLocked || disablePin.length >= PIN_LENGTH) return;
-                  const next = disablePin + digit;
-                  setDisablePin(next);
-                  setDisablePinError(null);
-                  if (next.length === PIN_LENGTH) {
-                    void verifyDisablePin(next);
-                  }
-                }}
-                onBackspace={() => setDisablePin((value) => value.slice(0, -1))}
-                disabled={busy || !pin?.pinSet || pinLocked}
-              />
               <SecondaryButton
                 label="Keep app lock on"
                 block
@@ -1123,9 +1110,8 @@ export function ChangePinScreen() {
     }
   };
 
-  const handleDigit = (digit: string) => {
-    if (busy || entry.length >= PIN_LENGTH || step === 'success') return;
-    const next = entry + digit;
+  const handlePinChange = (next: string) => {
+    if (busy || step === 'success') return;
     setEntry(next);
     if (next.length === PIN_LENGTH) void submit(next);
   };
@@ -1174,7 +1160,14 @@ export function ChangePinScreen() {
               <AppText variant="bodySmall" color={colors.textSecondary}>
                 {copy?.hint}
               </AppText>
-              <PinBoxes value={entry} secure={!revealed} />
+              <PinBoxes
+                key={step}
+                value={entry}
+                secure={!revealed}
+                onChangeText={handlePinChange}
+                autoFocus
+                editable={!busy}
+              />
             </View>
 
             {error ? (
@@ -1186,9 +1179,6 @@ export function ChangePinScreen() {
               />
             ) : null}
 
-            <View style={styles.keypadHolder}>
-              <PinKeypad onDigit={handleDigit} onBackspace={() => setEntry((value) => value.slice(0, -1))} disabled={busy} />
-            </View>
           </>
         )}
       </View>
@@ -1651,11 +1641,6 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   appLockPinScroll: { flexGrow: 1, justifyContent: 'center', paddingVertical: 20 },
-  appLockPinDivider: {
-    alignItems: 'center',
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingTop: 12,
-  },
   appLockPinEntryMeta: {
     flexDirection: 'row',
     justifyContent: 'space-between',

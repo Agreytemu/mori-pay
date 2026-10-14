@@ -17,6 +17,9 @@ export type FeeDetail = {
 };
 
 const NO_FEE: FeeDetail = { fee: 0n, flat: 0n, percentage: 0, ruleId: null };
+const RATE_SCALE = 1_000_000n;
+const RATE_SCALE_NUMBER = Number(RATE_SCALE);
+const FREE_INTERNAL_MOVEMENTS = new Set(['send:wallet', 'payment:wallet']);
 
 /**
  * Resolves the fee for a movement from the `FeeRule` table. When no rule
@@ -33,6 +36,7 @@ export class FeesService {
 
   async resolveFeeDetail(query: FeeQuery): Promise<FeeDetail> {
     const { type, channel, amount } = query;
+    if (FREE_INTERNAL_MOVEMENTS.has(`${type}:${channel}`)) return NO_FEE;
 
     const rule = await this.prisma.feeRule.findFirst({
       where: {
@@ -47,7 +51,19 @@ export class FeesService {
 
     if (!rule) return NO_FEE;
 
-    const percentageFee = BigInt(Math.floor(Number(amount) * rule.percentage));
+    if (
+      amount < 0n ||
+      rule.flat < 0n ||
+      !Number.isFinite(rule.percentage) ||
+      rule.percentage < 0 ||
+      !Number.isSafeInteger(Math.round(rule.percentage * RATE_SCALE_NUMBER))
+    ) {
+      throw new Error(`Invalid fee rule configuration for ${type}/${channel}`);
+    }
+
+    const scaledRate = BigInt(Math.round(rule.percentage * RATE_SCALE_NUMBER));
+    const percentageFee =
+      (amount * scaledRate + RATE_SCALE / 2n) / RATE_SCALE;
     return {
       fee: rule.flat + percentageFee,
       flat: rule.flat,

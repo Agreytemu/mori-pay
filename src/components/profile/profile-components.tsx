@@ -769,12 +769,35 @@ export function PinBoxes({
   value,
   secure = true,
   length = 6,
+  onChangeText,
+  autoFocus = false,
+  editable = true,
 }: {
   value: string;
   secure?: boolean;
   length?: number;
+  onChangeText?: (value: string) => void;
+  autoFocus?: boolean;
+  editable?: boolean;
 }) {
   const { colors, radius } = useAppTheme();
+
+  if (onChangeText) {
+    return (
+      <DigitBoxesInput
+        accessibilityLabel={`Enter ${length}-digit ${secure ? 'PIN' : 'code'}`}
+        value={value}
+        secureTextEntry={secure}
+        keyboardType="number-pad"
+        maxLength={length}
+        boxCount={length}
+        autoFocus={autoFocus}
+        editable={editable}
+        autoComplete="off"
+        onChangeText={(next) => onChangeText(next.replace(/\D/g, '').slice(0, length))}
+      />
+    );
+  }
 
   return (
     <View
@@ -800,60 +823,6 @@ export function PinBoxes({
           ) : null}
         </View>
       ))}
-    </View>
-  );
-}
-
-const KEYPAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'blank', '0', 'back'] as const;
-
-/** Numeric keypad. Renders a spacer where a 3-column row needs one. */
-export function PinKeypad({ onDigit, onBackspace, disabled = false }: { onDigit: (digit: string) => void; onBackspace: () => void; disabled?: boolean }) {
-  const { colors, radius } = useAppTheme();
-
-  return (
-    <View style={styles.keypad}>
-      {KEYPAD_KEYS.map((key) => {
-        if (key === 'blank') {
-          return <View key={key} style={styles.key} />;
-        }
-
-        if (key === 'back') {
-          return (
-            <Pressable
-              key={key}
-              accessibilityRole="button"
-              accessibilityLabel="Delete last digit"
-              onPress={onBackspace}
-              disabled={disabled}
-              style={({ pressed }) => [
-                styles.key,
-                { borderRadius: radius.md, backgroundColor: pressed ? colors.surfacePressed : 'transparent' },
-                disabled && styles.keyDisabled,
-              ]}>
-              <AppIcon name="chevronLeft" size={22} color={colors.textSecondary} weight="medium" />
-            </Pressable>
-          );
-        }
-
-        return (
-          <Pressable
-            key={key}
-            accessibilityRole="button"
-            accessibilityLabel={`Digit ${key}`}
-            onPress={() => onDigit(key)}
-            disabled={disabled}
-            style={({ pressed }) => [
-              styles.key,
-              {
-                borderRadius: radius.md,
-                backgroundColor: pressed ? colors.primarySoft : colors.surfaceMuted,
-              },
-              disabled && styles.keyDisabled,
-            ]}>
-            <AppText variant="title2">{key}</AppText>
-          </Pressable>
-        );
-      })}
     </View>
   );
 }
@@ -1077,19 +1046,5 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  keypad: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  key: {
-    width: '31%',
-    minHeight: 58,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  keyDisabled: {
-    opacity: 0.4,
   },
 });

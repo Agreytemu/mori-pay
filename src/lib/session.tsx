@@ -42,6 +42,9 @@ export type SessionValue = {
   appLockDelay: AppLockDelay;
   appLockReady: boolean;
   appLockStorageError: Error | null;
+  biometricUnlockEnabled: boolean;
+  biometricUnlockReady: boolean;
+  biometricUnlockStorageError: Error | null;
   isAppLocked: boolean;
   signIn: (session: AuthSession) => Promise<PinStatus>;
   signOut: () => Promise<void>;
@@ -52,6 +55,7 @@ export type SessionValue = {
   updateNotificationPreferences: (input: UpdateNotificationPreferencesInput) => Promise<void>;
   setAppLockEnabled: (enabled: boolean) => Promise<void>;
   setAppLockDelay: (delay: AppLockDelay) => Promise<void>;
+  setBiometricUnlockEnabled: (enabled: boolean) => Promise<void>;
   unlockApp: () => void;
   reloadAppLock: () => Promise<void>;
   setWallet: (wallet: WalletAccount) => void;
@@ -62,6 +66,7 @@ const SessionContext = createContext<SessionValue | null>(null);
 const APP_LOCK_KEY = 'mori-pay-app-lock-enabled';
 const APP_LOCK_DELAY_KEY = 'mori-pay-app-lock-delay';
 const APP_LOCK_DELAY_MS = 60_000;
+const biometricUnlockKey = (userId: string) => `mori-pay-biometric-unlock:${userId}`;
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>('loading');
@@ -77,11 +82,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [appLockDelay, setAppLockDelayState] = useState<AppLockDelay>('immediate');
   const [appLockReady, setAppLockReady] = useState(false);
   const [appLockStorageError, setAppLockStorageError] = useState<Error | null>(null);
+  const [biometricUnlockRecord, setBiometricUnlockRecord] = useState<{
+    userId: string;
+    enabled: boolean;
+  } | null>(null);
+  const [biometricUnlockStorageFailure, setBiometricUnlockStorageFailure] = useState<{
+    userId: string;
+    error: Error;
+  } | null>(null);
   const [isAppLocked, setIsAppLocked] = useState(false);
   const appLockEnabledRef = useRef(false);
   const appLockDelayRef = useRef<AppLockDelay>('immediate');
   const backgroundedAtRef = useRef<number | null>(null);
   const statusRef = useRef<SessionStatus>('loading');
+  const biometricUnlockReady =
+    Platform.OS === 'web' || !user?.id || biometricUnlockRecord?.userId === user.id;
+  const biometricUnlockEnabled =
+    Boolean(user?.id) &&
+    biometricUnlockRecord?.userId === user?.id &&
+    biometricUnlockRecord?.enabled === true;
+  const biometricUnlockStorageError =
+    user?.id && biometricUnlockStorageFailure?.userId === user.id
+      ? biometricUnlockStorageFailure.error
+      : null;
 
   const reloadAppLock = useCallback(async () => {
     setAppLockReady(false);
@@ -152,6 +175,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     appLockEnabledRef.current = appLockEnabled;
     statusRef.current = status;
   }, [appLockEnabled, status]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const userId = user?.id;
+
+    if (!userId || Platform.OS === 'web') {
+      return;
+    }
+
+    const loadBiometricUnlock = async () => {
+      try {
+        const stored = await SecureStore.getItemAsync(biometricUnlockKey(userId));
+        if (!cancelled) {
+          setBiometricUnlockRecord({ userId, enabled: stored === 'true' });
+          setBiometricUnlockStorageFailure(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setBiometricUnlockRecord({ userId, enabled: false });
+          setBiometricUnlockStorageFailure({
+            userId,
+            error: error instanceof Error ? error : new Error(String(error)),
+          });
+        }
+      }
+    };
+
+    void loadBiometricUnlock();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     let previousState = AppState.currentState;
@@ -348,6 +403,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setAppLockDelayState(delay);
     setAppLockStorageError(null);
   }, []);
+  const setBiometricUnlockEnabled = useCallback(
+    async (enabled: boolean) => {
+      const userId = user?.id;
+      if (Platform.OS === 'web' || !userId) {
+        throw new Error('Biometric unlock is available for signed-in iOS and Android accounts only.');
+      }
+      await SecureStore.setItemAsync(biometricUnlockKey(userId), enabled ? 'true' : 'false');
+      setBiometricUnlockRecord({ userId, enabled });
+      setBiometricUnlockStorageFailure(null);
+    },
+    [user?.id],
+  );
   const unlockApp = useCallback(() => setIsAppLocked(false), []);
 
   const signOut = useCallback(async () => {
@@ -373,6 +440,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       appLockDelay,
       appLockReady,
       appLockStorageError,
+      biometricUnlockEnabled,
+      biometricUnlockReady,
+      biometricUnlockStorageError,
       isAppLocked,
       signIn,
       signOut,
@@ -383,6 +453,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateNotificationPreferences,
       setAppLockEnabled,
       setAppLockDelay,
+      setBiometricUnlockEnabled,
       unlockApp,
       reloadAppLock,
       setWallet,
@@ -401,6 +472,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       appLockDelay,
       appLockReady,
       appLockStorageError,
+      biometricUnlockEnabled,
+      biometricUnlockReady,
+      biometricUnlockStorageError,
       isAppLocked,
       signIn,
       signOut,
@@ -411,6 +485,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       updateNotificationPreferences,
       setAppLockEnabled,
       setAppLockDelay,
+      setBiometricUnlockEnabled,
       unlockApp,
       reloadAppLock,
       setWallet,

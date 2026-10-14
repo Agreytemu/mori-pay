@@ -1,11 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Modal, Platform, StyleSheet, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { useRouter } from 'expo-router';
+import {
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 
-import { PinBoxes, PinKeypad, StatusBanner } from '@/components/profile/profile-components';
+import { PinBoxes, StatusBanner } from '@/components/profile/profile-components';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
-import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
+import { SecondaryButton } from '@/components/ui/button';
 import { verifyPin } from '@/lib/mori-api';
 import { useSession } from '@/lib/session';
 import { radius, spacing, useAppTheme } from '@/theme';
@@ -17,32 +26,27 @@ export function AppLockPrompt() {
 
 function AppLockModal() {
   const { colors } = useAppTheme();
-  const { unlockApp, pin } = useSession();
-  const [pinMode, setPinMode] = useState(Platform.OS === 'web');
+  const { unlockApp, signOut, pin, biometricUnlockEnabled, biometricUnlockReady } = useSession();
+  const router = useRouter();
   const [entry, setEntry] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const attempted = useRef(false);
 
   const authenticate = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
-      const enrolledLevel = await LocalAuthentication.getEnrolledLevelAsync();
-      const canUseDeviceAuthentication =
-        Platform.OS === 'ios'
-          ? enrolledLevel !== LocalAuthentication.SecurityLevel.NONE
-          : enrolledLevel >= LocalAuthentication.SecurityLevel.BIOMETRIC_WEAK;
-      if (!canUseDeviceAuthentication) {
-        setPinMode(true);
+      const isBiometricEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!isBiometricEnrolled) {
+        setError('No biometrics are enrolled on this device. Unlock with your Mori Pay PIN.');
         return;
       }
 
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Unlock Mori Pay',
         promptDescription: 'Confirm it is you to continue.',
-        cancelLabel: 'Use Mori Pay PIN',
-        fallbackLabel: 'Use device passcode',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: true,
       });
       if (result.success) {
         setEntry('');
@@ -50,12 +54,10 @@ function AppLockModal() {
         return;
       }
 
-      setPinMode(true);
       if (!['user_cancel', 'user_fallback', 'system_cancel'].includes(result.error ?? '')) {
         setError('Device authentication did not succeed. Unlock with your Mori Pay PIN.');
       }
     } catch (authError) {
-      setPinMode(true);
       setError(
         authError instanceof Error
           ? authError.message
@@ -66,16 +68,8 @@ function AppLockModal() {
     }
   }, [unlockApp]);
 
-  useEffect(() => {
-    if (!attempted.current) {
-      attempted.current = true;
-      void authenticate();
-    }
-  }, [authenticate]);
-
-  const onDigit = async (digit: string) => {
-    if (busy || !pin?.pinSet || entry.length >= 6) return;
-    const next = entry + digit;
+  const onPinChange = async (next: string) => {
+    if (busy || !pin?.pinSet) return;
     setEntry(next);
     setError(null);
     if (next.length !== 6) return;
@@ -93,6 +87,24 @@ function AppLockModal() {
     }
   };
 
+  const signInWithPassword = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await signOut();
+      Keyboard.dismiss();
+      router.replace('/(auth)/sign-in');
+    } catch (signOutError) {
+      setError(
+        signOutError instanceof Error
+          ? signOutError.message
+          : 'Could not open password sign-in. Please try again.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <Modal
       visible
@@ -100,69 +112,68 @@ function AppLockModal() {
       presentationStyle="fullScreen"
       onRequestClose={() => {}}
       statusBarTranslucent>
-      <View style={[styles.screen, { backgroundColor: colors.background }]}>
-        <View style={[styles.lockIcon, { backgroundColor: colors.primarySoft, borderRadius: radius.xl }]}>
-          <AppIcon name="security" size={30} color={colors.primary} weight="semibold" />
-        </View>
-        <AppText variant="title1" align="center">
-          Mori Pay is locked
-        </AppText>
-        <AppText variant="bodySmall" color={colors.textSecondary} align="center">
-          {pinMode
-            ? 'Enter your six-digit Mori Pay PIN to continue.'
-            : Platform.OS === 'ios'
-              ? 'Unlock with Face ID, Touch ID or your device passcode.'
-              : 'Unlock with device biometrics, or use your Mori Pay PIN.'}
-        </AppText>
+      <KeyboardAvoidingView
+        style={styles.fill}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <ScrollView
+          contentContainerStyle={[styles.screen, { backgroundColor: colors.background }]}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
+          bounces={false}>
+          <View style={[styles.lockIcon, { backgroundColor: colors.primarySoft, borderRadius: radius.xl }]}>
+            <AppIcon name="security" size={30} color={colors.primary} weight="semibold" />
+          </View>
+          <AppText variant="title1" align="center">
+            Mori Pay is locked
+          </AppText>
+          <AppText variant="bodySmall" color={colors.textSecondary} align="center">
+            Enter your six-digit Mori Pay PIN to continue.
+          </AppText>
 
-        {error ? (
-          <StatusBanner tone="error" title="Could not unlock" message={error} />
-        ) : null}
+          {error ? (
+            <StatusBanner tone="error" title="Could not unlock" message={error} />
+          ) : null}
 
-        {pinMode ? (
-          <>
-            {pin?.pinSet ? (
-              <>
-                <PinBoxes value={entry} />
-                <PinKeypad
-                  onDigit={(digit) => void onDigit(digit)}
-                  onBackspace={() => setEntry((current) => current.slice(0, -1))}
-                  disabled={busy}
-                />
-              </>
-            ) : (
-              <StatusBanner
-                tone="error"
-                title="PIN unavailable"
-                message="This app lock needs a Mori Pay PIN when device biometrics are unavailable."
-              />
-            )}
-            <PrimaryButton
-              label="Try device unlock"
+          {pin?.pinSet ? (
+            <PinBoxes
+              value={entry}
+              onChangeText={(value) => void onPinChange(value)}
+              autoFocus
+              editable={!busy}
+            />
+          ) : (
+            <StatusBanner
+              tone="error"
+              title="PIN unavailable"
+              message="This app lock needs a Mori Pay PIN when biometric unlock is unavailable."
+            />
+          )}
+          {biometricUnlockReady && biometricUnlockEnabled ? (
+            <SecondaryButton
+              label="Use biometrics"
               block
-              loading={busy && !pinMode}
+              disabled={busy}
+              loading={busy}
               onPress={() => void authenticate()}
             />
-          </>
-        ) : (
+          ) : null}
           <SecondaryButton
-            label="Use Mori Pay PIN"
+            label="Sign in with password"
             block
-            disabled={busy || !pin?.pinSet}
-            onPress={() => {
-              setPinMode(true);
-              setError(null);
-            }}
+            disabled={busy}
+            onPress={() => void signInWithPassword()}
           />
-        )}
-      </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  fill: { flex: 1 },
   screen: {
-    flex: 1,
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     padding: spacing.xl,

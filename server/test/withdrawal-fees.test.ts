@@ -10,7 +10,7 @@ import type { SettlementService } from '../src/settlement/settlement.service.js'
 import { WithdrawalsService } from '../src/withdrawals/withdrawals.service.js';
 import type { WalletService } from '../src/wallet/wallet.service.js';
 
-function makeService(providerFee: number | Error): WithdrawalsService {
+function makeService(): WithdrawalsService {
   return new WithdrawalsService(
     {} as PrismaService,
     {} as WalletService,
@@ -23,42 +23,25 @@ function makeService(providerFee: number | Error): WithdrawalsService {
       }),
     } as unknown as FeesService,
     {} as AuthService,
-    {
-      previewWithdrawal: async () => {
-        if (providerFee instanceof Error) throw providerFee;
-        return {
-          amount_tzs: 10_000,
-          fee_tzs: providerFee,
-          total_debited_tzs: 10_000 + providerFee,
-        };
-      },
-    } as unknown as AblinerClient,
+    {} as AblinerClient,
     {} as SettlementService,
     {} as LimitsService,
   );
 }
 
-describe('withdrawal fee quotes', () => {
-  it('uses the higher configured or provider fee', async () => {
+describe('withdrawal customer fee', () => {
+  it('uses the configured customer fee without consulting provider costs', async () => {
     assert.equal(
-      (await makeService(400).resolveFeeDetail(10_000n)).fee,
-      400n,
+      (await makeService().resolveFeeDetail(10_000n)).fee,
+      250n,
     );
-    assert.deepEqual(
-      await makeService(200).resolveFeeDetail(10_000n),
+    assert.deepEqual(await makeService().resolveFeeDetail(10_000n),
       {
         fee: 250n,
         flat: 0n,
         percentage: 0.025,
         ruleId: 'mobile-withdrawal-fee',
       },
-    );
-  });
-
-  it('does not issue a quote when the provider fee is unavailable', async () => {
-    await assert.rejects(
-      () => makeService(new Error('provider unavailable')).resolveFeeDetail(10_000n),
-      /provider unavailable/,
     );
   });
 });

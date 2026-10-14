@@ -38,6 +38,13 @@
           "faceIDPermission": "Allow Mori Pay to use Face ID to unlock the app."
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Mori Pay to scan payment QR codes.",
+          "recordAudioAndroid": false
+        }
+      ],
       "expo-secure-store"
     ],
     "experiments": {

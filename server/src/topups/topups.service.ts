@@ -47,9 +47,20 @@ export class TopUpsService {
   ) {}
 
   async previewCard(amount: bigint): Promise<FeePreview> {
+    return this.previewDeposit(amount, 'card');
+  }
+
+  async previewMobileMoney(amount: bigint): Promise<FeePreview> {
+    return this.previewDeposit(amount, 'mobileMoney');
+  }
+
+  private async previewDeposit(
+    amount: bigint,
+    channel: 'card' | 'mobileMoney',
+  ): Promise<FeePreview> {
     const feeDetail = await this.fees.resolveFeeDetail({
       type: 'deposit',
-      channel: 'card',
+      channel,
       amount,
     });
     return {
@@ -68,56 +79,104 @@ export class TopUpsService {
     const reference = generateReference('DEP');
 
     let result: { transaction: Transaction; isNew: boolean };
-    try {
-      result = await this.prisma.$transaction(async (tx) => {
-      if (input.idempotencyKey) {
-        const existing = await tx.transaction.findUnique({
+    const previous = input.idempotencyKey
+      ? await this.prisma.transaction.findUnique({
           where: {
             userId_idempotencyKey: {
               userId,
               idempotencyKey: input.idempotencyKey,
             },
           },
-        });
-        if (existing) {
-          if (
-            existing.type !== 'deposit' ||
-            existing.channel !== 'mobileMoney' ||
-            existing.amount !== amount ||
-            existing.counterparty !== input.mobileNumber
-          ) {
-            throw new BadRequestException(
-              'This payment retry does not match the original request.',
-            );
-          }
-          return { transaction: existing, isNew: false };
-        }
+        })
+      : null;
+
+    if (previous) {
+      if (
+        previous.type !== 'deposit' ||
+        previous.channel !== 'mobileMoney' ||
+        previous.amount !== amount ||
+        previous.counterparty !== input.mobileNumber
+      ) {
+        throw new BadRequestException(
+          'This payment retry does not match the original request.',
+        );
+      }
+      result = { transaction: previous, isNew: false };
+    } else {
+      const configuredFee = await this.fees.resolveFeeDetail({
+        type: 'deposit',
+        channel: 'mobileMoney',
+        amount,
+      });
+      if (
+        input.expectedFee !== undefined &&
+        BigInt(input.expectedFee) !== configuredFee.fee
+      ) {
+        throw new ConflictException(
+          'The mobile-money fee changed. Review the updated fee and total before continuing.',
+        );
       }
 
-      const created = await tx.transaction.create({
-        data: {
-          userId,
-          reference,
-          type: 'deposit',
-          status: 'pending',
-          category: 'topUp',
-          channel: 'mobileMoney',
-          direction: 'credit',
-          amount,
-          fee: 0n,
-          total: amount,
-          counterparty: input.mobileNumber,
-          counterpartyDetail: input.network
-            ? MOBILE_NETWORK_LABEL[input.network]
-            : 'Mobile money',
-          provider: 'abliner',
-          providerStatus: 'pending',
-          idempotencyKey: input.idempotencyKey ?? null,
-          metadata: { network: input.network ?? null },
-        },
-      });
-      await createTransactionNotification(tx, created);
-      return { transaction: created, isNew: true };
+    try {
+      result = await this.prisma.$transaction(async (tx) => {
+        if (input.idempotencyKey) {
+          const existing = await tx.transaction.findUnique({
+            where: {
+              userId_idempotencyKey: {
+                userId,
+                idempotencyKey: input.idempotencyKey,
+              },
+            },
+          });
+          if (existing) {
+            if (
+              existing.type !== 'deposit' ||
+              existing.channel !== 'mobileMoney' ||
+              existing.amount !== amount ||
+              existing.counterparty !== input.mobileNumber
+            ) {
+              throw new BadRequestException(
+                'This payment retry does not match the original request.',
+              );
+            }
+            if (
+              input.expectedFee !== undefined &&
+              BigInt(input.expectedFee) !== existing.fee
+            ) {
+              throw new ConflictException(
+                'The mobile-money fee changed. Review the updated fee and total before continuing.',
+              );
+            }
+            return { transaction: existing, isNew: false };
+          }
+        }
+
+        const created = await tx.transaction.create({
+          data: {
+            userId,
+            reference,
+            type: 'deposit',
+            status: 'pending',
+            category: 'topUp',
+            channel: 'mobileMoney',
+            direction: 'credit',
+            amount,
+            fee: configuredFee.fee,
+            feeFlat: configuredFee.flat,
+            feePercentage: configuredFee.percentage,
+            total: amount + configuredFee.fee,
+            counterparty: input.mobileNumber,
+            counterpartyDetail: input.network
+              ? MOBILE_NETWORK_LABEL[input.network]
+              : 'Mobile money',
+            provider: 'abliner',
+            providerStatus: 'pending',
+            idempotencyKey: input.idempotencyKey ?? null,
+            metadata: { network: input.network ?? null },
+          },
+        });
+        await createTransactionNotification(tx, created);
+        return { transaction: created, isNew: true };
       });
     } catch (error) {
       if (
@@ -146,7 +205,16 @@ export class TopUpsService {
           'This payment retry does not match the original request.',
         );
       }
+      if (
+        input.expectedFee !== undefined &&
+        BigInt(input.expectedFee) !== existing.fee
+      ) {
+        throw new ConflictException(
+          'The mobile-money fee changed. Review the updated fee and total before continuing.',
+        );
+      }
       result = { transaction: existing, isNew: false };
+    }
     }
     const transaction = result.transaction;
     if (!result.isNew && transaction.status === 'failed') {
@@ -164,7 +232,7 @@ export class TopUpsService {
     let deposit: AblinerDepositData;
     try {
       deposit = await this.abliner.createDeposit({
-        amount: input.amount,
+        amount: Number(transaction.total),
         method: 'mobile',
         currency: 'TZS',
         phone: input.mobileNumber,

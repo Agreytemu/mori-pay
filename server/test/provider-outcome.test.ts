@@ -48,6 +48,128 @@ const mobileTopup: TopupMobileMoneyInput = {
 };
 
 describe('provider request outcomes', () => {
+  it('previews the mobile-money customer fee and collection total', async () => {
+    let feeQuery: { type: string; channel: string; amount: bigint } | undefined;
+    const service = new TopUpsService(
+      {} as PrismaService,
+      {} as AblinerClient,
+      {} as AppConfigService,
+      {
+        resolveFeeDetail: async (query: typeof feeQuery) => {
+          feeQuery = query;
+          return {
+            fee: 250n,
+            flat: 0n,
+            percentage: 0.025,
+            ruleId: 'mobile-deposit-fee',
+          };
+        },
+      } as unknown as FeesService,
+    );
+
+    assert.deepEqual(await service.previewMobileMoney(10_000n), {
+      amount: 10_000,
+      fee: 250,
+      feePercentage: 0.025,
+      total: 10_250,
+    });
+    assert.deepEqual(feeQuery, {
+      type: 'deposit',
+      channel: 'mobileMoney',
+      amount: 10_000n,
+    });
+  });
+
+  it('charges the mobile-money deposit fee on top of wallet principal', async () => {
+    let createdData: Record<string, unknown> | undefined;
+    let providerAmount = 0;
+    const transactionRow = {
+      id: 'mobile-transaction-id',
+      userId: 'user-id',
+      reference: 'DEP-MOBILE-REFERENCE',
+      type: 'deposit',
+      status: 'pending',
+      category: 'topUp',
+      channel: 'mobileMoney',
+      direction: 'credit',
+      amount: 10_000n,
+      fee: 250n,
+      feeFlat: 0n,
+      feePercentage: 0.025,
+      total: 10_250n,
+      currency: 'TZS',
+      counterparty: mobileTopup.mobileNumber,
+      counterpartyDetail: 'M-Pesa',
+      note: null,
+      provider: 'abliner',
+      providerRef: null,
+      createdAt: new Date('2026-10-11T10:00:00.000Z'),
+    };
+    const service = new TopUpsService(
+      {
+        $transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
+          callback({
+            notificationPreference: { findUnique: async () => null },
+            notification: { create: async () => undefined },
+            transaction: {
+              create: async ({ data }: { data: Record<string, unknown> }) => {
+                createdData = data;
+                return { ...transactionRow, ...data };
+              },
+            },
+          }),
+        transaction: {
+          update: async ({ data }: { data: Record<string, unknown> }) => ({
+            ...transactionRow,
+            ...data,
+          }),
+        },
+      } as unknown as PrismaService,
+      {
+        createDeposit: async ({ amount }: { amount: number }) => {
+          providerAmount = amount;
+          return {
+            id: 'provider-mobile-deposit',
+            type: 'deposit',
+            status: 'pending',
+            amount,
+            currency: 'TZS',
+            method: 'mobile',
+            payment_url: null,
+            reference: 'ABL-MOBILE-REFERENCE',
+            customer_reference: 'DEP-MOBILE-REFERENCE',
+          };
+        },
+      } as unknown as AblinerClient,
+      {
+        abliner: { callbackUrl: 'https://pay.example.com/webhooks' },
+      } as unknown as AppConfigService,
+      {
+        resolveFeeDetail: async () => ({
+          fee: 250n,
+          flat: 0n,
+          percentage: 0.025,
+          ruleId: 'mobile-deposit-fee',
+        }),
+      } as unknown as FeesService,
+    );
+
+    const result = await service.initiateMobileMoney('user-id', {
+      ...mobileTopup,
+      amount: 10_000,
+      expectedFee: 250,
+    });
+
+    assert.equal(createdData?.amount, 10_000n);
+    assert.equal(createdData?.fee, 250n);
+    assert.equal(createdData?.feeFlat, 0n);
+    assert.equal(createdData?.feePercentage, 0.025);
+    assert.equal(createdData?.total, 10_250n);
+    assert.equal(providerAmount, 10_250);
+    assert.equal(result.transaction.amount, 10_000);
+    assert.equal(result.transaction.fee, 250);
+  });
+
   it('charges the disclosed card top-up total while crediting the selected amount', async () => {
     let providerAmount = 0;
     let createdData: Record<string, unknown> | undefined;

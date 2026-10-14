@@ -273,7 +273,7 @@ export const MOCK_FAQS: readonly Faq[] = [
     category: 'security',
     question: 'How does the app lock work?',
     answer:
-      'Turn on Biometric app lock under Security, then choose to lock immediately or after one minute away. Mori Pay asks for device biometrics when you return. On iOS, the system can fall back to your device passcode; on Android, use your Mori Pay PIN if biometrics are unavailable.',
+      'Turn on App lock under Security, then choose to lock immediately or after one minute away. Unlock with your six-digit Mori Pay PIN, or enable biometrics as an optional method for this account on this device. Biometric data stays on your device and is never sent to Mori Pay; the device passcode is not used to unlock the app.',
   },
   {
     id: 'faq-8',

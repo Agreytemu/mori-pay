@@ -11,12 +11,18 @@ import type {
   EmailRegisterInput,
   EmailSignInInput,
   Merchant,
+  MerchantApplication,
+  MerchantApplicationInput,
   MerchantPaymentPreview,
+  MerchantQrCode,
+  MerchantQrPreview,
+  MerchantRegistrationFee,
   MoneyRequest,
   OtpChallengeResult,
   Paginated,
   PayMerchantInput,
   PayMerchantResult,
+  PayMerchantQrResult,
   PayRequestInput,
   PayRequestResult,
   PinStatus,
@@ -272,6 +278,13 @@ export function getReceiveCode(): Promise<ReceiveCode> {
   return request<ReceiveCode>('/wallet/receive-code');
 }
 
+export function verifyReceiveCode(code: string): Promise<RecipientLookup> {
+  return request<RecipientLookup>('/transfers/verify-receive-code', {
+    method: 'POST',
+    body: { code },
+  });
+}
+
 export function listTransactions(params: {
   q?: string;
   type?: string;
@@ -303,6 +316,10 @@ export function topupCard(input: TopupCardInput): Promise<CardTopupResult> {
 
 export function topupCardPreview(amount: number): Promise<FeePreview> {
   return request<FeePreview>('/topups/card/preview', { query: { amount } });
+}
+
+export function topupMobileMoneyPreview(amount: number): Promise<FeePreview> {
+  return request<FeePreview>('/topups/mobile-money/preview', { query: { amount } });
 }
 
 /* ---------------------------------------------------------------- withdrawals */
@@ -351,6 +368,64 @@ export function listMerchants(): Promise<Merchant[]> {
 
 export function payMerchant(input: PayMerchantInput): Promise<PayMerchantResult> {
   return request<PayMerchantResult>('/merchants/pay', { method: 'POST', body: input });
+}
+
+export function getMerchantApplication(): Promise<MerchantApplication | null> {
+  return request<MerchantApplication | null>('/merchants/application');
+}
+
+export function getMerchantRegistrationFee(): Promise<MerchantRegistrationFee> {
+  return request<MerchantRegistrationFee>('/merchants/registration-fee');
+}
+
+export function applyForMerchant(input: MerchantApplicationInput): Promise<MerchantApplication> {
+  return request<MerchantApplication>('/merchants/application', { method: 'POST', body: input });
+}
+
+export function payMerchantRegistrationFee(input: {
+  pin: string;
+  idempotencyKey: string;
+}): Promise<MerchantApplication> {
+  return request<MerchantApplication>('/merchants/application/payment', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export function createMerchantStaticQr(input: {
+  expiresAt?: string;
+}): Promise<MerchantQrCode> {
+  return request<MerchantQrCode>('/merchants/qr/static', { method: 'POST', body: input });
+}
+
+export function createMerchantFixedQr(input: {
+  amount: number;
+  reusable: boolean;
+  expiresAt: string;
+}): Promise<MerchantQrCode> {
+  return request<MerchantQrCode>('/merchants/qr/fixed', { method: 'POST', body: input });
+}
+
+export function previewMerchantQr(input: {
+  code: string;
+  amount?: number;
+}): Promise<MerchantQrPreview> {
+  return request<MerchantQrPreview>('/merchants/qr/preview', { method: 'POST', body: input });
+}
+
+export function payMerchantQr(input: {
+  code: string;
+  amount?: number;
+  pin: string;
+  idempotencyKey: string;
+}): Promise<PayMerchantQrResult> {
+  return request<PayMerchantQrResult>('/merchants/qr/pay', { method: 'POST', body: input });
+}
+
+export function revokeMerchantQr(codeId: string): Promise<void> {
+  return request<void>(`/merchants/qr/${encodeURIComponent(codeId)}/revoke`, {
+    method: 'POST',
+  });
 }
 
 /* ------------------------------------------------------------------ requests */

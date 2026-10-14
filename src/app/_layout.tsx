@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useFonts } from 'expo-font';
+import * as SecureStore from 'expo-secure-store';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, Image, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  Platform,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -13,6 +21,7 @@ import {
 } from '@expo-google-fonts/inter';
 
 import { AppLockPrompt } from '@/components/auth/AppLockPrompt';
+import { OnboardingScreen } from '@/components/onboarding/OnboardingScreen';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
 import { APP } from '@/constants/app';
@@ -26,6 +35,8 @@ const interFonts = {
   Inter_600SemiBold,
   Inter_700Bold,
 };
+const MINIMUM_SPLASH_DURATION_MS = 5_000;
+const ONBOARDING_COMPLETE_KEY = 'mori.onboardingComplete';
 
 /**
  * Root navigator. Owns the theme, the safe-area context, the session provider
@@ -46,11 +57,20 @@ export default function RootLayout() {
 function FontGate() {
   const [attempt, setAttempt] = useState(0);
   const [continueWithoutFonts, setContinueWithoutFonts] = useState(false);
+  const [minimumSplashElapsed, setMinimumSplashElapsed] = useState(false);
+
+  useEffect(() => {
+    const timeout = setTimeout(
+      () => setMinimumSplashElapsed(true),
+      MINIMUM_SPLASH_DURATION_MS,
+    );
+    return () => clearTimeout(timeout);
+  }, []);
 
   if (continueWithoutFonts) {
     return (
       <SessionProvider>
-        <GuardedStack />
+        <GuardedStack minimumSplashElapsed={minimumSplashElapsed} />
       </SessionProvider>
     );
   }
@@ -58,6 +78,7 @@ function FontGate() {
   return (
     <FontLoadAttempt
       key={attempt}
+      minimumSplashElapsed={minimumSplashElapsed}
       onRetry={() => setAttempt((current) => current + 1)}
       onContinue={() => setContinueWithoutFonts(true)}
     />
@@ -67,9 +88,11 @@ function FontGate() {
 function FontLoadAttempt({
   onRetry,
   onContinue,
+  minimumSplashElapsed,
 }: {
   onRetry: () => void;
   onContinue: () => void;
+  minimumSplashElapsed: boolean;
 }) {
   const [fontsLoaded, fontError] = useFonts(interFonts);
 
@@ -89,7 +112,7 @@ function FontLoadAttempt({
 
   return (
     <SessionProvider>
-      <GuardedStack />
+      <GuardedStack minimumSplashElapsed={minimumSplashElapsed} />
     </SessionProvider>
   );
 }
@@ -130,7 +153,7 @@ function ThemedStack() {
 }
 
 /** Redirects between the auth flow and the app based on session state. */
-function useAuthGuard() {
+function useAuthGuard(onboardingComplete: boolean) {
   const segments = useSegments();
   const router = useRouter();
   const { status, pin } = useSession();
@@ -141,7 +164,7 @@ function useAuthGuard() {
     (segments[1] === 'terms-of-service' || segments[1] === 'privacy-policy');
 
   useEffect(() => {
-    if (status === 'loading') return;
+    if (status === 'loading' || !onboardingComplete) return;
 
     if (status === 'unauthenticated' && !inAuthGroup) {
       router.replace('/(auth)/sign-in');
@@ -151,14 +174,58 @@ function useAuthGuard() {
     if (status === 'authenticated' && inAuthGroup && !inLegalDocument && pin?.pinSet) {
       router.replace('/(tabs)');
     }
-  }, [status, inAuthGroup, inLegalDocument, pin?.pinSet, router]);
+  }, [status, onboardingComplete, inAuthGroup, inLegalDocument, pin?.pinSet, router]);
 }
 
-function GuardedStack() {
+function GuardedStack({ minimumSplashElapsed }: { minimumSplashElapsed: boolean }) {
   const { status, appLockReady, appLockStorageError, reloadAppLock } = useSession();
-  useAuthGuard();
+  const [onboardingStatus, setOnboardingStatus] = useState<
+    'loading' | 'needed' | 'complete' | 'error'
+  >('loading');
+  const [onboardingAttempt, setOnboardingAttempt] = useState(0);
+  useAuthGuard(onboardingStatus === 'complete');
 
-  if (status === 'loading' || !appLockReady) {
+  useEffect(() => {
+    let cancelled = false;
+    const loadOnboardingStatus = async () => {
+      try {
+        const saved = Platform.OS === 'web'
+          ? globalThis.localStorage.getItem(ONBOARDING_COMPLETE_KEY)
+          : await SecureStore.getItemAsync(ONBOARDING_COMPLETE_KEY);
+        if (!cancelled) {
+          setOnboardingStatus(saved === 'true' ? 'complete' : 'needed');
+        }
+      } catch (error) {
+        console.error('Mori Pay could not read onboarding status.', error);
+        if (!cancelled) setOnboardingStatus('error');
+      }
+    };
+    void loadOnboardingStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [onboardingAttempt]);
+
+  const completeOnboarding = async () => {
+    try {
+      if (Platform.OS === 'web') {
+        globalThis.localStorage.setItem(ONBOARDING_COMPLETE_KEY, 'true');
+      } else {
+        await SecureStore.setItemAsync(ONBOARDING_COMPLETE_KEY, 'true');
+      }
+      setOnboardingStatus('complete');
+    } catch (error) {
+      console.error('Mori Pay could not save onboarding status.', error);
+      setOnboardingStatus('error');
+    }
+  };
+
+  if (
+    !minimumSplashElapsed ||
+    status === 'loading' ||
+    !appLockReady ||
+    onboardingStatus === 'loading'
+  ) {
     return <SplashScreen />;
   }
 
@@ -166,7 +233,44 @@ function GuardedStack() {
     return <AppLockStorageError onRetry={() => void reloadAppLock()} />;
   }
 
+  if (onboardingStatus === 'error') {
+    return (
+      <OnboardingStorageError
+        onRetry={() => {
+          setOnboardingStatus('loading');
+          setOnboardingAttempt((attempt) => attempt + 1);
+        }}
+        onContinue={() => setOnboardingStatus('complete')}
+      />
+    );
+  }
+
+  if (onboardingStatus === 'needed') {
+    return <OnboardingScreen onComplete={completeOnboarding} />;
+  }
+
   return <ThemedStack />;
+}
+
+function OnboardingStorageError({
+  onRetry,
+  onContinue,
+}: {
+  onRetry: () => void;
+  onContinue: () => void;
+}) {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={[styles.root, styles.storageError, { backgroundColor: colors.background }]}>
+      <AppText variant="title3" align="center">Could not save your progress</AppText>
+      <AppText variant="bodySmall" color={colors.textSecondary} align="center">
+        Try again or continue now. The introduction may appear again the next time you open the app.
+      </AppText>
+      <PrimaryButton label="Try again" block onPress={onRetry} />
+      <SecondaryButton label="Continue without saving" block onPress={onContinue} />
+    </View>
+  );
 }
 
 function AppLockStorageError({ onRetry }: { onRetry: () => void }) {
@@ -184,6 +288,8 @@ function AppLockStorageError({ onRetry }: { onRetry: () => void }) {
 
 function SplashScreen() {
   const insets = useSafeAreaInsets();
+  const { width, height } = useWindowDimensions();
+  const haloSize = Math.min(180, Math.max(132, width - 140), height * 0.24);
 
   return (
     <View style={[styles.root, styles.splash, { backgroundColor: '#07162E' }]}>
@@ -191,13 +297,19 @@ function SplashScreen() {
       <View style={styles.splashOrbTop} />
       <View style={styles.splashOrbBottom} />
       <View style={styles.splashContent}>
-        <View style={styles.splashHalo}>
+        <View style={[styles.splashHalo, { width: haloSize, height: haloSize, borderRadius: haloSize / 2 }]}>
           <View style={styles.splashLogoTile}>
             <Image source={appLogo} resizeMode="contain" style={styles.splashLogo} />
           </View>
         </View>
-        <AppText variant="display" style={styles.splashTitle}>{APP.name}</AppText>
-        <AppText variant="body" color="rgba(255,255,255,0.76)" align="center">
+        <AppText variant="display" style={[styles.splashTitle, { maxWidth: width - 48 }]}>
+          {APP.name}
+        </AppText>
+        <AppText
+          variant="body"
+          color="rgba(255,255,255,0.76)"
+          align="center"
+          style={[styles.splashSubtitle, { maxWidth: width - 48 }]}>
           Move money simply and securely.
         </AppText>
         <View style={styles.splashAccent} />
@@ -250,14 +362,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,123,202,0.06)',
   },
   splashContent: {
+    width: '100%',
+    maxWidth: 440,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
   },
   splashHalo: {
-    width: 180,
-    height: 180,
-    borderRadius: 90,
     borderWidth: 1,
     borderColor: 'rgba(77,155,255,0.4)',
     alignItems: 'center',
@@ -275,7 +386,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   splashLogo: { width: 106, height: 106 },
-  splashTitle: { color: '#FFFFFF', letterSpacing: 0.4 },
+  splashTitle: {
+    color: '#FFFFFF',
+    letterSpacing: 0.4,
+    textAlign: 'center',
+    flexShrink: 1,
+  },
+  splashSubtitle: { width: '100%', textAlign: 'center', flexShrink: 1 },
   splashAccent: {
     marginTop: 12,
     width: 52,

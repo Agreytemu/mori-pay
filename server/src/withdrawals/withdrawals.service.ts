@@ -54,30 +54,13 @@ export class WithdrawalsService {
     private readonly limits: LimitsService,
   ) {}
 
-  /** Applies the higher of the configured fee and Abliner's payout quote. */
+  /** Returns the approved customer fee; provider costs are not passed through. */
   async resolveFeeDetail(amount: bigint): Promise<FeeDetail> {
-    const localFee = await this.fees.resolveFeeDetail({
+    return this.fees.resolveFeeDetail({
       type: 'withdrawal',
       channel: 'mobileMoney',
       amount,
     });
-    const preview = await this.abliner.previewWithdrawal('mobile', Number(amount));
-    if (
-      preview.amount_tzs !== Number(amount) ||
-      !Number.isSafeInteger(preview.fee_tzs) ||
-      preview.fee_tzs < 0 ||
-      preview.total_debited_tzs !== preview.amount_tzs + preview.fee_tzs
-    ) {
-      throw new Error('Abliner returned an invalid withdrawal fee quote');
-    }
-    const providerFee = BigInt(preview.fee_tzs);
-    if (providerFee <= localFee.fee) return localFee;
-    return {
-      fee: providerFee,
-      flat: providerFee,
-      percentage: 0,
-      ruleId: localFee.ruleId,
-    };
   }
 
   /** Confirms the registered name of a payout recipient before sending. */

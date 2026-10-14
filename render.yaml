@@ -75,6 +75,7 @@ services:
       # Transactional email (Resend) — required in production.
       - key: RESEND_API_KEY
         sync: false
+      # Set to an address at the verified Resend domain, e.g. noreply@agreyflix.online.
       - key: EMAIL_FROM
         sync: false
       # SMS OTP delivery: console | abliner | beem | nextsms.

@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { AuthPage } from '@/components/auth/AuthPage';
-import { PinBoxes, PinKeypad, StatusBanner } from '@/components/profile/profile-components';
+import { PinBoxes, StatusBanner } from '@/components/profile/profile-components';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton } from '@/components/ui/button';
 import { setPin } from '@/lib/mori-api';
@@ -37,9 +37,8 @@ export default function SetPinScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const handleDigit = async (digit: string) => {
-    if (busy || entry.length >= PIN_LENGTH) return;
-    const next = entry + digit;
+  const handleEntryChange = async (next: string) => {
+    if (busy) return;
     setEntry(next);
     setError(null);
     if (next.length !== PIN_LENGTH) return;
@@ -114,19 +113,18 @@ export default function SetPinScreen() {
           {copy.hint}
         </AppText>
 
-        <PinBoxes value={entry} />
+        <PinBoxes
+          key={step}
+          value={entry}
+          onChangeText={(value) => void handleEntryChange(value)}
+          autoFocus
+          editable={!busy}
+        />
 
         {error ? (
           <StatusBanner tone="error" title="Check your PIN" message={error} onDismiss={() => setError(null)} />
         ) : null}
 
-        <View style={styles.footer}>
-          <PinKeypad
-            onDigit={(d) => void handleDigit(d)}
-            onBackspace={() => setEntry((v) => v.slice(0, -1))}
-            disabled={busy}
-          />
-        </View>
       </View>
     </AuthPage>
   );
@@ -134,7 +132,6 @@ export default function SetPinScreen() {
 
 const styles = StyleSheet.create({
   body: { flex: 1, padding: 16, gap: 16, alignItems: 'center' },
-  footer: { marginTop: 'auto', width: '100%', gap: 16, alignItems: 'center' },
   success: { flex: 1, padding: 24, gap: 16, alignItems: 'center', justifyContent: 'center' },
   successIcon: { width: 72, height: 72, alignItems: 'center', justifyContent: 'center' },
 });

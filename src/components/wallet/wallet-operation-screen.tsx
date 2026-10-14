@@ -4,6 +4,7 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import {
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Pressable,
   ScrollView,
@@ -16,7 +17,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
   PinBoxes,
-  PinKeypad,
   ProfileField,
   StatusBanner,
 } from '@/components/profile/profile-components';
@@ -40,6 +40,7 @@ import {
   topupCard,
   topupCardPreview,
   topupMobileMoney,
+  topupMobileMoneyPreview,
   withdrawalLookup,
   withdrawalPreview,
 } from '@/lib/mori-api';
@@ -50,6 +51,7 @@ import { typography } from '@/theme/typography';
 import { formatAmount, formatDateTime } from '@/utils/format';
 
 type WalletOperation = 'deposit' | 'withdraw';
+type FeePreviewMethod = 'mobile' | 'card' | 'withdraw';
 
 type Step = 'form' | 'pin' | 'busy' | 'done' | 'pending' | 'failed';
 
@@ -87,6 +89,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   } | null>(null);
   const [preview, setPreview] = useState<{
     forAmount: number;
+    forMethod: FeePreviewMethod;
     amount: number;
     fee: number;
     feePercentage: number;
@@ -94,6 +97,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   } | null>(null);
   const [previewError, setPreviewError] = useState<{
     forAmount: number;
+    forMethod: FeePreviewMethod;
     message: string;
   } | null>(null);
   const [previewAttempt, setPreviewAttempt] = useState(0);
@@ -108,18 +112,21 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const normalizedPhone = normalizeTzPhone(mobileNumber);
   const activeLookup =
     lookup && normalizedPhone && lookup.phone === normalizedPhone ? lookup : null;
+  const previewMethod: FeePreviewMethod = isDeposit ? method : 'withdraw';
   const activePreview =
-    (!isDeposit || method === 'card') &&
     preview &&
-    preview.forAmount === numericAmount
+    preview.forAmount === numericAmount &&
+    preview.forMethod === previewMethod
       ? preview
       : null;
   const needsFeePreview =
     amountValid &&
-    (!isDeposit || method === 'card') &&
     !depositAmountOverLimit;
   const activePreviewError =
-    previewError?.forAmount === numericAmount ? previewError.message : null;
+    previewError?.forAmount === numericAmount &&
+    previewError.forMethod === previewMethod
+      ? previewError.message
+      : null;
 
   /* ------------------------------------------------------- withdraw: lookup + fee */
 
@@ -158,8 +165,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   useEffect(() => {
     if (
       !amountValid ||
-      depositAmountOverLimit ||
-      (isDeposit && method !== 'card')
+      depositAmountOverLimit
     ) {
       return;
     }
@@ -168,10 +174,12 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       void (async () => {
         try {
           const result = isDeposit
-            ? await topupCardPreview(numericAmount)
+            ? previewMethod === 'card'
+              ? await topupCardPreview(numericAmount)
+              : await topupMobileMoneyPreview(numericAmount)
             : await withdrawalPreview(numericAmount);
           if (!cancelled) {
-            setPreview({ forAmount: numericAmount, ...result });
+            setPreview({ forAmount: numericAmount, forMethod: previewMethod, ...result });
             setPreviewError(null);
             setError(null);
           }
@@ -180,6 +188,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
             setPreview(null);
             setPreviewError({
               forAmount: numericAmount,
+              forMethod: previewMethod,
               message:
                 err instanceof ApiError
                   ? err.message
@@ -195,7 +204,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     };
   }, [
     isDeposit,
-    method,
+    previewMethod,
     amountValid,
     depositAmountOverLimit,
     numericAmount,
@@ -265,6 +274,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         amount: value,
         mobileNumber: normalized,
         network,
+        expectedFee: activePreview?.fee,
         idempotencyKey: idempotencyKeys.current.get(intent, 'mobile-deposit'),
       });
       setDialog({ title: 'Check your phone', message: result.instructions });
@@ -285,7 +295,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         setResultMessage('Still processing. It will show in your wallet once confirmed.');
       }
     },
-    [mobileNumber, network, pollUntilSettled, refreshWallet]
+    [activePreview?.fee, mobileNumber, network, pollUntilSettled, refreshWallet]
   );
 
   /* --------------------------------------------------------------- withdraw */
@@ -341,12 +351,12 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     }
 
     if (isDeposit) {
-      if (method === 'card' && !activePreview) {
+      if (!activePreview) {
         if (activePreviewError) {
           setPreviewError(null);
           setPreviewAttempt((attempt) => attempt + 1);
         } else {
-          setError('Wait for the card fee and total to load before continuing.');
+          setError('Wait for the deposit fee and total to load before continuing.');
         }
         return;
       }
@@ -383,13 +393,13 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       }
       return;
     }
+    Keyboard.dismiss();
     setStep('pin');
     setEntry('');
   };
 
-  const onDigit = (digit: string) => {
-    if (busy || entry.length >= 6) return;
-    const next = entry + digit;
+  const onPinChange = (next: string) => {
+    if (busy) return;
     setEntry(next);
     if (next.length === 6) void confirmWithPin(next);
   };
@@ -725,7 +735,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               <View style={styles.feeRow}>
                 <AppText variant="bodySmall" color={colors.textSecondary}>
                   {activePreview.feePercentage > 0
-                    ? `Fee (${activePreview.feePercentage}%)`
+                    ? `Fee (${Number((activePreview.feePercentage * 100).toFixed(2))}%)`
                     : 'Fee'}
                 </AppText>
                 <AppText variant="bodySmallStrong" numeric>{formatAmount(activePreview.fee)}</AppText>
@@ -738,7 +748,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               ) : null}
               <View style={styles.feeRow}>
                 <AppText variant="bodySmall" color={colors.textSecondary}>
-                  {isDeposit ? 'Total sent to card checkout' : 'Total debited'}
+                  {isDeposit ? 'Total to pay' : 'Total debited'}
                 </AppText>
                 <AppText variant="bodySmallStrong" numeric>{formatAmount(activePreview.total)}</AppText>
               </View>
@@ -773,9 +783,14 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         {step === 'pin' ? (
           <View style={[styles.pinSheet, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
             <AppText variant="bodySmallStrong" align="center">Enter your PIN to confirm</AppText>
-            <PinBoxes value={entry} />
+            <PinBoxes
+              key={step}
+              value={entry}
+              onChangeText={onPinChange}
+              autoFocus
+              editable={!busy}
+            />
             {error ? <StatusBanner tone="error" title="PIN rejected" message={error} onDismiss={() => setError(null)} /> : null}
-            <PinKeypad onDigit={onDigit} onBackspace={() => setEntry((v) => v.slice(0, -1))} disabled={busy} />
             <SecondaryButton label="Cancel" block disabled={busy} onPress={() => { setStep('form'); setEntry(''); setError(null); }} />
           </View>
         ) : null}

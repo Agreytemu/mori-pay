@@ -12,11 +12,11 @@ import { Throttle } from '@nestjs/throttler';
 
 import {
   topupCardSchema,
-  topupCardPreviewQuerySchema,
+  topupDepositPreviewQuerySchema,
   topupMobileMoneySchema,
   type CardTopupResult,
   type FeePreview,
-  type TopupCardPreviewQuery,
+  type TopupDepositPreviewQuery,
   type TopupCardInput,
   type TopupInitResult,
   type TopupMobileMoneyInput,
@@ -35,10 +35,18 @@ export class TopUpsController {
 
   @Get('card/preview')
   previewCard(
-    @Query(new ZodValidationPipe(topupCardPreviewQuerySchema))
-    query: TopupCardPreviewQuery,
+    @Query(new ZodValidationPipe(topupDepositPreviewQuerySchema))
+    query: TopupDepositPreviewQuery,
   ): Promise<FeePreview> {
     return this.topups.previewCard(BigInt(query.amount));
+  }
+
+  @Get('mobile-money/preview')
+  previewMobileMoney(
+    @Query(new ZodValidationPipe(topupDepositPreviewQuerySchema))
+    query: TopupDepositPreviewQuery,
+  ): Promise<FeePreview> {
+    return this.topups.previewMobileMoney(BigInt(query.amount));
   }
 
   @Post('mobile-money')
