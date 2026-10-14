@@ -84,7 +84,9 @@ describe('ReconciliationService', () => {
       {
         findTransaction: async (query: TransactionLookup) => {
           queries.push(query);
-          return query.idempotencyKey ? providerTransaction : null;
+          return query.idempotencyKey
+            ? { ...providerTransaction, idempotency_key: query.idempotencyKey }
+            : null;
         },
       } as unknown as AblinerClient,
       {
@@ -219,13 +221,38 @@ describe('ReconciliationService', () => {
     assert.equal(settled, false);
   });
 
+  it('settles a matching deposit reported with amount_cents only', async () => {
+    let settled = false;
+    const service = new ReconciliationService(
+      {} as PrismaService,
+      {
+        findTransaction: async () => ({
+          ...providerTransaction,
+          amount: undefined,
+          amount_cents: 500_000,
+        }),
+      } as unknown as AblinerClient,
+      {
+        settleDeposit: async () => {
+          settled = true;
+        },
+      } as unknown as SettlementService,
+    );
+
+    await service.reconcile(pendingDeposit);
+
+    assert.equal(settled, true);
+  });
+
   it('settles an old pending deposit from the provider during a sweep without a webhook', async () => {
     let checkedReference: string | undefined;
     const reconciliation = new ReconciliationService(
       {} as PrismaService,
       {
         findTransaction: async (query: TransactionLookup) =>
-          query.idempotencyKey ? providerTransaction : null,
+          query.idempotencyKey
+            ? { ...providerTransaction, idempotency_key: query.idempotencyKey }
+            : null,
       } as unknown as AblinerClient,
       {
         settleDeposit: async (transaction: Transaction) => {

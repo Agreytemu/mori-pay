@@ -92,14 +92,15 @@ export type AblinerTransaction = {
   id: string;
   type: 'deposit' | 'withdrawal' | 'checkout' | 'sms';
   method?: string | null;
-  amount: number;
+  amount?: number;
   amount_cents?: number;
   currency: string;
   status: AblinerTransactionStatus;
-  /** Abliner's reference. */
+  /** Reference returned by Abliner; list responses may use this for our reference. */
   reference: string;
   /** The `reference` we sent. */
   customer_reference?: string | null;
+  idempotency_key?: string | null;
   provider_reference?: string | null;
   recipient?: string | null;
   created_at: string;

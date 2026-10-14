@@ -208,23 +208,68 @@ describe('AblinerClient contract', () => {
   it('looks transactions up by our supported identifiers', async () => {
     const client = new AblinerClient(config());
 
-    stubFetch({ status: 'success', data: [completedTransactionFixture] });
+    stubFetch({
+      status: 'success',
+      data: [
+        {
+          ...completedTransactionFixture,
+          id: 'other_transaction',
+          customer_reference: 'OTHER-REFERENCE',
+        },
+        completedTransactionFixture,
+      ],
+    });
     const byId = await client.findTransaction({ id: 'abl_tx_1' });
     assert.equal(byId?.id, 'abl_tx_1');
     assert.ok(lastCapture().url.includes('id=abl_tx_1'));
+    assert.ok(lastCapture().url.includes('limit=50'));
 
-    stubFetch({ status: 'success', data: [] });
+    stubFetch({
+      status: 'success',
+      data: [
+        {
+          ...completedTransactionFixture,
+          id: 'other_transaction',
+          status: 'failed',
+          customer_reference: 'OTHER-REFERENCE',
+        },
+      ],
+    });
     const missing = await client.findTransaction({ customerReference: 'DEP-1' });
     assert.equal(missing, null);
     assert.ok(lastCapture().url.includes('customer_reference=DEP-1'));
 
     stubFetch({
       status: 'success',
-      data: [completedTransactionFixture],
+      data: [
+        {
+          ...completedTransactionFixture,
+          idempotency_key: 'idem-9',
+        },
+      ],
     });
     const found = await client.findTransaction({ idempotencyKey: 'idem-9' });
     assert.equal(found?.id, completedTransactionFixture.id);
     assert.ok(lastCapture().url.includes('idempotency_key=idem-9'));
+  });
+
+  it('does not treat an unrelated failed provider transaction as a match', async () => {
+    const client = new AblinerClient(config());
+    stubFetch({
+      status: 'success',
+      data: [
+        {
+          ...completedTransactionFixture,
+          id: 'unrelated-failed-transaction',
+          status: 'failed',
+          customer_reference: 'SOMEONE-ELSE',
+        },
+      ],
+    });
+
+    const result = await client.findTransaction({ id: 'our-provider-transaction' });
+
+    assert.equal(result, null);
   });
 
   it('accepts the documented webhook fixture shape', () => {

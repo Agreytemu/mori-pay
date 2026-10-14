@@ -215,29 +215,41 @@ export class AblinerClient {
     return this.findTransaction({ id });
   }
 
-  /**
-   * Looks a transaction up by any of the identifiers Abliner supports. Docs:
-   * `GET /api/v1/transactions?id=`, `?customer_reference=`, `?idempotency_key=`.
-   * An empty result means no transaction was created (safe to retry).
-   */
+  /** Finds an exact transaction in Abliner's latest-transactions response. */
   async findTransaction(query: {
     id?: string;
     customerReference?: string;
     idempotencyKey?: string;
   }): Promise<AblinerTransaction | null> {
-    const params: Record<string, string | undefined> = {
+    if (!query.id && !query.customerReference && !query.idempotencyKey) {
+      return null;
+    }
+
+    const params: Record<string, string | number | undefined> = {
       id: query.id,
       customer_reference: query.customerReference,
       idempotency_key: query.idempotencyKey,
+      limit: 50,
     };
-    if (!Object.values(params).some(Boolean)) return null;
 
     const rows = await this.data<AblinerTransaction[]>(
       'GET',
       '/api/v1/transactions',
       { query: params },
     );
-    return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    if (!Array.isArray(rows)) return null;
+
+    return (
+      rows.find(
+        (row) =>
+          (query.id !== undefined && row.id === query.id) ||
+          (query.customerReference !== undefined &&
+            (row.customer_reference === query.customerReference ||
+              row.reference === query.customerReference)) ||
+          (query.idempotencyKey !== undefined &&
+            row.idempotency_key === query.idempotencyKey),
+      ) ?? null
+    );
   }
 
   async sendSms(request: {

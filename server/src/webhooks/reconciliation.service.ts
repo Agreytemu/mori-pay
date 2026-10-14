@@ -74,10 +74,20 @@ export class ReconciliationService {
 
     const expectedAmount =
       transaction.type === 'deposit' ? transaction.total : transaction.amount;
+    const verifiedAmount =
+      verified.amount !== undefined
+        ? Number.isSafeInteger(verified.amount)
+          ? BigInt(verified.amount)
+          : null
+        : verified.amount_cents !== undefined &&
+            Number.isSafeInteger(verified.amount_cents) &&
+            verified.amount_cents % 100 === 0
+          ? BigInt(verified.amount_cents) / 100n
+          : null;
     if (
       verified.type !== transaction.type ||
-      !Number.isSafeInteger(verified.amount) ||
-      BigInt(verified.amount) !== expectedAmount
+      verifiedAmount === null ||
+      verifiedAmount !== expectedAmount
     ) {
       this.logger.warn(
         `Provider record does not match expected type/amount for ${transaction.reference}; leaving it unsettled`,
