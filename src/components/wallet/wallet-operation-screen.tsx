@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
+import { Image } from 'expo-image';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -28,6 +29,8 @@ import { AppText } from '@/components/ui/AppText';
 import { Button, PrimaryButton, SecondaryButton } from '@/components/ui/button';
 import {
   mobileNetworkDisplayName,
+  resolveMobileNetwork,
+  type MobileNetwork,
   type Transaction,
 } from '@mori-pay/contracts';
 
@@ -56,6 +59,13 @@ type Step = 'form' | 'pin' | 'busy' | 'done' | 'pending' | 'failed';
 
 const MIN_AMOUNT = 500;
 const MAX_DEPOSIT_AMOUNT = 3_000_000;
+
+const MOBILE_NETWORK_LOGOS: Record<MobileNetwork, number> = {
+  Mpesa: require('../../../assets/images/M-PESA logo vector (svg, pdf) free download - Brandlogos_net.jpg'),
+  AirtelMoney: require('../../../assets/images/airtellmoney.jpg'),
+  TigoPesa: require('../../../assets/images/mixx by yas.jpg'),
+  HaloPesa: require('../../../assets/images/halopesa.jpg'),
+};
 
 const DEPOSIT_METHODS = [
   { id: 'mobile', name: 'Mobile money', description: 'M-Pesa, Airtel Money and more', icon: 'receive' as const },
@@ -111,6 +121,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const normalizedPhone = normalizeTzPhone(mobileNumber);
   const activeLookup =
     lookup && normalizedPhone && lookup.phone === normalizedPhone ? lookup : null;
+  const detectedNetwork = resolveMobileNetwork(activeLookup?.network);
   const previewMethod: FeePreviewMethod = isDeposit ? method : 'withdraw';
   const activePreview =
     preview &&
@@ -753,16 +764,49 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               />
 
               {activeLookup?.found ? (
-                <StatusBanner
-                  tone="success"
-                  title={activeLookup.name ? `Number verified: ${activeLookup.name}` : 'Mobile number verified'}
-                  message={[
-                    activeLookup.phoneNumber,
-                    activeLookup.network
-                      ? `Network: ${mobileNetworkDisplayName(activeLookup.network)}`
-                      : null,
-                  ].filter(Boolean).join(' · ')}
-                />
+                <View
+                  accessibilityRole="summary"
+                  style={[
+                    styles.networkLookupCard,
+                    {
+                      borderRadius: radius.md,
+                      backgroundColor: colors.successSoft,
+                      borderColor: colors.successBorder,
+                    },
+                  ]}>
+                  {detectedNetwork ? (
+                    <View
+                      style={[
+                        styles.networkLogoTile,
+                        {
+                          borderRadius: radius.sm,
+                          backgroundColor: colors.surface,
+                          borderColor: colors.border,
+                        },
+                      ]}>
+                      <Image
+                        source={MOBILE_NETWORK_LOGOS[detectedNetwork]}
+                        contentFit="contain"
+                        accessibilityLabel={`${mobileNetworkDisplayName(activeLookup.network)} logo`}
+                        style={styles.networkLogo}
+                      />
+                    </View>
+                  ) : null}
+                  <View style={styles.networkLookupCopy}>
+                    <AppText variant="bodySmallStrong" color={colors.success}>
+                      {activeLookup.name ? `Number verified: ${activeLookup.name}` : 'Mobile number verified'}
+                    </AppText>
+                    <AppText variant="caption" color={colors.textSecondary}>
+                      {activeLookup.phoneNumber}
+                    </AppText>
+                    {activeLookup.network ? (
+                      <AppText variant="caption" color={colors.textSecondary}>
+                        {mobileNetworkDisplayName(activeLookup.network)}
+                      </AppText>
+                    ) : null}
+                  </View>
+                  <AppIcon name="success" size={18} color={colors.success} weight="semibold" />
+                </View>
               ) : null}
 
               {activeLookup && !activeLookup.found ? (
@@ -881,6 +925,31 @@ const styles = StyleSheet.create({
   methodIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   methodCopy: { flex: 1, gap: 2 },
   fields: { gap: 16 },
+  networkLookupCard: {
+    minHeight: 76,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    borderWidth: 1,
+    padding: 10,
+  },
+  networkLogoTile: {
+    width: 64,
+    height: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 3,
+  },
+  networkLogo: {
+    width: '100%',
+    height: '100%',
+  },
+  networkLookupCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 2,
+  },
   feeCard: { borderWidth: 1, padding: 14, gap: 8 },
   feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   accountHint: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 },
