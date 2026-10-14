@@ -183,6 +183,9 @@ export class AblinerClient {
         currency: request.currency,
         recipient: request.recipient,
         reference: request.reference,
+        ...(this.config.abliner.callbackUrl
+          ? { callback_url: this.config.abliner.callbackUrl }
+          : {}),
       },
     });
   }

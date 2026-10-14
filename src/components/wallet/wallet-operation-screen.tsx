@@ -698,7 +698,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                   })}
                 </View>
                 <AppText variant="caption" color={colors.textTertiary}>
-                  Abliner routes the correct rail automatically; this is a hint only.
+                  Mori Pay routes your payment through the selected mobile network.
                 </AppText>
               </View>
 

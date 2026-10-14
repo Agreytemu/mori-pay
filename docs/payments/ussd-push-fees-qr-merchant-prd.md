@@ -50,7 +50,7 @@ Both mobile-money and card deposits must show authoritative amount, fee and tota
 
 ## Withdrawal behavior
 
-Mobile-money payout charges the customer the configured 2.5% fee only. The wallet is held for principal plus customer fee. Abliner payout quote/cost is not passed through without an approved policy; keep provider outcome unknown as pending and retain existing safe hold/refund behavior. Card payout is not available because the current provider supports mobile-money payout only. Do not route it through card checkout.
+Mobile-money payout charges the customer the configured 2.5% fee only. The wallet is held for principal plus customer fee. Abliner payout quote/cost is not passed through without an approved policy; keep provider outcome unknown as pending and retain existing safe hold/refund behavior. Send the configured public callback URL with payout requests so final status events reach the existing verified webhook/reconciliation flow. Card payout is not available because the current provider supports mobile-money payout only. Do not route it through card checkout.
 
 ## QR and merchant product requirements
 

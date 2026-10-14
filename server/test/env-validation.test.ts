@@ -50,6 +50,17 @@ describe('environment validation', () => {
     );
   });
 
+  it('rejects a non-live Abliner API key in production', () => {
+    assert.throws(
+      () =>
+        validateEnv({
+          ...productionConfig,
+          ABLINER_API_KEY: 'tsl_test_key',
+        }),
+      /ABLINER_API_KEY \(must be a production tsl_live_ key\)/,
+    );
+  });
+
   it('rejects a local or insecure Abliner callback URL in production', () => {
     assert.throws(
       () =>

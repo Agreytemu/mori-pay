@@ -153,6 +153,9 @@ export function validateEnv(config: Record<string, unknown>): Env {
   if (result.data.NODE_ENV === 'production') {
     const missing: string[] = [];
     if (!result.data.ABLINER_API_KEY) missing.push('ABLINER_API_KEY');
+    else if (!result.data.ABLINER_API_KEY.startsWith('tsl_live_')) {
+      missing.push('ABLINER_API_KEY (must be a production tsl_live_ key)');
+    }
     if (!result.data.ABLINER_WEBHOOK_SECRET) {
       missing.push('ABLINER_WEBHOOK_SECRET');
     } else if (!result.data.ABLINER_WEBHOOK_SECRET.startsWith('whsec_')) {

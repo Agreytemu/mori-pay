@@ -142,6 +142,39 @@ describe('AblinerClient contract', () => {
     assert.deepEqual(JSON.parse(body), depositRequestBodyFixture);
   });
 
+  it('sends the configured callback URL with withdrawal requests', async () => {
+    const client = new AblinerClient(config());
+    stubFetch({
+      status: 'success',
+      data: {
+        id: 'abl_withdrawal_1',
+        status: 'processing',
+        amount: 5_000,
+        currency: 'TZS',
+      },
+    });
+
+    await client.createWithdrawal({
+      amount: 5_000,
+      method: 'mobile',
+      currency: 'TZS',
+      recipient: '255700000001',
+      reference: 'WDR-TEST-1',
+    });
+
+    const call = lastCapture();
+    assert.equal(call.url, 'https://abliner.net/api/v1/withdrawals');
+    assert.equal(call.init.method, 'POST');
+    assert.deepEqual(JSON.parse(Buffer.from(call.init.body as Uint8Array).toString('utf8')), {
+      amount: 5_000,
+      method: 'mobile',
+      currency: 'TZS',
+      recipient: '255700000001',
+      reference: 'WDR-TEST-1',
+      callback_url: 'https://pay.example.com/api/v1/webhooks/abliner',
+    });
+  });
+
   it('refuses to sign a deposit without a webhook secret', async () => {
     const client = new AblinerClient(config({ webhookSecret: undefined }));
     let called = false;
