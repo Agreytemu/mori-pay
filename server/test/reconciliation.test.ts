@@ -31,6 +31,8 @@ const pendingDeposit = {
   type: 'deposit',
   status: 'pending',
   provider: 'abliner',
+  currency: 'TZS',
+  channel: 'mobileMoney',
   amount: 5_000n,
   fee: 0n,
   total: 5_000n,
@@ -135,7 +137,7 @@ describe('ReconciliationService', () => {
     assert.equal(settled, pendingWithdrawal);
   });
 
-  it('matches a webhook by customer reference when provider ids are unavailable', async () => {
+  it('settles a signed webhook by customer reference without a second provider lookup', async () => {
     let lookup: { provider: string; OR: unknown[] } | undefined;
     const settled: Transaction[] = [];
     const service = new ReconciliationService(
@@ -148,7 +150,9 @@ describe('ReconciliationService', () => {
         },
       } as unknown as PrismaService,
       {
-        findTransaction: async () => providerTransaction,
+        findTransaction: async () => {
+          assert.fail('signed webhooks should not require another provider lookup');
+        },
       } as unknown as AblinerClient,
       {
         settleDeposit: async (transaction: Transaction) => {
@@ -170,6 +174,56 @@ describe('ReconciliationService', () => {
       ),
     );
     assert.deepEqual(settled, [pendingDeposit]);
+  });
+
+  it('marks a signed failed webhook as failed immediately', async () => {
+    let failed: Transaction | undefined;
+    const service = new ReconciliationService(
+      {
+        transaction: {
+          findFirst: async () => pendingDeposit,
+        },
+      } as unknown as PrismaService,
+      {} as AblinerClient,
+      {
+        failDeposit: async (transaction: Transaction) => {
+          failed = transaction;
+        },
+      } as unknown as SettlementService,
+    );
+
+    await service.process({
+      ...webhook,
+      event: 'transaction.failed',
+      data: { ...webhook.data, status: 'failed' },
+    });
+
+    assert.equal(failed, pendingDeposit);
+  });
+
+  it('marks a signed cancellation distinctly from a failure', async () => {
+    let cancelled: Transaction | undefined;
+    const service = new ReconciliationService(
+      {
+        transaction: {
+          findFirst: async () => pendingDeposit,
+        },
+      } as unknown as PrismaService,
+      {} as AblinerClient,
+      {
+        cancelDeposit: async (transaction: Transaction) => {
+          cancelled = transaction;
+        },
+      } as unknown as SettlementService,
+    );
+
+    await service.process({
+      ...webhook,
+      event: 'transaction.failed',
+      data: { ...webhook.data, status: 'cancelled' },
+    });
+
+    assert.equal(cancelled, pendingDeposit);
   });
 
   it('leaves a transaction pending when Abliner has no matching record', async () => {

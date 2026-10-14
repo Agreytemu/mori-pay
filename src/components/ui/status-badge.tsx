@@ -5,7 +5,7 @@ import { AppText } from '@/components/ui/app-text';
 import { radius, spacing, useStateTone, type AppIconName, type StateTone } from '@/theme';
 
 export type StatusBadgeProps = {
-  status: 'completed' | 'pending' | 'failed' | 'reversed' | 'verified';
+  status: 'completed' | 'pending' | 'failed' | 'cancelled' | 'reversed' | 'verified';
   size?: 'sm' | 'md';
   style?: StyleProp<ViewStyle>;
 };
@@ -20,6 +20,7 @@ const STATUS_TONES: Record<StatusBadgeProps['status'], BadgeTone> = {
   completed: { label: 'Completed', tone: 'success', icon: 'success' },
   pending: { label: 'Pending', tone: 'warning', icon: 'pending' },
   failed: { label: 'Failed', tone: 'error', icon: 'failed' },
+  cancelled: { label: 'Cancelled', tone: 'neutral' },
   reversed: { label: 'Reversed', tone: 'neutral' },
   verified: { label: 'Verified', tone: 'primary', icon: 'success' },
 };

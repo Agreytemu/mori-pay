@@ -46,7 +46,7 @@ export function TransactionItem({
   })();
 
   const amountColor =
-    transaction.status === 'failed'
+    transaction.status === 'failed' || transaction.status === 'cancelled'
       ? colors.textTertiary
       : transaction.direction === 'credit'
         ? colors.success

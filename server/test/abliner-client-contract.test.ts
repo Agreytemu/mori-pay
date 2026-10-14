@@ -12,6 +12,8 @@ import { ProviderError } from '../src/common/errors.js';
 import type { AppConfigService } from '../src/config/app-config.service.js';
 import {
   ablinerWebhookSchema,
+  mobileNetworkDisplayName,
+  resolveMobileNetwork,
   topupCardPreviewQuerySchema,
   topupCardSchema,
   topupMobileMoneySchema,
@@ -75,12 +77,27 @@ const depositRequest = {
 };
 
 describe('AblinerClient contract', () => {
+  it('maps Abliner lookup carrier names to the canonical mobile network labels', () => {
+    assert.equal(resolveMobileNetwork('vodacom'), 'Mpesa');
+    assert.equal(mobileNetworkDisplayName('vodacom'), 'M-Pesa');
+    assert.equal(mobileNetworkDisplayName('Airtel Money'), 'Airtel Money');
+    assert.equal(mobileNetworkDisplayName('Mixx by Yas'), 'Mixx by Yas');
+    assert.equal(mobileNetworkDisplayName('New Mobile Operator'), 'New Mobile Operator');
+  });
+
   it('enforces Abliner deposit amount bounds at top-up and preview inputs', () => {
     const mobileTopup = {
       amount: 3_000_000,
       mobileNumber: '255700000001',
     };
     assert.equal(topupMobileMoneySchema.safeParse(mobileTopup).success, true);
+    assert.equal(
+      topupMobileMoneySchema.safeParse({
+        ...mobileTopup,
+        network: 'vodacom',
+      }).success,
+      true,
+    );
     assert.equal(
       topupMobileMoneySchema.safeParse({
         ...mobileTopup,

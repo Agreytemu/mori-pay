@@ -9,7 +9,7 @@ export type TransactionType =
   | 'deposit'
   | 'withdrawal';
 
-export type TransactionStatus = 'completed' | 'pending' | 'failed';
+export type TransactionStatus = 'completed' | 'pending' | 'failed' | 'cancelled';
 
 export type TransactionCategory =
   | 'person'
@@ -18,7 +18,7 @@ export type TransactionCategory =
   | 'transfer'
   | 'topUp';
 
-export type TransactionChannel = 'wallet' | 'bank' | 'mobileMoney';
+export type TransactionChannel = 'wallet' | 'bank' | 'mobileMoney' | 'card';
 
 export type Transaction = {
   id: string;
@@ -31,6 +31,8 @@ export type Transaction = {
   amount: number;
   currency: string;
   fee: number;
+  feeFlat?: number;
+  feePercentage?: number;
   /** Counterparty display name, or the merchant label for payments. */
   counterparty: string;
   /** Secondary line shown under the counterparty, e.g. phone number. */
@@ -60,6 +62,7 @@ export const TRANSACTION_STATUS_LABEL: Record<TransactionStatus, string> = {
   completed: 'Completed',
   pending: 'Pending',
   failed: 'Failed',
+  cancelled: 'Cancelled',
 };
 
 export const TRANSACTION_CATEGORY_LABEL: Record<TransactionCategory, string> = {
@@ -90,4 +93,5 @@ export const TRANSACTION_STATUS_OPTIONS: readonly {
   { value: 'completed', label: 'Completed' },
   { value: 'pending', label: 'Pending' },
   { value: 'failed', label: 'Failed' },
+  { value: 'cancelled', label: 'Cancelled' },
 ];

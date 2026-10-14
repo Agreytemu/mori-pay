@@ -4,7 +4,6 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AccountCard } from '@/components/wallet/wallet-components';
-import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
@@ -19,7 +18,7 @@ import { listTransactions } from '@/lib/mori-api';
 import { useSession } from '@/lib/session';
 import { useAsync } from '@/lib/use-async';
 import { useAppTheme } from '@/theme';
-import { formatDateTime, greetingFor } from '@/utils/format';
+import { greetingFor } from '@/utils/format';
 import { TRANSACTION_TYPE_LABEL } from '@/types';
 
 const ACTIONS: { icon: IconName; label: string; onPress?: () => void }[] = [
@@ -35,7 +34,6 @@ export default function HomeScreen() {
   const { user, wallet } = useSession();
 
   const [balanceVisible, setBalanceVisible] = useState(true);
-  const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
 
   const recent = useAsync(
     async () => {
@@ -182,11 +180,9 @@ export default function HomeScreen() {
                   transaction={transaction}
                   title={transaction.note || TRANSACTION_TYPE_LABEL[transaction.type]}
                   onPress={() =>
-                    setDialog({
-                      title: transaction.note || TRANSACTION_TYPE_LABEL[transaction.type],
-                      message: `${transaction.counterparty}\n${formatDateTime(
-                        transaction.createdAt
-                      )}`,
+                    router.push({
+                      pathname: '/transaction/[id]',
+                      params: { id: transaction.id },
                     })
                   }
                   isLast={index === recentItems.length - 1}
@@ -226,13 +222,6 @@ export default function HomeScreen() {
           <AppIcon name="security" size={19} color={colors.textTertiary} />
         </View>
       </ScrollView>
-      <AppDialog
-        visible={dialog !== null}
-        title={dialog?.title ?? ''}
-        message={dialog?.message ?? ''}
-        onClose={() => setDialog(null)}
-        testID="home-action-dialog"
-      />
     </SafeAreaView>
   );
 }

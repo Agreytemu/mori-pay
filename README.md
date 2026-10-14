@@ -360,7 +360,7 @@ the API, a managed Postgres database and a Render Key Value (Redis) instance.
    | `CORS_ORIGINS` | Comma-separated allowed browser origins (Expo web / admin). |
    | `ABLINER_API_KEY` | Enabled Abliner key, starts with `tsl_live_`. |
    | `ABLINER_WEBHOOK_SECRET` | Exact webhook signing secret generated in Abliner Dashboard (starts with `whsec_`); do not use or prepend the API key. |
-   | `ABLINER_CALLBACK_URL` | `https://mori-pay.onrender.com/api/v1/webhooks/abliner` (set in the Render Dashboard and register with Abliner). |
+   | `ABLINER_CALLBACK_URL` | `https://<public-api-host>/api/v1/webhooks/abliner` (set to the deployed API host and register the exact URL with Abliner). |
    | `RESEND_API_KEY` / `EMAIL_FROM` | Transactional email; required in production. Verify the sender domain in Resend first; use an address such as `noreply@agreyflix.online`. |
    | `SMS_API_KEY` | Credentials for the configured `SMS_PROVIDER`. |
    | `SENTRY_DSN` | Optional error reporting. |
@@ -381,8 +381,8 @@ the API, a managed Postgres database and a Render Key Value (Redis) instance.
    node server/dist/main.js
    ```
 
-6. After the first deploy, register the public `ABLINER_CALLBACK_URL` in the
-   Abliner dashboard and confirm the health checks below are reachable.
+6. After the first deploy, register the exact public HTTPS `ABLINER_CALLBACK_URL`
+   in the Abliner dashboard and confirm the health checks below are reachable.
 
 #### Abliner payment testing
 
@@ -391,7 +391,14 @@ in `server/test/fixtures/abliner-contract.fixtures.ts` and never make provider
 network calls. Before a production release, perform a controlled live smoke
 test with at least TZS 500 and the public callback registered in the Abliner
 dashboard; verify both the provider transaction status and Mori Pay ledger
-result. Do not use real customer funds for automated tests.
+result. Final provider callbacks can take about 25 seconds after a transaction
+ends; the app keeps showing an animated pending state and checks Abliner after
+a 30-second grace period if a callback has not updated the transaction. Do not
+use real customer funds for automated tests.
+
+For mobile-money numbers, Mori Pay uses Abliner's `/api/v1/lookup` result to
+show and record the detected network on transaction details and receipts.
+Abliner still performs the actual payment-rail routing.
 
 #### Production operations checks
 

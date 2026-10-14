@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 
 import { SearchField } from '@/components/ui/search-field';
 import { AppText } from '@/components/ui/AppText';
@@ -15,6 +16,7 @@ import { useAppTheme } from '@/theme';
 
 export default function TransactionsScreen() {
   const { colors, space } = useAppTheme();
+  const router = useRouter();
 
   const [items, setItems] = useState<Transaction[]>([]);
   const [query, setQuery] = useState('');
@@ -103,7 +105,12 @@ export default function TransactionsScreen() {
             data={items}
             keyExtractor={(item) => item.id}
             renderItem={({ item, index }) => (
-              <TransactionItem transaction={item} isLast={index === items.length - 1} showStatus />
+              <TransactionItem
+                transaction={item}
+                isLast={index === items.length - 1}
+                showStatus
+                onPress={() => router.push({ pathname: '/transaction/[id]', params: { id: item.id } })}
+              />
             )}
             contentContainerStyle={styles.list}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={colors.primary} />}

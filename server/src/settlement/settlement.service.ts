@@ -118,13 +118,24 @@ export class SettlementService {
   }
 
   async failDeposit(transaction: Transaction): Promise<void> {
-    if (!canTransition(transaction.type, transaction.status, TRANSACTION_STATUS.failed)) return;
+    await this.finalizeDeposit(transaction, TRANSACTION_STATUS.failed);
+  }
+
+  async cancelDeposit(transaction: Transaction): Promise<void> {
+    await this.finalizeDeposit(transaction, TRANSACTION_STATUS.cancelled);
+  }
+
+  private async finalizeDeposit(
+    transaction: Transaction,
+    status: 'failed' | 'cancelled',
+  ): Promise<void> {
+    if (!canTransition(transaction.type, transaction.status, status)) return;
 
     await this.prisma.transaction.updateMany({
       where: { id: transaction.id, status: TRANSACTION_STATUS.pending },
       data: {
-        status: TRANSACTION_STATUS.failed,
-        providerStatus: 'failed',
+        status,
+        providerStatus: status,
       },
     });
   }
@@ -173,14 +184,24 @@ export class SettlementService {
 
   /** A payout failed: return the held funds (and fee) to the user. */
   async failWithdrawal(transaction: Transaction): Promise<void> {
-    if (!canTransition(transaction.type, transaction.status, TRANSACTION_STATUS.failed)) return;
+    await this.finalizeWithdrawal(transaction, TRANSACTION_STATUS.failed);
+  }
 
+  async cancelWithdrawal(transaction: Transaction): Promise<void> {
+    await this.finalizeWithdrawal(transaction, TRANSACTION_STATUS.cancelled);
+  }
+
+  private async finalizeWithdrawal(
+    transaction: Transaction,
+    status: 'failed' | 'cancelled',
+  ): Promise<void> {
+    if (!canTransition(transaction.type, transaction.status, status)) return;
     await this.prisma.$transaction(async (client) => {
       const claimed = await client.transaction.updateMany({
         where: { id: transaction.id, status: TRANSACTION_STATUS.processing },
         data: {
-          status: TRANSACTION_STATUS.failed,
-          providerStatus: 'failed',
+          status,
+          providerStatus: status,
         },
       });
       if (claimed.count === 0) return;

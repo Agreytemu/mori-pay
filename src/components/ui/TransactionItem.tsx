@@ -12,12 +12,14 @@ const STATUS_TONE: Record<TransactionStatus, StateTone> = {
   completed: 'success',
   pending: 'warning',
   failed: 'error',
+  cancelled: 'neutral',
 };
 
 const STATUS_ICON = {
   completed: 'success',
   pending: 'pending',
   failed: 'failed',
+  cancelled: 'warning',
 } as const;
 
 const TYPE_ICON: Record<Transaction['type'], IconName> = {
@@ -54,7 +56,8 @@ export function TransactionItem({
   const { colors, space, radius, layout } = useAppTheme();
   const tone = STATUS_TONE[transaction.status];
   const isCredit = transaction.direction === 'credit';
-  const isFailed = transaction.status === 'failed';
+  const isFailed =
+    transaction.status === 'failed' || transaction.status === 'cancelled';
 
   const amountPrefix = isCredit ? '+' : '−';
   const amountColor = isFailed ? colors.textTertiary : isCredit ? colors.success : colors.text;

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 
 import {
-  MOBILE_NETWORK_LABEL,
+  mobileNetworkDisplayName,
   type AblinerWithdrawalData,
   type WithdrawalInput,
   type WithdrawalResult,
@@ -164,7 +164,7 @@ export class WithdrawalsService {
           total: amount + fee,
           counterparty: input.phoneNumber,
           counterpartyDetail: input.network
-            ? MOBILE_NETWORK_LABEL[input.network]
+            ? mobileNetworkDisplayName(input.network)
             : 'Mobile money',
           provider: 'abliner',
           providerStatus: 'processing',

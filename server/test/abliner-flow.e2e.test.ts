@@ -51,10 +51,17 @@ const PIN = '654321';
 class FakeAblinerClient {
   verificationStatus: 'completed' | 'failed' | 'pending' = 'completed';
   private seq = 0;
+  private readonly transactions = new Map<string, Record<string, unknown>>();
 
-  createDeposit(request: { method: string; amount: number }): Promise<unknown> {
-    return Promise.resolve({
-      id: `ABL-${request.method.toUpperCase()}-${++this.seq}-${suffix}`,
+  createDeposit(request: {
+    method: string;
+    amount: number;
+    reference: string;
+    idempotencyKey: string;
+  }): Promise<unknown> {
+    const id = `ABL-${request.method.toUpperCase()}-${++this.seq}-${suffix}`;
+    const transaction = {
+      id,
       type: 'deposit',
       flow: request.method === 'card' ? 'hosted_page' : 'push',
       status: 'pending',
@@ -64,18 +71,30 @@ class FakeAblinerClient {
       payment_url:
         request.method === 'card' ? 'https://abliner.test/checkout' : null,
       reference: `ABLREF${this.seq}${suffix}`,
-      customer_reference: null,
+      customer_reference: request.reference,
+      idempotency_key: request.idempotencyKey,
       message: 'Mobile money push sent.',
-    });
+    };
+    this.transactions.set(id, transaction);
+    return Promise.resolve(transaction);
   }
 
-  createWithdrawal(request: { amount: number }): Promise<unknown> {
-    return Promise.resolve({
-      id: `ABL-PAY-${++this.seq}-${suffix}`,
-      status: 'processing',
+  createWithdrawal(request: {
+    amount: number;
+    reference: string;
+  }): Promise<unknown> {
+    const id = `ABL-PAY-${++this.seq}-${suffix}`;
+    const transaction = {
+      id,
+      type: 'withdrawal',
+      status: this.verificationStatus,
       amount: request.amount,
       currency: 'TZS',
-    });
+      reference: `ABLREF${this.seq}${suffix}`,
+      customer_reference: request.reference,
+    };
+    this.transactions.set(id, transaction);
+    return Promise.resolve(transaction);
   }
 
   previewWithdrawal(_method: string, amount: number): Promise<unknown> {
@@ -91,16 +110,7 @@ class FakeAblinerClient {
   }
 
   getTransaction(id: string): Promise<unknown> {
-    return Promise.resolve({
-      id,
-      type: 'deposit',
-      amount: 0,
-      currency: 'TZS',
-      status: this.verificationStatus,
-      reference: id,
-      customer_reference: null,
-      created_at: new Date().toISOString(),
-    });
+    return Promise.resolve(this.transactions.get(id) ?? null);
   }
 
   findTransaction(query: {
@@ -108,8 +118,16 @@ class FakeAblinerClient {
     customerReference?: string;
     idempotencyKey?: string;
   }): Promise<unknown> {
-    const id = query.id ?? query.customerReference ?? query.idempotencyKey ?? '';
-    return this.getTransaction(id);
+    const transaction = [...this.transactions.values()].find(
+      (entry) =>
+        (query.id !== undefined && entry.id === query.id) ||
+        (query.customerReference !== undefined &&
+          (entry.customer_reference === query.customerReference ||
+            entry.reference === query.customerReference)) ||
+        (query.idempotencyKey !== undefined &&
+          entry.idempotency_key === query.idempotencyKey),
+    );
+    return Promise.resolve(transaction ?? null);
   }
 }
 
@@ -161,12 +179,19 @@ describe(
         orderBy: { createdAt: 'desc' },
       });
 
-    const fireWebhook = (
+    const fireWebhook = async (
       reference: string,
       type: 'deposit' | 'withdrawal',
       status: 'completed' | 'failed',
-    ) =>
-      request(app.getHttpServer())
+    ) => {
+      const transaction = await prisma.transaction.findFirstOrThrow({
+        where: {
+          userId: user.id,
+          type,
+          OR: [{ reference }, { providerRef: reference }, { internalReference: reference }],
+        },
+      });
+      return request(app.getHttpServer())
         .post(`/${API_PREFIX}/webhooks/abliner`)
         .send({
           id: `evt_${reference}_${status}`,
@@ -183,14 +208,16 @@ describe(
             id: reference,
             type,
             method: 'mobile',
-            amount: 0,
+            amount: Number(type === 'deposit' ? transaction.total : transaction.amount),
             currency: 'TZS',
             status,
             reference,
-            customer_reference: null,
+            customer_reference: transaction.reference,
             provider_reference: null,
           },
-        });
+        })
+        .expect(200);
+    };
 
     before(async () => {
       fake = new FakeAblinerClient();
@@ -266,8 +293,9 @@ describe(
 
       const transaction = await latestTransaction('deposit');
       assert.equal(await balance(), 100_000);
+      assert.equal(transaction.counterpartyDetail, 'M-Pesa');
 
-      await fireWebhook(transaction.internalReference as string, 'deposit', 'completed').expect(200);
+      await fireWebhook(transaction.internalReference as string, 'deposit', 'completed');
       assert.equal(await balance(), 110_000);
 
       const settled = await prisma.transaction.findUniqueOrThrow({
@@ -289,7 +317,7 @@ describe(
 
     it('ignores a duplicate webhook', async () => {
       const transaction = await latestTransaction('deposit');
-      await fireWebhook(transaction.internalReference as string, 'deposit', 'completed').expect(200);
+      await fireWebhook(transaction.internalReference as string, 'deposit', 'completed');
       assert.equal(await balance(), 110_000);
     });
 
@@ -303,7 +331,7 @@ describe(
         .expect(200);
 
       const transaction = await latestTransaction('deposit');
-      await fireWebhook(transaction.internalReference as string, 'deposit', 'failed').expect(200);
+      await fireWebhook(transaction.internalReference as string, 'deposit', 'failed');
 
       const settled = await prisma.transaction.findUniqueOrThrow({
         where: { id: transaction.id },
@@ -326,7 +354,7 @@ describe(
       assert.equal(await balance(), 90_000);
 
       const transaction = await latestTransaction('withdrawal');
-      await fireWebhook(transaction.internalReference as string, 'withdrawal', 'completed').expect(200);
+      await fireWebhook(transaction.internalReference as string, 'withdrawal', 'completed');
 
       assert.equal(await balance(), 90_000);
       const clearing = await ledger.getSystemAccount(SYSTEM_LEDGER_ACCOUNTS.clearing);
@@ -347,6 +375,10 @@ describe(
 
       assert.equal(await balance(), 80_000);
 
+      await prisma.transaction.update({
+        where: { id: created.body.transaction.id as string },
+        data: { createdAt: new Date(Date.now() - 31_000) },
+      });
       const read = await request(app.getHttpServer())
         .get(`/${API_PREFIX}/wallet/transactions/${created.body.transaction.id}`)
         .set('Authorization', `Bearer ${token}`)
@@ -367,7 +399,7 @@ describe(
       assert.equal(await balance(), 70_000);
 
       const transaction = await latestTransaction('withdrawal');
-      await fireWebhook(transaction.internalReference as string, 'withdrawal', 'failed').expect(200);
+      await fireWebhook(transaction.internalReference as string, 'withdrawal', 'failed');
 
       assert.equal(await balance(), 80_000);
       fake.verificationStatus = 'completed';
@@ -386,6 +418,7 @@ describe(
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       assert.equal(lookup.body.name, 'NEEMA JOSEPH');
+      assert.equal(lookup.body.network, 'vodacom');
     });
 
     it('rejects a withdrawal above the available balance', async () => {

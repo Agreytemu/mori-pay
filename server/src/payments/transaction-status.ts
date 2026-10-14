@@ -32,12 +32,14 @@ const FLOW_TRANSITIONS: Record<
     [TRANSACTION_STATUS.pending]: [
       TRANSACTION_STATUS.completed,
       TRANSACTION_STATUS.failed,
+      TRANSACTION_STATUS.cancelled,
     ],
   },
   withdrawal: {
     [TRANSACTION_STATUS.processing]: [
       TRANSACTION_STATUS.completed,
       TRANSACTION_STATUS.failed,
+      TRANSACTION_STATUS.cancelled,
     ],
   },
 };

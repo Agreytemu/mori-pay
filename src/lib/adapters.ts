@@ -46,7 +46,7 @@ export function toWalletData(wallet: WalletAccount, status: WalletAccountStatus)
 export function toUiTransaction(tx: ApiTransaction): UiTransaction {
   return {
     ...tx,
-    channel: tx.channel === 'card' ? 'mobileMoney' : tx.channel,
+    channel: tx.channel,
   };
 }
 

@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Keyboard,
   Platform,
@@ -26,9 +27,7 @@ import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
 import { Button, PrimaryButton, SecondaryButton } from '@/components/ui/button';
 import {
-  MOBILE_NETWORKS,
-  MOBILE_NETWORK_LABEL,
-  type MobileNetwork,
+  mobileNetworkDisplayName,
   type Transaction,
 } from '@mori-pay/contracts';
 
@@ -74,7 +73,6 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'mobile' | 'card'>('mobile');
   const [mobileNumber, setMobileNumber] = useState('');
-  const [network, setNetwork] = useState<MobileNetwork>('Mpesa');
   const [entry, setEntry] = useState('');
   const [step, setStep] = useState<Step>('form');
   const [busy, setBusy] = useState(false);
@@ -86,6 +84,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     found: boolean;
     phoneNumber?: string;
     name?: string;
+    network?: string;
   } | null>(null);
   const [preview, setPreview] = useState<{
     forAmount: number;
@@ -140,7 +139,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   }, [setWallet]);
 
   useEffect(() => {
-    if (isDeposit) return;
+    if (isDeposit && method === 'card') return;
 
     const normalized = normalizeTzPhone(mobileNumber);
     if (!normalized) return;
@@ -160,7 +159,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     return () => {
       if (lookupTimer.current) clearTimeout(lookupTimer.current);
     };
-  }, [mobileNumber, isDeposit]);
+  }, [mobileNumber, isDeposit, method]);
 
   useEffect(() => {
     if (
@@ -216,14 +215,18 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const pollUntilSettled = useCallback(
     async (
       transaction: Transaction,
-      attempts = 20,
-    ): Promise<{ status: 'completed' | 'failed' | 'timeout'; transaction: Transaction }> => {
+      attempts = 40,
+    ): Promise<{ status: 'completed' | 'failed' | 'cancelled' | 'timeout'; transaction: Transaction }> => {
       let latest = transaction;
       for (let i = 0; i < attempts; i += 1) {
         await new Promise((resolve) => setTimeout(resolve, 1500));
         try {
           latest = await getTransaction(transaction.id);
-          if (latest.status === 'completed' || latest.status === 'failed') {
+          if (
+            latest.status === 'completed' ||
+            latest.status === 'failed' ||
+            latest.status === 'cancelled'
+          ) {
             return { status: latest.status, transaction: latest };
           }
         } catch {
@@ -234,6 +237,47 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     },
     []
   );
+
+  const resultTransactionId = resultTransaction?.id;
+
+  useEffect(() => {
+    if (step !== 'pending' || !resultTransactionId) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const checkStatus = async () => {
+      try {
+        const latest = await getTransaction(resultTransactionId);
+        if (!active) return;
+        setResultTransaction(latest);
+        if (latest.status === 'completed') {
+          setResultMessage(isDeposit ? 'Deposit received.' : 'Your withdrawal was confirmed.');
+          setStep('done');
+          await refreshWallet();
+          return;
+        }
+        if (latest.status === 'failed' || latest.status === 'cancelled') {
+          setError(
+            latest.status === 'cancelled'
+              ? 'This transaction was cancelled by the mobile network.'
+              : 'This transaction was declined or cancelled by the mobile network.',
+          );
+          setStep('failed');
+          await refreshWallet();
+          return;
+        }
+      } catch {
+        // Keep checking while the provider is still processing the request.
+      }
+      if (active) timer = setTimeout(() => void checkStatus(), 3_000);
+    };
+
+    timer = setTimeout(() => void checkStatus(), 1_500);
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [step, resultTransactionId, isDeposit, refreshWallet]);
 
   const runCardDeposit = useCallback(
     async (value: number) => {
@@ -251,10 +295,14 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         await refreshWallet();
         setStep('done');
         setResultMessage('Your card payment was received.');
+      } else if (outcome.status === 'cancelled') {
+        idempotencyKeys.current.clear(intent);
+        setStep('failed');
+        setError('The card payment was cancelled.');
       } else if (outcome.status === 'failed') {
         idempotencyKeys.current.clear(intent);
         setStep('failed');
-        setError('The card payment failed. No money left your card.');
+        setError('The card payment was declined or cancelled. No money left your card.');
       } else {
         setStep('pending');
         setResultMessage(
@@ -269,11 +317,11 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     async (value: number) => {
       const normalized = normalizeTzPhone(mobileNumber);
       if (!normalized) throw new Error('Enter a valid mobile money number.');
-      const intent = `mobile-deposit:${value}:${normalized}:${network}`;
+      const intent = `mobile-deposit:${value}:${normalized}`;
       const result = await topupMobileMoney({
         amount: value,
         mobileNumber: normalized,
-        network,
+        network: activeLookup?.network,
         expectedFee: activePreview?.fee,
         idempotencyKey: idempotencyKeys.current.get(intent, 'mobile-deposit'),
       });
@@ -286,16 +334,20 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         await refreshWallet();
         setStep('done');
         setResultMessage('Deposit received.');
+      } else if (outcome.status === 'cancelled') {
+        idempotencyKeys.current.clear(intent);
+        setStep('failed');
+        setError('The deposit was cancelled on your phone.');
       } else if (outcome.status === 'failed') {
         idempotencyKeys.current.clear(intent);
         setStep('failed');
-        setError('The deposit failed or was cancelled.');
+        setError('The deposit was declined or cancelled on your phone.');
       } else {
         setStep('pending');
         setResultMessage('Still processing. It will show in your wallet once confirmed.');
       }
     },
-    [activePreview?.fee, mobileNumber, network, pollUntilSettled, refreshWallet]
+    [activeLookup?.network, activePreview?.fee, mobileNumber, pollUntilSettled, refreshWallet]
   );
 
   /* --------------------------------------------------------------- withdraw */
@@ -304,11 +356,11 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     async (value: number, pinValue: string) => {
       const normalized = normalizeTzPhone(mobileNumber);
       if (!normalized) throw new Error('Enter a valid payout number.');
-      const intent = `withdrawal:${value}:${normalized}:${network}`;
+      const intent = `withdrawal:${value}:${normalized}`;
       const result = await createWithdrawal({
         amount: value,
         phoneNumber: normalized,
-        network,
+        network: activeLookup?.network,
         pin: pinValue,
         expectedFee: activePreview?.fee,
         idempotencyKey: idempotencyKeys.current.get(intent, 'withdrawal'),
@@ -323,6 +375,10 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         idempotencyKeys.current.clear(intent);
         setStep('done');
         setResultMessage('Your withdrawal was confirmed.');
+      } else if (outcome.status === 'cancelled') {
+        idempotencyKeys.current.clear(intent);
+        setStep('failed');
+        setError('The withdrawal was cancelled by the mobile network.');
       } else if (outcome.status === 'failed') {
         idempotencyKeys.current.clear(intent);
         setStep('failed');
@@ -332,7 +388,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         setResultMessage('Your withdrawal is processing. We will update its status when confirmed.');
       }
     },
-    [activePreview?.fee, mobileNumber, network, pollUntilSettled, refreshWallet]
+    [activeLookup?.network, activePreview?.fee, mobileNumber, pollUntilSettled, refreshWallet]
   );
 
   /* ---------------------------------------------------------------- handlers */
@@ -351,6 +407,10 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     }
 
     if (isDeposit) {
+      if (method === 'mobile' && !activeLookup) {
+        setError('Wait for the mobile number lookup to finish before continuing.');
+        return;
+      }
       if (!activePreview) {
         if (activePreviewError) {
           setPreviewError(null);
@@ -382,6 +442,10 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     const normalized = normalizeTzPhone(mobileNumber);
     if (!normalized) {
       setError('Enter a valid payout number.');
+      return;
+    }
+    if (!activeLookup) {
+      setError('Wait for the mobile number lookup to finish before continuing.');
       return;
     }
     if (!activePreview) {
@@ -445,10 +509,18 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   if (step === 'done' || step === 'pending' || step === 'failed') {
     const success = step === 'done';
     const pending = step === 'pending';
+    const cancelled = resultTransaction?.status === 'cancelled';
+    const finalStatus = success
+      ? 'Successful'
+      : pending
+        ? 'Processing'
+        : cancelled
+          ? 'Cancelled'
+          : 'Failed / cancelled';
     const receiptText = resultTransaction
       ? [
           `Mori Pay ${title} ${success ? 'receipt' : 'status'}`,
-          `Status: ${success ? 'Successful' : pending ? 'Processing' : 'Failed'}`,
+          `Status: ${finalStatus}`,
           `Amount: ${formatAmount(resultTransaction.amount)}`,
           `Fee: ${formatAmount(resultTransaction.fee)}`,
           `Total: ${formatAmount(resultTransaction.amount + resultTransaction.fee)}`,
@@ -497,8 +569,17 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               weight="semibold"
             />
           </View>
+          {pending ? (
+            <ActivityIndicator size="small" color={colors.warning} />
+          ) : null}
           <AppText variant="title2" align="center">
-            {success ? `${title} complete` : pending ? `${title} processing` : `${title} failed`}
+            {success
+              ? `${title} complete`
+              : pending
+                ? `${title} processing`
+                : cancelled
+                  ? `${title} cancelled`
+                  : `${title} not completed`}
           </AppText>
           <AppText variant="bodySmall" color={colors.textSecondary} align="center">
             {success || pending ? resultMessage : error}
@@ -671,46 +752,24 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                 }
               />
 
-              <View style={styles.networks}>
-                <AppText variant="bodySmallStrong">Network</AppText>
-                <View style={styles.networkRow}>
-                  {MOBILE_NETWORKS.map((net) => {
-                    const selected = net === network;
-                    return (
-                      <Pressable
-                        key={net}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected }}
-                        onPress={() => setNetwork(net)}
-                        style={({ pressed }) => [
-                          styles.chip,
-                          {
-                            borderRadius: radius.pill,
-                            backgroundColor: selected ? colors.primarySoft : pressed ? colors.surfacePressed : colors.surface,
-                            borderColor: selected ? colors.primary : colors.border,
-                          },
-                        ]}>
-                        <AppText variant="caption" color={selected ? colors.primary : colors.textSecondary}>
-                          {MOBILE_NETWORK_LABEL[net]}
-                        </AppText>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-                <AppText variant="caption" color={colors.textTertiary}>
-                  Mori Pay routes your payment through the selected mobile network.
-                </AppText>
-              </View>
-
-              {!isDeposit && activeLookup?.found && activeLookup.name ? (
-                <StatusBanner tone="success" title={`Sending to ${activeLookup.name}`} message={activeLookup.phoneNumber} />
+              {activeLookup?.found ? (
+                <StatusBanner
+                  tone="success"
+                  title={activeLookup.name ? `Number verified: ${activeLookup.name}` : 'Mobile number verified'}
+                  message={[
+                    activeLookup.phoneNumber,
+                    activeLookup.network
+                      ? `Network: ${mobileNetworkDisplayName(activeLookup.network)}`
+                      : null,
+                  ].filter(Boolean).join(' · ')}
+                />
               ) : null}
 
               {activeLookup && !activeLookup.found ? (
                 <StatusBanner
                   tone="info"
-                  title="Name not confirmed"
-                  message="We could not verify the registered name. Check the number before continuing."
+                  title="Network not identified"
+                  message="Abliner could not confirm the number's network. Check the number; the provider will still route it automatically."
                 />
               ) : null}
 
@@ -822,9 +881,6 @@ const styles = StyleSheet.create({
   methodIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   methodCopy: { flex: 1, gap: 2 },
   fields: { gap: 16 },
-  networks: { gap: 8 },
-  networkRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1 },
   feeCard: { borderWidth: 1, padding: 14, gap: 8 },
   feeRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   accountHint: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12 },

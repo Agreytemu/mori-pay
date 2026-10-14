@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 
 import {
-  MOBILE_NETWORK_LABEL,
+  mobileNetworkDisplayName,
   type AblinerDepositData,
   type CardTopupResult,
   type FeePreview,
@@ -167,7 +167,7 @@ export class TopUpsService {
             total: amount + configuredFee.fee,
             counterparty: input.mobileNumber,
             counterpartyDetail: input.network
-              ? MOBILE_NETWORK_LABEL[input.network]
+              ? mobileNetworkDisplayName(input.network)
               : 'Mobile money',
             provider: 'abliner',
             providerStatus: 'pending',

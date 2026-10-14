@@ -231,8 +231,8 @@ export const topupCardPreviewQuerySchema = topupDepositPreviewQuerySchema;
 export const topupMobileMoneySchema = z.object({
   amount: ablinerDepositAmountSchema,
   mobileNumber: tzPhoneSchema,
-  /** Display-only operator hint; Abliner routes the rail automatically. */
-  network: mobileNetworkSchema.optional(),
+  /** Display-only Abliner lookup result; Abliner routes the rail automatically. */
+  network: z.string().trim().min(1).max(40).optional(),
   idempotencyKey: z.string().min(1).max(120).optional(),
   expectedFee: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
 });
@@ -251,8 +251,8 @@ export const topupCardSchema = z.object({
 export const withdrawalSchema = z.object({
   amount: amountSchema,
   phoneNumber: tzPhoneSchema,
-  /** Display-only operator hint; Abliner routes the rail automatically. */
-  network: mobileNetworkSchema.optional(),
+  /** Display-only Abliner lookup result; Abliner routes the rail automatically. */
+  network: z.string().trim().min(1).max(40).optional(),
   accountName: z.string().max(120).optional(),
   pin: pinSchema,
   idempotencyKey: z.string().min(1).max(120).optional(),
@@ -276,7 +276,7 @@ export const ablinerWebhookSchema = z.object({
     amount: z.number(),
     amount_cents: z.number().optional(),
     currency: z.string(),
-    status: z.enum(['pending', 'completed', 'failed']),
+    status: z.enum(['pending', 'completed', 'failed', 'cancelled', 'canceled']),
     reference: z.string(),
     customer_reference: z.string().nullish(),
     provider_reference: z.string().nullish(),

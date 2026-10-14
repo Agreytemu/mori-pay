@@ -9,10 +9,9 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { SettlementService } from '../settlement/settlement.service.js';
 
 /**
- * Turns an Abliner webhook into a settled (or failed) transaction. The payload
- * is never trusted on its own: the transaction is re-fetched from Abliner
- * before any money moves, then `SettlementService` applies the change
- * idempotently.
+ * Applies signature-verified Abliner webhook outcomes after matching the
+ * provider identity, transaction type, currency, and amount. Settlement is
+ * idempotent; the separate `reconcile` path verifies outcomes with Abliner.
  *
  * Exposed as `reconcile` so the wallet read path can lazily settle a pending
  * gateway transaction in environments where the webhook cannot reach us.
@@ -31,6 +30,9 @@ export class ReconciliationService {
     const identifiers = [payload.data.id];
     if (payload.data.customer_reference) {
       identifiers.push(payload.data.customer_reference);
+    }
+    if (payload.data.reference) {
+      identifiers.push(payload.data.reference);
     }
 
     // Match on either Abliner's transaction id or the reference we generated,
@@ -55,7 +57,94 @@ export class ReconciliationService {
       return;
     }
 
-    await this.reconcile(transaction);
+    const providerIds = [transaction.internalReference, transaction.providerRef]
+      .filter((value): value is string => Boolean(value));
+    if (
+      (payload.data.customer_reference &&
+        payload.data.customer_reference !== transaction.reference) ||
+      (!payload.data.customer_reference &&
+        !providerIds.includes(payload.data.id) &&
+        !providerIds.includes(payload.data.reference))
+    ) {
+      this.logger.warn(
+        `Webhook identifiers do not match transaction ${transaction.reference}; ignoring`,
+      );
+      return;
+    }
+
+    const isDeposit =
+      transaction.type === 'deposit' &&
+      (payload.data.type === 'deposit' ||
+        (payload.data.type === 'checkout' && transaction.channel === 'card'));
+    const isWithdrawal =
+      transaction.type === 'withdrawal' && payload.data.type === 'withdrawal';
+    if ((!isDeposit && !isWithdrawal) || payload.data.currency !== transaction.currency) {
+      this.logger.warn(
+        `Webhook type or currency does not match transaction ${transaction.reference}; ignoring`,
+      );
+      return;
+    }
+
+    const expectedAmount =
+      transaction.type === 'deposit' ? transaction.total : transaction.amount;
+    const webhookAmount =
+      Number.isSafeInteger(payload.data.amount) && payload.data.amount >= 0
+        ? BigInt(payload.data.amount)
+        : payload.data.amount_cents !== undefined &&
+            Number.isSafeInteger(payload.data.amount_cents) &&
+            payload.data.amount_cents >= 0 &&
+            payload.data.amount_cents % 100 === 0
+          ? BigInt(payload.data.amount_cents) / 100n
+          : null;
+    if (webhookAmount === null || webhookAmount !== expectedAmount) {
+      this.logger.warn(
+        `Webhook amount does not match transaction ${transaction.reference}; ignoring`,
+      );
+      return;
+    }
+
+    const providerStatus = payload.data.status.toLowerCase();
+    const cancelled =
+      providerStatus === 'cancelled' || providerStatus === 'canceled';
+    const completed = providerStatus === 'completed';
+    const failed = providerStatus === 'failed' || cancelled;
+    const matchingEvent = isDeposit
+      ? completed
+        ? payload.data.type === 'checkout'
+          ? payload.event === 'checkout.paid'
+          : payload.event === 'transaction.completed'
+        : failed && payload.event === 'transaction.failed'
+      : completed
+        ? payload.event === 'withdrawal.completed'
+        : failed && payload.event === 'withdrawal.failed';
+    if (!matchingEvent || (!completed && !failed)) {
+      this.logger.warn(
+        `Webhook status/event is not final for transaction ${transaction.reference}; leaving it pending`,
+      );
+      return;
+    }
+
+    if (transaction.type === 'deposit') {
+      if (completed) {
+        await this.settlement.settleDeposit(transaction);
+      } else if (cancelled) {
+        await this.settlement.cancelDeposit(transaction);
+      } else {
+        await this.settlement.failDeposit(transaction);
+      }
+    } else if (completed) {
+      await this.settlement.settleWithdrawal(transaction);
+    } else if (cancelled) {
+      await this.settlement.cancelWithdrawal(transaction);
+    } else {
+      await this.settlement.failWithdrawal(transaction);
+    }
+
+    this.logger.log(
+      `Applied verified webhook for ${transaction.reference} -> ${
+        completed ? 'completed' : cancelled ? 'cancelled' : 'failed'
+      }`,
+    );
   }
 
   /**
@@ -84,8 +173,13 @@ export class ReconciliationService {
             verified.amount_cents % 100 === 0
           ? BigInt(verified.amount_cents) / 100n
           : null;
+    const providerTypeMatches =
+      verified.type === transaction.type ||
+      (transaction.type === 'deposit' &&
+        transaction.channel === 'card' &&
+        verified.type === 'checkout');
     if (
-      verified.type !== transaction.type ||
+      !providerTypeMatches ||
       verifiedAmount === null ||
       verifiedAmount !== expectedAmount
     ) {
@@ -95,18 +189,23 @@ export class ReconciliationService {
       return;
     }
 
-    const success = verified.status === 'completed';
+    const providerStatus = verified.status.toLowerCase();
+    const completed = providerStatus === 'completed';
+    const cancelled =
+      providerStatus === 'cancelled' || providerStatus === 'canceled';
+    const failed = providerStatus === 'failed' || cancelled;
+    if (!completed && !failed) return;
 
     switch (transaction.type) {
       case 'deposit':
-        await (success
-          ? this.settlement.settleDeposit(transaction)
-          : this.settlement.failDeposit(transaction));
+        if (completed) await this.settlement.settleDeposit(transaction);
+        else if (cancelled) await this.settlement.cancelDeposit(transaction);
+        else await this.settlement.failDeposit(transaction);
         break;
       case 'withdrawal':
-        await (success
-          ? this.settlement.settleWithdrawal(transaction)
-          : this.settlement.failWithdrawal(transaction));
+        if (completed) await this.settlement.settleWithdrawal(transaction);
+        else if (cancelled) await this.settlement.cancelWithdrawal(transaction);
+        else await this.settlement.failWithdrawal(transaction);
         break;
       default:
         this.logger.warn(
@@ -117,7 +216,7 @@ export class ReconciliationService {
 
     this.logger.log(
       `Reconciled ${transaction.reference} (${transaction.type}) -> ${
-        success ? 'completed' : 'failed'
+        completed ? 'completed' : cancelled ? 'cancelled' : 'failed'
       }`,
     );
   }

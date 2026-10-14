@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 
 import type {
   Paginated,
@@ -11,6 +11,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ReceiveCodeService } from '../qr/receive-code.service.js';
+import { ReconciliationService } from '../webhooks/reconciliation.service.js';
 import { toTransaction, toWalletAccount, type UserWithWallet } from './wallet.mapper.js';
 
 export type TransactionListOptions = {
@@ -21,10 +22,17 @@ export type TransactionListOptions = {
   limit: number;
 };
 
+const PROVIDER_CHECK_MIN_AGE_MS = 30_000;
+const PROVIDER_CHECK_INTERVAL_MS = 5_000;
+
 @Injectable()
 export class WalletService {
+  private readonly logger = new Logger(WalletService.name);
+  private readonly providerCheckAt = new Map<string, number>();
+
   constructor(
     private readonly prisma: PrismaService,
+    private readonly reconciliation: ReconciliationService,
     private readonly limits: LimitsService,
     private readonly receiveCodes: ReceiveCodeService,
   ) {}
@@ -85,10 +93,47 @@ export class WalletService {
   }
 
   async getTransaction(userId: string, id: string): Promise<TransactionDto> {
-    const transaction = await this.prisma.transaction.findFirst({
+    let transaction = await this.prisma.transaction.findFirst({
       where: { id, userId },
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
+
+    const isInFlight =
+      transaction.status === 'pending' || transaction.status === 'processing';
+    const isProviderTransaction = transaction.provider === 'abliner';
+    const oldEnough =
+      Date.now() - transaction.createdAt.getTime() >= PROVIDER_CHECK_MIN_AGE_MS;
+    const lastCheckedAt = this.providerCheckAt.get(transaction.id) ?? 0;
+    const checkIsDue =
+      Date.now() - lastCheckedAt >= PROVIDER_CHECK_INTERVAL_MS;
+
+    if (isInFlight && isProviderTransaction && oldEnough && checkIsDue) {
+      this.providerCheckAt.set(transaction.id, Date.now());
+      if (this.providerCheckAt.size > 5_000) {
+        const oldestId = this.providerCheckAt.keys().next().value;
+        if (oldestId) this.providerCheckAt.delete(oldestId);
+      }
+      try {
+        await this.reconciliation.reconcile(transaction);
+        const refreshed = await this.prisma.transaction.findUnique({
+          where: { id: transaction.id },
+        });
+        if (refreshed) transaction = refreshed;
+        if (
+          transaction.status !== 'pending' &&
+          transaction.status !== 'processing'
+        ) {
+          this.providerCheckAt.delete(transaction.id);
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Reconciliation on read failed for ${transaction.reference}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
     return toTransaction(transaction);
   }
 }

@@ -7,7 +7,7 @@
  * `${timestamp}.${rawBody}` (webhook secret) and an `Idempotency-Key` header.
  */
 
-/** Mobile operators shown in the UI. Abliner auto-routes rails server-side. */
+/** Canonical codes for mobile-money operators. Abliner auto-routes rails. */
 export const MOBILE_NETWORKS = [
   'Mpesa',
   'AirtelMoney',
@@ -24,6 +24,25 @@ export const MOBILE_NETWORK_LABEL: Record<MobileNetwork, string> = {
   TigoPesa: 'Mixx by Yas',
   HaloPesa: 'HaloPesa',
 };
+
+/** Converts Abliner lookup network names to the canonical app network. */
+export function resolveMobileNetwork(network?: string | null): MobileNetwork | undefined {
+  const normalized = network?.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!normalized) return undefined;
+  if (normalized.includes('vodacom') || normalized.includes('mpesa')) return 'Mpesa';
+  if (normalized.includes('airtel')) return 'AirtelMoney';
+  if (['tigo', 'tigopesa', 'yas', 'mixx'].some((alias) => normalized.includes(alias))) {
+    return 'TigoPesa';
+  }
+  if (normalized.includes('halotel') || normalized.includes('halopesa')) return 'HaloPesa';
+  return undefined;
+}
+
+/** Human-readable network text, preserving a provider label when it is new. */
+export function mobileNetworkDisplayName(network?: string | null): string {
+  const canonical = resolveMobileNetwork(network);
+  return canonical ? MOBILE_NETWORK_LABEL[canonical] : network?.trim() || 'Mobile money';
+}
 
 /** Method accepted by `POST /api/v1/deposits`. */
 export type AblinerDepositMethod = 'mobile' | 'card';
@@ -85,7 +104,12 @@ export type AblinerLookupResult = {
   network?: string;
 };
 
-export type AblinerTransactionStatus = 'pending' | 'completed' | 'failed';
+export type AblinerTransactionStatus =
+  | 'pending'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+  | 'canceled';
 
 /** A row from `GET /api/v1/transactions`. */
 export type AblinerTransaction = {
