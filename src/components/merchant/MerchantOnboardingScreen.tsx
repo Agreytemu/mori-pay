@@ -3,6 +3,7 @@ import { Pressable, Share, StyleSheet, View } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PinBoxes, ProfileField, StatusBanner } from '@/components/profile/profile-components';
 import { AppText } from '@/components/ui/AppText';
@@ -57,6 +58,7 @@ function applicationStatus(status: MerchantApplication['status']): { title: stri
 
 export function MerchantOnboardingScreen() {
   const { colors, radius, space } = useAppTheme();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const idempotency = useRef(new IdempotencyKeyCache());
   const [application, setApplication] = useState<MerchantApplication | null>(null);
@@ -193,11 +195,13 @@ export function MerchantOnboardingScreen() {
   return (
     <ScreenContainer
       header={
-        <ScreenHeader
-          title="Merchant"
-          subtitle="Apply, check your status, and accept QR payments"
-          onBack={() => router.back()}
-        />
+        <View style={{ paddingTop: insets.top }}>
+          <ScreenHeader
+            title="Merchant"
+            subtitle="Apply, check your status, and accept QR payments"
+            onBack={() => router.back()}
+          />
+        </View>
       }
       contentContainerStyle={styles.content}
     >
@@ -425,7 +429,7 @@ export function MerchantOnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { gap: 20, paddingBottom: 32 },
+  content: { gap: 20, paddingTop: 12, paddingBottom: 32 },
   section: { gap: 14 },
   reviewNote: { borderWidth: StyleSheet.hairlineWidth, gap: 6 },
   choices: { flexDirection: 'row', gap: 8 },
