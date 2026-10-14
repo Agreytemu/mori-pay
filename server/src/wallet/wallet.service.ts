@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 
 import type {
   Paginated,
@@ -11,7 +11,6 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ReceiveCodeService } from '../qr/receive-code.service.js';
-import { ReconciliationService } from '../webhooks/reconciliation.service.js';
 import { toTransaction, toWalletAccount, type UserWithWallet } from './wallet.mapper.js';
 
 export type TransactionListOptions = {
@@ -24,11 +23,8 @@ export type TransactionListOptions = {
 
 @Injectable()
 export class WalletService {
-  private readonly logger = new Logger(WalletService.name);
-
   constructor(
     private readonly prisma: PrismaService,
-    private readonly reconciliation: ReconciliationService,
     private readonly limits: LimitsService,
     private readonly receiveCodes: ReceiveCodeService,
   ) {}
@@ -93,28 +89,6 @@ export class WalletService {
       where: { id, userId },
     });
     if (!transaction) throw new NotFoundException('Transaction not found');
-
-    // Settle a pending gateway movement on read so clients see the final state
-    // even when Abliner's webhook cannot reach this environment.
-    if (
-      transaction.provider === 'abliner' &&
-      (transaction.status === 'pending' || transaction.status === 'processing')
-    ) {
-      try {
-        await this.reconciliation.reconcile(transaction);
-        const refreshed = await this.prisma.transaction.findUnique({
-          where: { id: transaction.id },
-        });
-        if (refreshed) return toTransaction(refreshed);
-      } catch (error) {
-        this.logger.warn(
-          `Reconciliation on read failed for ${transaction.reference}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      }
-    }
-
     return toTransaction(transaction);
   }
 }
