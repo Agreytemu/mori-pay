@@ -8,6 +8,7 @@ import {
   withdrawalSchema,
   type RecipientLookupInput,
   type WithdrawalInput,
+  type WithdrawalPreview,
   type WithdrawalPreviewQuery,
   type WithdrawalResult,
 } from '@mori-pay/contracts';
@@ -36,18 +37,11 @@ export class WithdrawalsController {
   }
 
   @Get('preview')
-  async preview(
+  preview(
     @Query(new ZodValidationPipe(withdrawalPreviewQuerySchema))
     query: WithdrawalPreviewQuery,
-  ): Promise<{ amount: number; fee: number; feePercentage: number; total: number }> {
-    const amount = BigInt(query.amount);
-    const feeDetail = await this.withdrawals.resolveFeeDetail(amount);
-    return {
-      amount: Number(amount),
-      fee: Number(feeDetail.fee),
-      feePercentage: feeDetail.percentage,
-      total: Number(amount + feeDetail.fee),
-    };
+  ): Promise<WithdrawalPreview> {
+    return this.withdrawals.preview(BigInt(query.amount));
   }
 
   @Get('lookup')

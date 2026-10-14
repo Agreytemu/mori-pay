@@ -80,6 +80,72 @@ describe('provider request outcomes', () => {
     });
   });
 
+  it('checks withdrawal method availability with Abliner and keeps Mori Pay fee', async () => {
+    let providerPreview: { method: string; amount: number } | undefined;
+    const service = new WithdrawalsService(
+      {} as PrismaService,
+      {} as WalletService,
+      {
+        resolveFeeDetail: async () => ({
+          fee: 250n,
+          flat: 0n,
+          percentage: 0.025,
+          ruleId: 'mobile-withdrawal-fee',
+        }),
+      } as unknown as FeesService,
+      {} as AuthService,
+      {
+        previewWithdrawal: async (method: string, amount: number) => {
+          providerPreview = { method, amount };
+          return { amount_tzs: amount, fee_tzs: 500, total_debited_tzs: amount + 500 };
+        },
+      } as unknown as AblinerClient,
+      {} as SettlementService,
+      {} as LimitsService,
+    );
+
+    assert.deepEqual(await service.preview(10_000n), {
+      amount: 10_000,
+      fee: 250,
+      feePercentage: 0.025,
+      total: 10_250,
+      providerAvailable: true,
+    });
+    assert.deepEqual(providerPreview, { method: 'mobile', amount: 10_000 });
+  });
+
+  it('blocks withdrawal when Abliner says the method is unavailable', async () => {
+    const service = new WithdrawalsService(
+      {} as PrismaService,
+      {} as WalletService,
+      {
+        resolveFeeDetail: async () => ({
+          fee: 250n,
+          flat: 0n,
+          percentage: 0.025,
+          ruleId: 'mobile-withdrawal-fee',
+        }),
+      } as unknown as FeesService,
+      {} as AuthService,
+      {
+        previewWithdrawal: async () => {
+          throw new AblinerProviderError('unsupported_request');
+        },
+      } as unknown as AblinerClient,
+      {} as SettlementService,
+      {} as LimitsService,
+    );
+
+    assert.deepEqual(await service.preview(10_000n), {
+      amount: 10_000,
+      fee: 250,
+      feePercentage: 0.025,
+      total: 10_250,
+      providerAvailable: false,
+      availabilityMessage: 'This payment method is not available right now.',
+    });
+  });
+
   it('charges the mobile-money deposit fee on top of wallet principal', async () => {
     let createdData: Record<string, unknown> | undefined;
     let providerAmount = 0;

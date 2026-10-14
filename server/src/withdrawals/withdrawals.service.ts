@@ -9,6 +9,7 @@ import {
   mobileNetworkDisplayName,
   type AblinerWithdrawalData,
   type WithdrawalInput,
+  type WithdrawalPreview,
   type WithdrawalResult,
 } from '@mori-pay/contracts';
 
@@ -61,6 +62,33 @@ export class WithdrawalsService {
       channel: 'mobileMoney',
       amount,
     });
+  }
+
+  async preview(amount: bigint): Promise<WithdrawalPreview> {
+    const feeDetail = await this.resolveFeeDetail(amount);
+    try {
+      await this.abliner.previewWithdrawal('mobile', Number(amount));
+      return {
+        amount: Number(amount),
+        fee: Number(feeDetail.fee),
+        feePercentage: feeDetail.percentage,
+        total: Number(amount + feeDetail.fee),
+        providerAvailable: true,
+      };
+    } catch (error) {
+      if (!(error instanceof AblinerProviderError)) throw error;
+      this.logger.warn(
+        `Abliner mobile withdrawal availability check failed: ${error.providerCode ?? 'provider check failed'}`,
+      );
+      return {
+        amount: Number(amount),
+        fee: Number(feeDetail.fee),
+        feePercentage: feeDetail.percentage,
+        total: Number(amount + feeDetail.fee),
+        providerAvailable: false,
+        availabilityMessage: error.message,
+      };
+    }
   }
 
   /** Confirms the registered name of a payout recipient before sending. */

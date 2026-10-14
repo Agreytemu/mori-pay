@@ -2,6 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { Asset } from 'expo-asset';
+import * as FileSystem from 'expo-file-system/legacy';
+import { Image } from 'expo-image';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { mobileNetworkDisplayName } from '@mori-pay/contracts';
@@ -20,6 +23,9 @@ import { toUiTransaction } from '@/lib/adapters';
 import { getTransaction } from '@/lib/mori-api';
 import { useAppTheme, type StateTone } from '@/theme';
 import { formatAmount, formatDateTime } from '@/utils/format';
+import { getTransactionOutcomeReason } from '@/utils/transaction-outcome';
+
+const MORI_PAY_LOGO = require('../../../assets/images/mori pay official logo.png');
 
 const CHANNEL_LABEL: Record<Transaction['channel'], string> = {
   wallet: 'Mori Pay wallet',
@@ -48,7 +54,7 @@ function escapeHtml(value: string): string {
   });
 }
 
-function receiptHtml(transaction: Transaction): string {
+function receiptHtml(transaction: Transaction, logoSource: string): string {
   const total = transaction.direction === 'debit'
     ? transaction.amount + transaction.fee
     : transaction.amount;
@@ -69,6 +75,8 @@ function receiptHtml(transaction: Transaction): string {
       transaction.counterparty,
     ],
   ];
+  const outcomeReason = getTransactionOutcomeReason(transaction);
+  if (outcomeReason) rows.splice(2, 0, ['Reason', outcomeReason]);
   const mobileNetwork =
     transaction.channel === 'mobileMoney' &&
     (transaction.type === 'deposit' || transaction.type === 'withdrawal') &&
@@ -92,7 +100,9 @@ function receiptHtml(transaction: Transaction): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <style>
       body { font-family: Arial, sans-serif; color: #132238; margin: 32px; }
-      header { border-bottom: 2px solid #153e75; padding-bottom: 18px; margin-bottom: 20px; }
+      header { display: flex; align-items: center; gap: 16px; border-bottom: 2px solid #153e75; padding-bottom: 18px; margin-bottom: 20px; }
+      header img { width: 76px; height: 76px; object-fit: contain; }
+      .heading { flex: 1; }
       h1 { color: #153e75; font-size: 25px; margin: 0 0 5px; }
       .brand { color: #667085; font-size: 13px; }
       .amount { font-size: 25px; font-weight: bold; margin: 20px 0 4px; }
@@ -106,7 +116,10 @@ function receiptHtml(transaction: Transaction): string {
     </style>
   </head>
   <body>
-    <header><h1>Mori Pay receipt</h1><div class="brand">Transaction confirmation</div></header>
+    <header>
+      <img src="${escapeHtml(logoSource)}" alt="Mori Pay" />
+      <div class="heading"><h1>Mori Pay receipt</h1><div class="brand">Transaction confirmation</div></div>
+    </header>
     <div class="label">${transaction.direction === 'debit' ? 'Total debited' : 'Total received'}</div>
     <div class="amount">${escapeHtml(formatAmount(total, transaction.currency))}</div>
     <table>
@@ -166,7 +179,21 @@ export function TransactionDetailScreen() {
     setExporting(true);
     setError(null);
     try {
-      const html = receiptHtml(transaction);
+      const logoAsset = Asset.fromModule(MORI_PAY_LOGO);
+      let logoSource: string;
+      if (Platform.OS === 'web') {
+        logoSource = logoAsset.uri;
+      } else {
+        await logoAsset.downloadAsync();
+        if (!logoAsset.localUri) {
+          throw new Error('Could not load the Mori Pay logo for the receipt.');
+        }
+        const logoBase64 = await FileSystem.readAsStringAsync(logoAsset.localUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        logoSource = `data:image/${logoAsset.type};base64,${logoBase64}`;
+      }
+      const html = receiptHtml(transaction, logoSource);
       if (Platform.OS === 'web') {
         await Print.printAsync({ html });
         return;
@@ -277,6 +304,7 @@ export function TransactionDetailScreen() {
     transaction.counterpartyDetail !== 'Mobile money'
       ? mobileNetworkDisplayName(transaction.counterpartyDetail)
       : null;
+  const outcomeReason = getTransactionOutcomeReason(transaction);
 
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
@@ -300,6 +328,12 @@ export function TransactionDetailScreen() {
           <AppText variant="bodySmall" color={colors.textSecondary}>
             {transaction.direction === 'debit' ? 'Money sent' : 'Money received'}
           </AppText>
+          <Image
+            source={MORI_PAY_LOGO}
+            contentFit="contain"
+            accessibilityLabel="Mori Pay"
+            style={styles.brandLogo}
+          />
           <AppText variant="amount" numeric style={styles.summaryAmount}>
             {transaction.direction === 'debit' ? '−' : '+'}
             {formatAmount(transaction.amount, transaction.currency)}
@@ -325,6 +359,7 @@ export function TransactionDetailScreen() {
           <AppText variant="bodyStrong" style={styles.sectionTitle}>Transaction</AppText>
           {displayRow('Type', TRANSACTION_TYPE_LABEL[transaction.type])}
           {displayRow('Status', TRANSACTION_STATUS_LABEL[transaction.status])}
+          {outcomeReason ? displayRow('Reason', outcomeReason) : null}
           {displayRow('Reference', transaction.reference, { selectable: true })}
           {displayRow('Transaction ID', transaction.id, { selectable: true })}
           {displayRow('Date and time', formatDateTime(transaction.createdAt))}
@@ -416,6 +451,10 @@ const styles = StyleSheet.create({
   },
   summaryAmount: {
     textAlign: 'center',
+  },
+  brandLogo: {
+    width: 82,
+    height: 72,
   },
   detailsCard: {
     borderWidth: StyleSheet.hairlineWidth,

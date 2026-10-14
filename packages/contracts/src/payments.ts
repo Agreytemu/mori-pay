@@ -26,6 +26,11 @@ export type FeePreview = {
   total: Amount;
 };
 
+export type WithdrawalPreview = FeePreview & {
+  providerAvailable: boolean;
+  availabilityMessage?: string;
+};
+
 export type SendMoneyResult = {
   transaction: Transaction;
   recipientName: string;

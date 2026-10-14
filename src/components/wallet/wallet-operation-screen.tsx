@@ -51,11 +51,20 @@ import { useSession } from '@/lib/session';
 import { useAppTheme } from '@/theme';
 import { typography } from '@/theme/typography';
 import { formatAmount, formatDateTime } from '@/utils/format';
+import { getTransactionOutcomeReason } from '@/utils/transaction-outcome';
 
 type WalletOperation = 'deposit' | 'withdraw';
 type FeePreviewMethod = 'mobile' | 'card' | 'withdraw';
 
 type Step = 'form' | 'pin' | 'busy' | 'done' | 'pending' | 'failed';
+
+function isDefinitiveProviderFailure(error: unknown): error is ApiError {
+  return (
+    error instanceof ApiError &&
+    error.code === 'PROVIDER_ERROR' &&
+    error.details?.retryable === false
+  );
+}
 
 const MIN_AMOUNT = 500;
 const MAX_DEPOSIT_AMOUNT = 3_000_000;
@@ -103,6 +112,8 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     fee: number;
     feePercentage: number;
     total: number;
+    providerAvailable?: boolean;
+    availabilityMessage?: string;
   } | null>(null);
   const [previewError, setPreviewError] = useState<{
     forAmount: number;
@@ -132,6 +143,15 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const needsFeePreview =
     amountValid &&
     !depositAmountOverLimit;
+  const requiresNumberVerification = !isDeposit || method === 'mobile';
+  const numberVerified =
+    !requiresNumberVerification || activeLookup?.found === true;
+  const canContinue =
+    amountValid &&
+    !depositAmountOverLimit &&
+    Boolean(activePreview) &&
+    numberVerified &&
+    (isDeposit || activePreview?.providerAvailable === true);
   const activePreviewError =
     previewError?.forAmount === numericAmount &&
     previewError.forMethod === previewMethod
@@ -269,9 +289,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         }
         if (latest.status === 'failed' || latest.status === 'cancelled') {
           setError(
-            latest.status === 'cancelled'
-              ? 'This transaction was cancelled by the mobile network.'
-              : 'This transaction was declined or cancelled by the mobile network.',
+            getTransactionOutcomeReason(latest),
           );
           setStep('failed');
           await refreshWallet();
@@ -309,11 +327,11 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       } else if (outcome.status === 'cancelled') {
         idempotencyKeys.current.clear(intent);
         setStep('failed');
-        setError('The card payment was cancelled.');
+        setError(getTransactionOutcomeReason(outcome.transaction));
       } else if (outcome.status === 'failed') {
         idempotencyKeys.current.clear(intent);
         setStep('failed');
-        setError('The card payment was declined or cancelled. No money left your card.');
+        setError(getTransactionOutcomeReason(outcome.transaction));
       } else {
         setStep('pending');
         setResultMessage(
@@ -336,9 +354,8 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         expectedFee: activePreview?.fee,
         idempotencyKey: idempotencyKeys.current.get(intent, 'mobile-deposit'),
       });
-      setDialog({ title: 'Check your phone', message: result.instructions });
+      setResultMessage(result.instructions);
       const outcome = await pollUntilSettled(result.transaction);
-      setDialog(null);
       setResultTransaction(outcome.transaction);
       if (outcome.status === 'completed') {
         idempotencyKeys.current.clear(intent);
@@ -348,11 +365,11 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       } else if (outcome.status === 'cancelled') {
         idempotencyKeys.current.clear(intent);
         setStep('failed');
-        setError('The deposit was cancelled on your phone.');
+        setError(getTransactionOutcomeReason(outcome.transaction));
       } else if (outcome.status === 'failed') {
         idempotencyKeys.current.clear(intent);
         setStep('failed');
-        setError('The deposit was declined or cancelled on your phone.');
+        setError(getTransactionOutcomeReason(outcome.transaction));
       } else {
         setStep('pending');
         setResultMessage('Still processing. It will show in your wallet once confirmed.');
@@ -389,11 +406,11 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       } else if (outcome.status === 'cancelled') {
         idempotencyKeys.current.clear(intent);
         setStep('failed');
-        setError('The withdrawal was cancelled by the mobile network.');
+        setError(getTransactionOutcomeReason(outcome.transaction));
       } else if (outcome.status === 'failed') {
         idempotencyKeys.current.clear(intent);
         setStep('failed');
-        setError('The withdrawal failed. Your wallet balance will reflect the final status.');
+        setError(getTransactionOutcomeReason(outcome.transaction));
       } else {
         setStep('pending');
         setResultMessage('Your withdrawal is processing. We will update its status when confirmed.');
@@ -406,6 +423,8 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
 
   const continueFlow = async () => {
     setError(null);
+    setResultMessage(null);
+    setResultTransaction(null);
 
     if (!amountValid) {
       setError(`Minimum amount is ${formatAmount(MIN_AMOUNT)}.`);
@@ -437,7 +456,9 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         if (method === 'card') await runCardDeposit(numericAmount);
         else await runMobileDeposit(numericAmount);
       } catch (err) {
-        setStep('form');
+        const providerUnavailable = isDefinitiveProviderFailure(err);
+        setStep(providerUnavailable ? 'failed' : 'form');
+        if (providerUnavailable) setResultTransaction(null);
         if (err instanceof ApiError && err.status === 409) {
           setPreview(null);
           setPreviewAttempt((attempt) => attempt + 1);
@@ -481,6 +502,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
 
   const confirmWithPin = async (pinValue: string) => {
     setBusy(true);
+    setStep('busy');
     setError(null);
     try {
       await submitWithdrawal(numericAmount, pinValue);
@@ -489,6 +511,10 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         setStep('form');
         setPreview(null);
         setPreviewAttempt((attempt) => attempt + 1);
+        setError(err.message);
+      } else if (isDefinitiveProviderFailure(err)) {
+        setStep('failed');
+        setResultTransaction(null);
         setError(err.message);
       } else {
         setStep('pin');
@@ -527,11 +553,15 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         ? 'Processing'
         : cancelled
           ? 'Cancelled'
-          : 'Failed / cancelled';
+          : 'Failed';
+    const outcomeReason = resultTransaction
+      ? getTransactionOutcomeReason(resultTransaction)
+      : null;
     const receiptText = resultTransaction
       ? [
           `Mori Pay ${title} ${success ? 'receipt' : 'status'}`,
           `Status: ${finalStatus}`,
+          ...(outcomeReason ? [`Reason: ${outcomeReason}`] : []),
           `Amount: ${formatAmount(resultTransaction.amount)}`,
           `Fee: ${formatAmount(resultTransaction.fee)}`,
           `Total: ${formatAmount(resultTransaction.amount + resultTransaction.fee)}`,
@@ -561,6 +591,12 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
         <ScrollView contentContainerStyle={styles.resultWrap}>
           {success ? <AppIllustration name="moneyReceived" width={188} height={132} /> : null}
+          <Image
+            source={require('../../../assets/images/mori pay official logo.png')}
+            contentFit="contain"
+            accessibilityLabel="Mori Pay"
+            style={styles.brandLogo}
+          />
           <View
             style={[
               styles.resultIcon,
@@ -593,7 +629,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                   : `${title} not completed`}
           </AppText>
           <AppText variant="bodySmall" color={colors.textSecondary} align="center">
-            {success || pending ? resultMessage : error}
+            {success || pending ? resultMessage : outcomeReason ?? error}
           </AppText>
           {resultTransaction ? (
             <View
@@ -609,6 +645,14 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                 <AppText variant="bodySmall" color={colors.textSecondary}>Amount</AppText>
                 <AppText variant="bodySmallStrong" numeric>{formatAmount(resultTransaction.amount)}</AppText>
               </View>
+              {outcomeReason ? (
+                <View style={styles.receiptRow}>
+                  <AppText variant="bodySmall" color={colors.textSecondary}>Reason</AppText>
+                  <AppText variant="bodySmallStrong" style={styles.reasonText}>
+                    {outcomeReason}
+                  </AppText>
+                </View>
+              ) : null}
               <View style={styles.receiptRow}>
                 <AppText variant="bodySmall" color={colors.textSecondary}>Fee</AppText>
                 <AppText variant="bodySmallStrong" numeric>{formatAmount(resultTransaction.fee)}</AppText>
@@ -655,6 +699,32 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
           onClose={() => setDialog(null)}
           testID="wallet-operation-dialog"
         />
+      </SafeAreaView>
+    );
+  }
+
+  if (step === 'busy') {
+    return (
+      <SafeAreaView
+        style={[styles.safeArea, styles.busyScreen, { backgroundColor: colors.background }]}
+        edges={['top']}>
+        <Image
+          source={require('../../../assets/images/mori pay official logo.png')}
+          contentFit="contain"
+          accessibilityLabel="Mori Pay"
+          style={styles.brandLogo}
+        />
+        <View style={[styles.loadingOrbit, { borderColor: colors.primary }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+        <AppText variant="title2" align="center">
+          {isDeposit ? 'Confirming your deposit' : 'Processing your withdrawal'}
+        </AppText>
+        <AppText variant="bodySmall" color={colors.textSecondary} align="center">
+          {resultMessage || (isDeposit && method === 'mobile'
+            ? 'Approve the payment request on your phone. We will show the final result here.'
+            : 'Please wait while we confirm the transaction. Do not submit it again.')}
+        </AppText>
       </SafeAreaView>
     );
   }
@@ -862,11 +932,45 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               ) : null}
             </View>
           ) : null}
+          {!isDeposit && activePreview?.providerAvailable === false ? (
+            <View style={styles.previewRetry}>
+              <StatusBanner
+                tone="error"
+                title="Withdrawal method unavailable"
+                message={
+                  activePreview.availabilityMessage ??
+                  'Abliner could not confirm that mobile withdrawals are available. Try checking again.'
+                }
+              />
+              <SecondaryButton
+                label="Check availability again"
+                size="sm"
+                onPress={() => {
+                  setPreview(null);
+                  setPreviewAttempt((attempt) => attempt + 1);
+                }}
+              />
+            </View>
+          ) : null}
           {needsFeePreview && !activePreview && !activePreviewError ? (
-            <AppText variant="caption" color={colors.textSecondary}>Calculating fee and total…</AppText>
+            <AppText variant="caption" color={colors.textSecondary}>
+              {!isDeposit
+                ? 'Checking recipient, withdrawal fee and provider availability…'
+                : 'Calculating fee and total…'}
+            </AppText>
           ) : null}
           {needsFeePreview && activePreviewError ? (
-            <StatusBanner tone="error" title="Could not calculate fee" message={activePreviewError} />
+            <View style={styles.previewRetry}>
+              <StatusBanner tone="error" title="Could not calculate fee" message={activePreviewError} />
+              <SecondaryButton
+                label="Retry fee calculation"
+                size="sm"
+                onPress={() => {
+                  setPreviewError(null);
+                  setPreviewAttempt((attempt) => attempt + 1);
+                }}
+              />
+            </View>
           ) : null}
 
           {error ? <StatusBanner tone="error" title="Something went wrong" message={error} onDismiss={() => setError(null)} /> : null}
@@ -874,8 +978,8 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
           {step === 'form' ? (
             <Button
               label="Continue"
-              loading={busy}
-              disabled={needsFeePreview && !activePreview && !activePreviewError}
+              variant={canContinue ? 'primary' : 'secondary'}
+              disabled={!canContinue}
               onPress={() => void continueFlow()}
             />
           ) : null}
@@ -956,8 +1060,21 @@ const styles = StyleSheet.create({
   hintText: { flex: 1 },
   pinSheet: { borderTopWidth: StyleSheet.hairlineWidth, padding: 16, gap: 12 },
   resultWrap: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 },
+  busyScreen: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 18, padding: 28 },
+  brandLogo: { width: 112, height: 92 },
+  loadingOrbit: {
+    width: 92,
+    height: 92,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    borderRadius: 46,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   resultIcon: { width: 76, height: 76, alignItems: 'center', justifyContent: 'center' },
   resultActions: { width: '100%', gap: 10, marginTop: 8 },
   receiptCard: { width: '100%', maxWidth: 560, borderWidth: 1, padding: 16, gap: 12 },
   receiptRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  reasonText: { flex: 1, textAlign: 'right' },
+  previewRetry: { gap: 8 },
 });

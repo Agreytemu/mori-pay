@@ -51,6 +51,7 @@ import type {
   TopupMobileMoneyInput,
   Transaction,
   TransferPreview,
+  WithdrawalPreview,
   VerifyOtpInput,
   VerifyOtpResult,
   VerifyEmailInput,
@@ -69,8 +70,6 @@ export type PayoutLookup = {
   name?: string;
   network?: string;
 };
-
-export type WithdrawalPreview = FeePreview;
 
 /* --------------------------------------------------------------------- auth */
 

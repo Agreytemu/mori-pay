@@ -137,6 +137,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     status: number;
     error: ApiErrorCode;
     message: string;
+    details?: Record<string, unknown>;
   } {
     const status =
       exception.code === 'INSUFFICIENT_FUNDS'
@@ -148,6 +149,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
       status,
       error: this.statusToCode(status),
       message: exception.message,
+      ...('retryable' in exception &&
+      typeof exception.retryable === 'boolean'
+        ? {
+            details: {
+              retryable: exception.retryable,
+              ...('providerCode' in exception &&
+              typeof exception.providerCode === 'string'
+                ? { providerCode: exception.providerCode }
+                : {}),
+            },
+          }
+        : {}),
     };
   }
 

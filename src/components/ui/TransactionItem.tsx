@@ -114,6 +114,15 @@ export function TransactionItem({
           />
         ) : null}
       </View>
+      {onPress ? (
+        <View
+          style={[
+            styles.openIndicator,
+            { borderColor: colors.border, backgroundColor: colors.surface },
+          ]}>
+          <AppIcon name="chevronRight" size={15} color={colors.textSecondary} />
+        </View>
+      ) : null}
     </>
   );
 
@@ -203,7 +212,15 @@ const styles = StyleSheet.create({
   trailing: {
     alignItems: 'flex-end',
     gap: 4,
-    maxWidth: '46%',
+    maxWidth: '43%',
+  },
+  openIndicator: {
+    width: 26,
+    height: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 8,
   },
   failedAmount: {
     textDecorationLine: 'line-through',
