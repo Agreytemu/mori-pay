@@ -50,6 +50,14 @@ export function toUiTransaction(tx: ApiTransaction): UiTransaction {
   };
 }
 
+const ACTIVITY_STATUS: Record<ApiTransaction['status'], WalletActivity['status']> = {
+  completed: 'Completed',
+  processing: 'Processing',
+  pending: 'Pending',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+};
+
 export function toWalletActivity(tx: ApiTransaction): WalletActivity {
   const credit = tx.direction === 'credit';
   return {
@@ -58,7 +66,7 @@ export function toWalletActivity(tx: ApiTransaction): WalletActivity {
     date: formatDate(tx.createdAt),
     amount: tx.amount,
     direction: credit ? 'credit' : 'debit',
-    status: tx.status === 'completed' ? 'Completed' : 'Pending',
+    status: ACTIVITY_STATUS[tx.status] ?? 'Pending',
     icon: ACTIVITY_ICON[tx.type],
   };
 }

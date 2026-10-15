@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 
 import type { Transaction as TransactionDto } from '@mori-pay/contracts';
 
@@ -9,7 +13,7 @@ import {
   type LedgerLeg,
   type SystemLedgerAccountKind,
 } from '../ledger/ledger.service.js';
-import { Prisma } from '../generated/prisma/client.js';
+import { Prisma, type Transaction } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { createTransactionNotification } from '../account/notification-writer.js';
 import type { FeeDetail } from './fees.service.js';
@@ -29,6 +33,8 @@ export type TransferToUserInput = {
   type: string;
   category: string;
   idempotencyKey?: string;
+  /** Extra scope keys persisted on the sender transaction (e.g. moneyRequestId). */
+  metadata?: Prisma.InputJsonValue;
 };
 
 export type PaySystemInput = {
@@ -87,7 +93,10 @@ export class PaymentsService {
             },
           },
         });
-        if (existing) return toTransaction(existing);
+        if (existing) {
+          this.assertReplayMatches(existing, input);
+          return toTransaction(existing);
+        }
       }
 
       const senderTransaction = await tx.transaction.create({
@@ -109,7 +118,10 @@ export class PaymentsService {
           note: input.note ?? null,
           idempotencyKey: input.idempotencyKey ?? null,
           settledAt: new Date(),
-          metadata: { recipientUserId: input.to.id },
+          metadata: {
+            recipientUserId: input.to.id,
+            ...this.jsonObject(input.metadata),
+          },
         },
       });
       await createTransactionNotification(tx, senderTransaction);
@@ -185,6 +197,7 @@ export class PaymentsService {
         },
       });
       if (!existing) throw error;
+      this.assertReplayMatches(existing, input);
       return toTransaction(existing);
     }
   }
@@ -208,7 +221,10 @@ export class PaymentsService {
             },
           },
         });
-        if (existing) return toTransaction(existing);
+        if (existing) {
+          this.assertPaySystemReplayMatches(existing, input);
+          return toTransaction(existing);
+        }
       }
 
       const payerTransaction = await tx.transaction.create({
@@ -286,6 +302,7 @@ export class PaymentsService {
         },
       });
       if (!existing) throw error;
+      this.assertPaySystemReplayMatches(existing, input);
       return toTransaction(existing);
     }
   }
@@ -296,5 +313,71 @@ export class PaymentsService {
     );
     if (!account) throw new BadRequestException('Wallet is not active');
     return account.id;
+  }
+
+  private jsonObject(
+    value: Prisma.InputJsonValue | null | undefined,
+  ): Record<string, Prisma.InputJsonValue> {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, Prisma.InputJsonValue>)
+      : {};
+  }
+
+  private metadataObject(
+    value: Prisma.JsonValue | null | undefined,
+  ): Record<string, Prisma.JsonValue> | null {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, Prisma.JsonValue>)
+      : null;
+  }
+
+  /**
+   * A reused idempotency key must describe the same money movement. If any
+   * material field differs (amount, recipient, fee, or a caller-supplied scope
+   * key such as `moneyRequestId`), the request is a conflict, never a replay.
+   */
+  private assertReplayMatches(
+    existing: Transaction,
+    input: TransferToUserInput,
+  ): void {
+    const meta = this.metadataObject(existing.metadata);
+    const scope = this.jsonObject(input.metadata);
+    const mismatch =
+      existing.type !== input.type ||
+      existing.direction !== 'debit' ||
+      existing.amount !== input.amount ||
+      existing.fee !== input.fee ||
+      existing.total !== input.amount + input.fee ||
+      meta?.recipientUserId !== input.to.id ||
+      Object.entries(scope).some(([key, value]) => meta?.[key] !== value);
+
+    if (mismatch) {
+      throw new ConflictException(
+        'This idempotency key was already used for a different transaction.',
+      );
+    }
+  }
+
+  private assertPaySystemReplayMatches(
+    existing: Transaction,
+    input: PaySystemInput,
+  ): void {
+    const meta = this.metadataObject(existing.metadata);
+    const scope = this.jsonObject(input.metadata);
+    const mismatch =
+      existing.type !== input.type ||
+      existing.category !== input.category ||
+      existing.direction !== 'debit' ||
+      existing.amount !== input.amount ||
+      existing.fee !== input.fee ||
+      existing.total !== input.amount + input.fee ||
+      existing.counterparty !== input.counterparty ||
+      Object.entries(scope).some(([key, value]) => meta?.[key] !== value);
+
+    if (mismatch) {
+      throw new ConflictException(
+        'This idempotency key was already used for a different transaction.',
+      );
+    }
   }
 }

@@ -108,22 +108,42 @@ export class TransfersService {
       channel: 'wallet',
       amount,
     });
-    await this.limits.assertWithinLimits(
-      sender.id,
-      sender.tier,
-      amount + feeDetail.fee,
-    );
 
-    const transaction = await this.payments.transferToUser({
-      from: sender,
-      to: recipient,
-      amount,
-      fee: feeDetail.fee,
-      feeDetail,
-      note: input.note,
-      type: 'send',
-      category: 'person',
-      idempotencyKey: input.idempotencyKey,
+    const transaction = await this.prisma.$transaction(async (tx) => {
+      const replayed = input.idempotencyKey
+        ? await tx.transaction.findUnique({
+            where: {
+              userId_idempotencyKey: {
+                userId,
+                idempotencyKey: input.idempotencyKey,
+              },
+            },
+          })
+        : null;
+
+      if (!replayed) {
+        await this.limits.assertWithinLimitsForUpdate(
+          tx,
+          sender.id,
+          sender.tier,
+          amount + feeDetail.fee,
+        );
+      }
+
+      return this.payments.transferToUser(
+        {
+          from: sender,
+          to: recipient,
+          amount,
+          fee: feeDetail.fee,
+          feeDetail,
+          note: input.note,
+          type: 'send',
+          category: 'person',
+          idempotencyKey: input.idempotencyKey,
+        },
+        tx,
+      );
     });
 
     return {

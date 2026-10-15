@@ -6,6 +6,7 @@ import { validateEnv } from '../src/config/env.validation.js';
 const productionConfig = {
   NODE_ENV: 'production',
   DATABASE_URL: 'postgresql://user:pass@localhost:5432/mori_pay',
+  CORS_ORIGINS: 'https://app.moripay.example',
   JWT_ACCESS_SECRET: 'access-secret-that-is-long-enough',
   JWT_REFRESH_SECRET: 'refresh-secret-that-is-long-enough',
   ABLINER_API_KEY: 'tsl_live_test',
@@ -23,19 +24,75 @@ describe('environment validation', () => {
         'https://mori-pay.onrender.com/api/v1/webhooks/abliner',
     });
 
-    it('defaults the Abliner callback to the Railway API host', () => {
-      const env = validateEnv(productionConfig);
-
-      assert.equal(
-        env.ABLINER_CALLBACK_URL,
-        'https://moripay.up.railway.app/api/v1/webhooks/abliner',
-      );
-    });
-
     assert.equal(env.ABLINER_WEBHOOK_SECRET, 'whsec_test');
     assert.equal(
       env.ABLINER_CALLBACK_URL,
       'https://mori-pay.onrender.com/api/v1/webhooks/abliner',
+    );
+  });
+
+  it('defaults the Abliner callback to the Railway API host', () => {
+    const env = validateEnv(productionConfig);
+
+    assert.equal(
+      env.ABLINER_CALLBACK_URL,
+      'https://moripay.up.railway.app/api/v1/webhooks/abliner',
+    );
+  });
+
+  it('rejects development-default JWT secrets in production', () => {
+    assert.throws(
+      () =>
+        validateEnv({
+          ...productionConfig,
+          JWT_ACCESS_SECRET: 'dev-access-secret-change-me-32chars',
+          JWT_REFRESH_SECRET: 'dev-refresh-secret-change-me-32chars',
+        }),
+      /JWT_ACCESS_SECRET: must be explicitly set to a unique secret in production/,
+    );
+  });
+
+  it('rejects missing JWT secrets in production', () => {
+    assert.throws(
+      () =>
+        validateEnv({
+          ...productionConfig,
+          JWT_ACCESS_SECRET: '',
+          JWT_REFRESH_SECRET: '',
+        }),
+      /JWT_ACCESS_SECRET: must be explicitly set to a unique secret in production/,
+    );
+  });
+
+  it('rejects short or reused JWT secrets in production', () => {
+    assert.throws(
+      () =>
+        validateEnv({
+          ...productionConfig,
+          JWT_ACCESS_SECRET: 'short-secret',
+        }),
+      /JWT_ACCESS_SECRET: must be at least 32 characters in production/,
+    );
+
+    assert.throws(
+      () =>
+        validateEnv({
+          ...productionConfig,
+          JWT_REFRESH_SECRET: productionConfig.JWT_ACCESS_SECRET,
+        }),
+      /JWT_REFRESH_SECRET: must differ from JWT_ACCESS_SECRET/,
+    );
+  });
+
+  it('rejects a wildcard or missing production CORS allowlist', () => {
+    assert.throws(
+      () => validateEnv({ ...productionConfig, CORS_ORIGINS: '*' }),
+      /CORS_ORIGINS: an explicit comma-separated allowlist/,
+    );
+
+    assert.throws(
+      () => validateEnv({ ...productionConfig, CORS_ORIGINS: '' }),
+      /CORS_ORIGINS: an explicit comma-separated allowlist/,
     );
   });
 

@@ -109,27 +109,47 @@ export class MerchantsService {
       channel: 'wallet',
       amount,
     });
-    await this.limits.assertWithinLimits(
-      payer.id,
-      payer.tier,
-      amount + feeDetail.fee,
-    );
 
     // Legacy seeded catalogue entries still post to the shared system merchant
     // ledger; owner onboarding and merchant QR payments use dedicated accounts.
-    const transaction = await this.payments.paySystem({
-      from: payer,
-      system: SYSTEM_LEDGER_ACCOUNTS.merchant,
-      amount,
-      fee: feeDetail.fee,
-      feeDetail,
-      note: input.note,
-      type: 'payment',
-      category: 'merchant',
-      counterparty: merchant.name,
-      counterpartyDetail: merchant.identifier,
-      idempotencyKey: input.idempotencyKey,
-      metadata: { merchantId: merchant.id },
+    const transaction = await this.prisma.$transaction(async (tx) => {
+      const replayed = input.idempotencyKey
+        ? await tx.transaction.findUnique({
+            where: {
+              userId_idempotencyKey: {
+                userId,
+                idempotencyKey: input.idempotencyKey,
+              },
+            },
+          })
+        : null;
+
+      if (!replayed) {
+        await this.limits.assertWithinLimitsForUpdate(
+          tx,
+          payer.id,
+          payer.tier,
+          amount + feeDetail.fee,
+        );
+      }
+
+      return this.payments.paySystem(
+        {
+          from: payer,
+          system: SYSTEM_LEDGER_ACCOUNTS.merchant,
+          amount,
+          fee: feeDetail.fee,
+          feeDetail,
+          note: input.note,
+          type: 'payment',
+          category: 'merchant',
+          counterparty: merchant.name,
+          counterpartyDetail: merchant.identifier,
+          idempotencyKey: input.idempotencyKey,
+          metadata: { merchantId: merchant.id },
+        },
+        tx,
+      );
     });
 
     return { transaction, merchantName: merchant.name, fee: Number(feeDetail.fee) };
@@ -243,7 +263,12 @@ export class MerchantsService {
           where: { id: application.id, registrationFeeAmount: null },
           data: { registrationFeeAmount: feeAmount },
         });
-        await this.limits.assertWithinLimits(payer.id, payer.tier, feeAmount);
+        await this.limits.assertWithinLimitsForUpdate(
+          tx,
+          payer.id,
+          payer.tier,
+          feeAmount,
+        );
 
         await this.payments.paySystem(
           {
@@ -525,7 +550,6 @@ export class MerchantsService {
       throw new BadRequestException('A merchant cannot pay its own QR code');
     }
     const amount = this.resolveAmount(qr, input.amount);
-    await this.limits.assertWithinLimits(payer.id, payer.tier, amount);
 
     try {
       const transaction = await this.prisma.$transaction(async (tx) => {
@@ -563,6 +587,13 @@ export class MerchantsService {
         if (claimed.count !== 1) {
           throw new ConflictException('Merchant QR code is expired, revoked, or already used');
         }
+
+        await this.limits.assertWithinLimitsForUpdate(
+          tx,
+          payer.id,
+          payer.tier,
+          amount,
+        );
 
         return this.payments.paySystem(
           {

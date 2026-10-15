@@ -44,7 +44,3 @@ export { SettingsRow } from '@/components/ui/settings-row';
 export type { SettingsRowProps } from '@/components/ui/settings-row';
 export { Skeleton, SkeletonRows } from '@/components/ui/skeleton';
 export type { SkeletonProps } from '@/components/ui/skeleton';
-export { StatusBadge } from '@/components/ui/status-badge';
-export type { StatusBadgeProps } from '@/components/ui/status-badge';
-export { TransactionItem } from '@/components/ui/transaction-item';
-export type { TransactionItemProps } from '@/components/ui/transaction-item';

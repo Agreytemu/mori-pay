@@ -147,7 +147,6 @@ export class WithdrawalsService {
         'The withdrawal fee changed. Review the updated fee and total before confirming.',
       );
     }
-    await this.limits.assertWithinLimits(user.id, user.tier, amount + fee);
 
     const available =
       user.wallet?.ledgerAccounts.find(
@@ -175,6 +174,13 @@ export class WithdrawalsService {
           return { transaction: existing, isNew: false };
         }
       }
+
+      await this.limits.assertWithinLimitsForUpdate(
+        client,
+        user.id,
+        user.tier,
+        amount + fee,
+      );
 
       const transaction = await client.transaction.create({
         data: {

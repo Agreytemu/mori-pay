@@ -1,8 +1,17 @@
 import { z } from 'zod';
 
+/** Secrets shipped in `.env.example`; never acceptable in production. */
+const DEV_JWT_DEFAULTS = new Set([
+  'dev-access-secret-change-me-32chars',
+  'dev-refresh-secret-change-me-32chars',
+]);
+
+/** Minimum entropy for access/refresh signing secrets in production. */
+const MIN_JWT_SECRET_LENGTH = 32;
+
 /**
  * Runtime validation of environment variables. If any value is missing or
- * malformed the process exits before the app starts — no silent misconfig.
+ * malformed the process exits before the app starts �?" no silent misconfig.
  */
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -105,16 +114,46 @@ export function validateEnv(config: Record<string, unknown>): Env {
   }
 
   if (result.data.NODE_ENV === 'production') {
-    const weakJwtSecrets = [
-      ['JWT_ACCESS_SECRET', result.data.JWT_ACCESS_SECRET],
-      ['JWT_REFRESH_SECRET', result.data.JWT_REFRESH_SECRET],
-    ].filter(([, value]) => value.length < 16);
+    const jwtProblems: string[] = [];
+    const access = result.data.JWT_ACCESS_SECRET;
+    const refresh = result.data.JWT_REFRESH_SECRET;
 
-    if (weakJwtSecrets.length > 0) {
+    for (const [key, value] of [
+      ['JWT_ACCESS_SECRET', access],
+      ['JWT_REFRESH_SECRET', refresh],
+    ] as const) {
+      if (!value || DEV_JWT_DEFAULTS.has(value)) {
+        jwtProblems.push(
+          `  - ${key}: must be explicitly set to a unique secret in production (development defaults are rejected)`,
+        );
+      } else if (value.length < MIN_JWT_SECRET_LENGTH) {
+        jwtProblems.push(
+          `  - ${key}: must be at least ${MIN_JWT_SECRET_LENGTH} characters in production`,
+        );
+      }
+    }
+
+    if (access === refresh) {
+      jwtProblems.push(
+        '  - JWT_REFRESH_SECRET: must differ from JWT_ACCESS_SECRET',
+      );
+    }
+
+    if (jwtProblems.length > 0) {
       throw new Error(
-        `Invalid environment configuration:\n${weakJwtSecrets
-          .map(([key]) => `  - ${key}: must be at least 16 characters in production`)
-          .join('\n')}`,
+        `Invalid environment configuration:\n${jwtProblems.join('\n')}`,
+      );
+    }
+
+    const corsOrigins = result.data.CORS_ORIGINS.split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    if (
+      corsOrigins.length === 0 ||
+      corsOrigins.some((origin) => origin.includes('*'))
+    ) {
+      throw new Error(
+        'Invalid environment configuration:\n  - CORS_ORIGINS: an explicit comma-separated allowlist of origins is required in production (wildcards are not allowed)',
       );
     }
   }

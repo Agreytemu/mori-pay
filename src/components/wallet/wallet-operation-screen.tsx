@@ -394,10 +394,13 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         idempotencyKey: idempotencyKeys.current.get(intent, 'withdrawal'),
       });
       await refreshWallet();
-      const outcome =
-        result.transaction.status === 'pending'
-          ? await pollUntilSettled(result.transaction)
-          : { status: result.transaction.status, transaction: result.transaction };
+      const settled =
+        result.transaction.status === 'completed' ||
+        result.transaction.status === 'failed' ||
+        result.transaction.status === 'cancelled';
+      const outcome = settled
+        ? { status: result.transaction.status, transaction: result.transaction }
+        : await pollUntilSettled(result.transaction);
       setResultTransaction(outcome.transaction);
       if (outcome.status === 'completed') {
         idempotencyKeys.current.clear(intent);

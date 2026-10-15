@@ -9,7 +9,12 @@ export type TransactionType =
   | 'deposit'
   | 'withdrawal';
 
-export type TransactionStatus = 'completed' | 'pending' | 'failed' | 'cancelled';
+export type TransactionStatus =
+  | 'completed'
+  | 'processing'
+  | 'pending'
+  | 'failed'
+  | 'cancelled';
 
 export type TransactionCategory =
   | 'person'
@@ -60,6 +65,7 @@ export const TRANSACTION_TYPE_LABEL: Record<TransactionType, string> = {
 
 export const TRANSACTION_STATUS_LABEL: Record<TransactionStatus, string> = {
   completed: 'Completed',
+  processing: 'Processing',
   pending: 'Pending',
   failed: 'Failed',
   cancelled: 'Cancelled',
@@ -91,6 +97,7 @@ export const TRANSACTION_STATUS_OPTIONS: readonly {
 }[] = [
   { value: 'all', label: 'All' },
   { value: 'completed', label: 'Completed' },
+  { value: 'processing', label: 'Processing' },
   { value: 'pending', label: 'Pending' },
   { value: 'failed', label: 'Failed' },
   { value: 'cancelled', label: 'Cancelled' },

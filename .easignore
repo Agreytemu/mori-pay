@@ -1,0 +1,65 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# editor/app backups that may contain secrets
+*.backup
+
+# typescript
+*.tsbuildinfo
+
+example
+
+# generated native folders
+/ios
+/android
+
+# monorepo: backend build output
+server/dist/
+server/dist-test/
+server/coverage/
+server/.env
+server/src/generated/
+
+# env files (keep examples committed)
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+logs/
+
+# Local receipt image; do not upload user data to EAS
+/assets/images/receipt example .jpg

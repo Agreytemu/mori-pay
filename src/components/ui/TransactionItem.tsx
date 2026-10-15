@@ -10,6 +10,7 @@ import { formatAmount, formatDateTime, formatTime } from '@/utils/format';
 
 const STATUS_TONE: Record<TransactionStatus, StateTone> = {
   completed: 'success',
+  processing: 'warning',
   pending: 'warning',
   failed: 'error',
   cancelled: 'neutral',
@@ -17,6 +18,7 @@ const STATUS_TONE: Record<TransactionStatus, StateTone> = {
 
 const STATUS_ICON = {
   completed: 'success',
+  processing: 'pending',
   pending: 'pending',
   failed: 'failed',
   cancelled: 'warning',

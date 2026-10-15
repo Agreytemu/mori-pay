@@ -82,7 +82,7 @@ describe('merchant onboarding and QR payments', () => {
       } as never,
       {} as never,
       { verifyPin: async () => undefined } as never,
-      { assertWithinLimits: async () => undefined } as never,
+      { assertWithinLimits: async () => undefined, assertWithinLimitsForUpdate: async () => undefined } as never,
     );
 
     await assert.rejects(
@@ -189,3 +189,4 @@ describe('merchant onboarding and QR payments', () => {
     );
   });
 });
+

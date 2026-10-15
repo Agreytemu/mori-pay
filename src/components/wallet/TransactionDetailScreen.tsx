@@ -36,6 +36,7 @@ const CHANNEL_LABEL: Record<Transaction['channel'], string> = {
 
 const STATUS_TONE: Record<Transaction['status'], StateTone> = {
   completed: 'success',
+  processing: 'warning',
   pending: 'warning',
   failed: 'error',
   cancelled: 'neutral',

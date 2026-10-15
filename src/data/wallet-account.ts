@@ -19,7 +19,7 @@ export type WalletActivity = {
   date: string;
   amount: number;
   direction: 'credit' | 'debit';
-  status: 'Completed' | 'Pending';
+  status: 'Completed' | 'Processing' | 'Pending' | 'Failed' | 'Cancelled';
   icon: IconName;
 };
 

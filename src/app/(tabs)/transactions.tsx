@@ -52,13 +52,18 @@ export default function TransactionsScreen() {
       setError(null);
       setItems([]);
       setCursor(null);
-      const snapshot = await listTransactions({ q: q || undefined, limit: 25 }).then((r) => ({
-        items: r.items.map(toUiTransaction),
-        nextCursor: r.nextCursor,
-      }));
-      setItems(snapshot.items);
-      setCursor(snapshot.nextCursor);
-      setLoading(false);
+      try {
+        const snapshot = await listTransactions({ q: q || undefined, limit: 25 }).then((r) => ({
+          items: r.items.map(toUiTransaction),
+          nextCursor: r.nextCursor,
+        }));
+        setItems(snapshot.items);
+        setCursor(snapshot.nextCursor);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not load your transactions.');
+      } finally {
+        setLoading(false);
+      }
     },
     []
   );

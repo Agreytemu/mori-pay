@@ -45,6 +45,7 @@ import {
 import { AppConfigService } from '../config/app-config.service.js';
 import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import type { Prisma } from '../generated/prisma/client.js';
 import { SMS_PROVIDER, type SmsProvider } from '../sms/sms.provider.js';
 import {
   toAuthUser,
@@ -242,12 +243,8 @@ export class AuthService {
       throw new UnauthorizedException('This verification code is invalid');
     }
 
-    await this.prisma.$transaction([
-      this.prisma.emailChallenge.update({
-        where: { id: challenge.id },
-        data: { consumedAt: new Date() },
-      }),
-      this.prisma.user.update({
+    await this.consumeEmailChallenge(challenge.id, async (tx) => {
+      await tx.user.update({
         where: { id: user.id },
         data: {
           emailVerifiedAt: new Date(),
@@ -255,8 +252,8 @@ export class AuthService {
           passwordFailedCount: 0,
           passwordLockedUntil: null,
         },
-      }),
-    ]);
+      });
+    });
     return this.createSession(user.id, input.device);
   }
 
@@ -348,24 +345,21 @@ export class AuthService {
     }
 
     const now = new Date();
-    await this.prisma.$transaction([
-      this.prisma.emailChallenge.update({
-        where: { id: challenge.id },
-        data: { consumedAt: now },
-      }),
-      this.prisma.user.update({
+    const passwordHash = await hashPassword(input.password);
+    await this.consumeEmailChallenge(challenge.id, async (tx) => {
+      await tx.user.update({
         where: { id: user.id },
         data: {
-          passwordHash: await hashPassword(input.password),
+          passwordHash,
           passwordFailedCount: 0,
           passwordLockedUntil: null,
         },
-      }),
-      this.prisma.refreshToken.updateMany({
+      });
+      await tx.refreshToken.updateMany({
         where: { userId: user.id, revokedAt: null },
         data: { revokedAt: now },
-      }),
-    ]);
+      });
+    });
   }
 
   async requestOtp(input: RequestOtpInput): Promise<OtpChallengeResult> {
@@ -966,6 +960,29 @@ export class AuthService {
       retryAfter: OTP_RESEND_INTERVAL_SECONDS,
       ...(this.config.isProduction ? {} : { devCode: code }),
     };
+  }
+
+  /**
+   * Atomically claims a one-time email challenge before running `apply`.
+   * A concurrent request that already consumed the challenge loses the
+   * conditional update and is rejected, so a code can never be redeemed twice.
+   */
+  private async consumeEmailChallenge(
+    challengeId: string,
+    apply: (tx: Prisma.TransactionClient) => Promise<void>,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.emailChallenge.updateMany({
+        where: { id: challengeId, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      if (claimed.count !== 1) {
+        throw new UnauthorizedException(
+          'This verification code has already been used',
+        );
+      }
+      await apply(tx);
+    });
   }
 
   private async getValidEmailChallenge(

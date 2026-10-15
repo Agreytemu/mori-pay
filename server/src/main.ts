@@ -9,15 +9,12 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { API_PREFIX } from './common/constants.js';
+import { installBigIntJsonSerialization } from './common/bigint-json.js';
 import { AppConfigService } from './config/app-config.service.js';
 
-// TZS amounts are stored as BigInt in Postgres; teach JSON how to serialise them.
-// Amounts stay well within Number.MAX_SAFE_INTEGER.
-(BigInt.prototype as unknown as { toJSON: () => number }).toJSON = function (
-  this: bigint,
-) {
-  return Number(this);
-};
+// TZS amounts are stored as BigInt in Postgres; serialise them without losing
+// precision (in-range values stay numbers to preserve the API contract).
+installBigIntJsonSerialization();
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, {

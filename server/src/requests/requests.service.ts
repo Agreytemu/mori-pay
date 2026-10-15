@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -23,6 +24,7 @@ import { PaymentsService } from '../payments/payments.service.js';
 import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { WalletService } from '../wallet/wallet.service.js';
+import { toTransaction } from '../wallet/wallet.mapper.js';
 
 const REQUEST_TTL_DAYS = 7;
 
@@ -149,6 +151,52 @@ export class RequestsService {
     if (request.payerPhone !== payer.phone) {
       throw new ForbiddenException('This request is not addressed to you');
     }
+
+    // Idempotent replay: the same key for the same request returns the original
+    // result instead of failing (or, worse, moving money again).
+    if (input.idempotencyKey) {
+      const existing = await this.prisma.transaction.findUnique({
+        where: {
+          userId_idempotencyKey: {
+            userId,
+            idempotencyKey: input.idempotencyKey,
+          },
+        },
+      });
+      if (existing) {
+        const metadata = this.metadataObject(existing.metadata);
+        if (
+          existing.type !== 'send' ||
+          existing.direction !== 'debit' ||
+          metadata?.moneyRequestId !== request.id ||
+          existing.amount !== request.amount
+        ) {
+          throw new ConflictException(
+            'This idempotency key was already used for a different transaction.',
+          );
+        }
+        const [updated, requesterRow] = await Promise.all([
+          this.prisma.moneyRequest.findUniqueOrThrow({
+            where: { id: request.id },
+          }),
+          this.prisma.user.findUniqueOrThrow({
+            where: { id: request.requesterId },
+            select: { fullName: true },
+          }),
+        ]);
+        return {
+          request: this.toDto(
+            updated,
+            'incoming',
+            requesterRow.fullName,
+            payer.fullName,
+          ),
+          transaction: toTransaction(existing),
+          fee: Number(existing.fee),
+        };
+      }
+    }
+
     if (request.status !== 'pending') {
       throw new BadRequestException('This request is no longer payable');
     }
@@ -174,11 +222,6 @@ export class RequestsService {
       channel: 'wallet',
       amount: request.amount,
     });
-    await this.limits.assertWithinLimits(
-      userId,
-      payer.tier,
-      request.amount + feeDetail.fee,
-    );
 
     const { transaction, updated } = await this.prisma.$transaction(
       async (client) => {
@@ -194,6 +237,13 @@ export class RequestsService {
           throw new BadRequestException('This request is no longer payable');
         }
 
+        await this.limits.assertWithinLimitsForUpdate(
+          client,
+          userId,
+          payer.tier,
+          request.amount + feeDetail.fee,
+        );
+
         const transaction = await this.payments.transferToUser(
           {
             from: payer,
@@ -205,6 +255,7 @@ export class RequestsService {
             type: 'send',
             category: 'person',
             idempotencyKey: input.idempotencyKey,
+            metadata: { moneyRequestId: request.id },
           },
           client,
         );
@@ -242,6 +293,14 @@ export class RequestsService {
     if (updated.count !== 1) {
       throw new BadRequestException('Only pending requests can be cancelled');
     }
+  }
+
+  private metadataObject(
+    value: unknown,
+  ): Record<string, unknown> | null {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
   }
 
   private toDto(

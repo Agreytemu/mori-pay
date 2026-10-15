@@ -488,6 +488,7 @@ describe('provider request outcomes', () => {
       } as unknown as SettlementService,
       {
         assertWithinLimits: async () => undefined,
+        assertWithinLimitsForUpdate: async () => undefined,
       } as unknown as LimitsService,
     );
 
@@ -583,6 +584,7 @@ describe('provider request outcomes', () => {
       } as unknown as SettlementService,
       {
         assertWithinLimits: async () => undefined,
+        assertWithinLimitsForUpdate: async () => undefined,
       } as unknown as LimitsService,
     );
 
@@ -666,6 +668,7 @@ describe('provider request outcomes', () => {
       } as unknown as SettlementService,
       {
         assertWithinLimits: async () => undefined,
+        assertWithinLimitsForUpdate: async () => undefined,
       } as unknown as LimitsService,
     );
 
@@ -683,3 +686,4 @@ describe('provider request outcomes', () => {
     assert.equal(failed, false);
   });
 });
+
