@@ -398,6 +398,21 @@ model FeeRule {
   @@index([type, channel])
 }
 
+model Promotion {
+  id        String    @id @default(cuid())
+  title     String
+  body      String
+  placement String
+  imageUrl  String?
+  active    Boolean   @default(true)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([placement, active])
+}
+
 model LimitUsage {
   id     String   @id @default(cuid())
   userId String

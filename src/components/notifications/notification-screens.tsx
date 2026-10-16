@@ -18,6 +18,7 @@ import {
 import type { AppNotification } from '@/data/mock-notifications';
 import { useAppTheme } from '@/theme';
 import { formatMoney } from '@/utils/format-money';
+import { PromotionBanner } from '@/components/promotions/promotion-banner';
 import { NotificationEmptyState, NotificationIcon } from '@/components/notifications/notification-components';
 
 function Header({ title, subtitle, onBack, right }: {
@@ -108,6 +109,8 @@ export function NotificationsScreen() {
             ) : undefined
           }
         />
+
+        <PromotionBanner placement="notification" />
 
         {error || actionError ? (
           <Pressable onPress={() => {

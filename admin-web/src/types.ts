@@ -25,11 +25,22 @@ export type AdminCapability =
   | 'admin:merchant:read'
   | 'admin:merchant:write'
   | 'admin:user:read'
+  | 'admin:user:write'
   | 'admin:transaction:read'
   | 'admin:audit:read'
   | 'admin:settings:read'
   | 'admin:settings:write'
-  | 'admin:staff:manage';
+  | 'admin:staff:manage'
+  | 'admin:session:read'
+  | 'admin:session:write'
+  | 'admin:webhook:read'
+  | 'admin:webhook:write'
+  | 'admin:reconciliation:read'
+  | 'admin:reconciliation:write'
+  | 'admin:report:read'
+  | 'admin:promotion:read'
+  | 'admin:promotion:write'
+  | 'admin:health:read';
 
 export type AdminStaffSearchPage = {
   items: Array<{
@@ -75,6 +86,9 @@ export type AdminAuditPage = {
     actor: { id: string; name: string } | null;
     action: string;
     createdAt: string;
+    ip: string | null;
+    userAgent: string | null;
+    metadata: unknown;
   }>;
   page: number;
   pageSize: number;
@@ -183,7 +197,7 @@ export type AdminUserDetail = {
   kycLevel: number;
   createdAt: string;
   wallet: { currency: string; status: string; accountNumber: string } | null;
-  devices: Array<{ platform: string; lastActiveAt: string; isCurrent: boolean }>;
+  devices: Array<{ id: string; name: string; platform: string; lastActiveAt: string; isCurrent: boolean }>;
   sessions: { active: number; revoked: number };
 };
 
@@ -230,3 +244,154 @@ export type AdminSystemSettings = {
 };
 
 export type RegistrationFee = { amount: number | null };
+
+/* ------------------------------------------------------------------ */
+/* Sessions & devices                                                 */
+/* ------------------------------------------------------------------ */
+
+export type AdminSessionResult = {
+  id: string;
+  user: { id: string; name: string; memberId: string };
+  device: { name: string; platform: string } | null;
+  isActive: boolean;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastActiveAt: string | null;
+};
+
+export type AdminSessionSearchPage = {
+  items: AdminSessionResult[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+/* ------------------------------------------------------------------ */
+/* Webhook events                                                     */
+/* ------------------------------------------------------------------ */
+
+export type AdminWebhookEventResult = {
+  id: string;
+  eventId: string;
+  event: string;
+  transactionReference: string;
+  processed: boolean;
+  errorPresent: boolean;
+  error: string | null;
+  createdAt: string;
+  processedAt: string | null;
+};
+
+export type AdminWebhookEventPage = {
+  items: AdminWebhookEventResult[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+/* ------------------------------------------------------------------ */
+/* Reconciliation                                                     */
+/* ------------------------------------------------------------------ */
+
+export type AdminReconciliationResult = {
+  id: string;
+  reference: string;
+  type: string;
+  status: string;
+  channel: string;
+  amount: string;
+  currency: string;
+  provider: string | null;
+  providerStatus: string | null;
+  ageSeconds: number;
+  createdAt: string;
+  settledAt: string | null;
+};
+
+export type AdminReconciliationPage = {
+  items: AdminReconciliationResult[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  staleSeconds: number;
+};
+
+/* ------------------------------------------------------------------ */
+/* Reports                                                            */
+/* ------------------------------------------------------------------ */
+
+export type AdminReport = {
+  generatedAt: string;
+  from: string | null;
+  to: string | null;
+  users: { created: number; active: number; restricted: number };
+  transactions: {
+    total: number;
+    completed: number;
+    failed: number;
+    pending: number;
+    volume: string;
+    fees: string;
+    currency: string;
+    byChannel: Array<{ channel: string; count: number; volume: string }>;
+    byStatus: Array<{ status: string; count: number }>;
+  };
+  merchants: { applications: number; approved: number; activeAccounts: number };
+};
+
+/* ------------------------------------------------------------------ */
+/* System health                                                      */
+/* ------------------------------------------------------------------ */
+
+export type AdminHealth = {
+  generatedAt: string;
+  status: 'ok' | 'degraded';
+  uptimeSeconds: number;
+  environment: string;
+  database: { ok: boolean; responseMs: number };
+  heapUsedMb: number;
+  webhooks: { awaitingProcessing: number; failedProcessing: number };
+};
+
+/* ------------------------------------------------------------------ */
+/* Promotions & banners                                               */
+/* ------------------------------------------------------------------ */
+
+export type PromotionPlacement = 'home_banner' | 'wallet_banner' | 'notification';
+
+export type Promotion = {
+  id: string;
+  title: string;
+  body: string;
+  placement: PromotionPlacement;
+  imageUrl: string | null;
+  active: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PromotionPage = {
+  items: Promotion[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type PromotionInput = {
+  title: string;
+  body: string;
+  placement: PromotionPlacement;
+  imageUrl?: string;
+  active: boolean;
+  startsAt?: string;
+  endsAt?: string;
+};
+
+export type PromotionUpdate = Partial<PromotionInput>;

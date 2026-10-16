@@ -32,6 +32,9 @@ import type {
   PinStatus,
   PinSignInInput,
   PreviewTransferInput,
+  PromotionPlacement,
+  PublicPromotion,
+  PublicPromotionsResponse,
   RecipientLookup,
   ReceiveCode,
   RefreshTokenInput,
@@ -303,6 +306,22 @@ export function listTransactions(params: {
 
 export function getTransaction(id: string): Promise<Transaction> {
   return request<Transaction>(`/wallet/transactions/${encodeURIComponent(id)}`);
+}
+
+/* ---------------------------------------------------------------- promotions */
+
+export function listPromotions(
+  placement?: PromotionPlacement
+): Promise<PublicPromotionsResponse> {
+  return request<PublicPromotionsResponse>('/promotions', { query: { placement } });
+}
+
+/** Convenience wrapper returning the first active promotion for a placement. */
+export async function getActivePromotion(
+  placement: PromotionPlacement
+): Promise<PublicPromotion | null> {
+  const { items } = await listPromotions(placement);
+  return items[0] ?? null;
 }
 
 /* -------------------------------------------------------------------- topups */

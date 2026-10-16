@@ -29,11 +29,22 @@ export const ADMIN_CAPABILITIES = [
   'admin:merchant:read',
   'admin:merchant:write',
   'admin:user:read',
+  'admin:user:write',
   'admin:transaction:read',
   'admin:audit:read',
   'admin:settings:read',
   'admin:settings:write',
   'admin:staff:manage',
+  'admin:session:read',
+  'admin:session:write',
+  'admin:webhook:read',
+  'admin:webhook:write',
+  'admin:reconciliation:read',
+  'admin:reconciliation:write',
+  'admin:report:read',
+  'admin:promotion:read',
+  'admin:promotion:write',
+  'admin:health:read',
 ] as const;
 
 export type AdminCapability = (typeof ADMIN_CAPABILITIES)[number];
@@ -47,18 +58,50 @@ export const ADMIN_ROLE_CAPABILITIES: Record<AdminStaffRole, readonly AdminCapab
     'admin:overview',
     'admin:merchant:read',
     'admin:merchant:write',
+    'admin:promotion:read',
+    'admin:promotion:write',
   ],
   customer_support: [
     'admin:access',
     'admin:overview',
     'admin:user:read',
+    'admin:user:write',
+    'admin:session:read',
+    'admin:session:write',
   ],
   finance_reconciliation: [
     'admin:access',
     'admin:overview',
     'admin:transaction:read',
+    'admin:report:read',
+    'admin:webhook:read',
+    'admin:reconciliation:read',
+    'admin:reconciliation:write',
+    'admin:health:read',
   ],
 };
+
+export const userStatusSchema = z.enum(['active', 'pending', 'restricted']);
+
+export const accountTierSchema = z.enum(['Standard', 'Verified']);
+
+export const adminUserStatusUpdateSchema = z.object({
+  status: userStatusSchema,
+  reason: z.string().trim().min(3).max(200).optional(),
+});
+export type AdminUserStatusUpdate = z.infer<typeof adminUserStatusUpdateSchema>;
+
+export const adminUserKycUpdateSchema = z.object({
+  kycLevel: z.number().int().min(0).max(3),
+  reason: z.string().trim().min(3).max(200).optional(),
+});
+export type AdminUserKycUpdate = z.infer<typeof adminUserKycUpdateSchema>;
+
+export const adminUserTierUpdateSchema = z.object({
+  tier: accountTierSchema,
+  reason: z.string().trim().min(3).max(200).optional(),
+});
+export type AdminUserTierUpdate = z.infer<typeof adminUserTierUpdateSchema>;
 
 export function capabilitiesForAdminRole(role: AdminStaffRole): readonly AdminCapability[] {
   return ADMIN_ROLE_CAPABILITIES[role];
@@ -134,6 +177,9 @@ export type AdminAuditEntry = {
   actor: { id: string; name: string } | null;
   action: string;
   createdAt: string;
+  ip: string | null;
+  userAgent: string | null;
+  metadata: unknown;
 };
 
 export type AdminAuditPage = {
@@ -254,6 +300,8 @@ export type AdminUserDetail = {
     accountNumber: string;
   } | null;
   devices: Array<{
+    id: string;
+    name: string;
     platform: string;
     lastActiveAt: string;
     isCurrent: boolean;
@@ -325,4 +373,193 @@ export type AdminSystemSettings = {
     name: string;
     configuration: 'configured' | 'incomplete';
   }>;
+};
+
+/* ------------------------------------------------------------------ */
+/* Sessions & devices                                                 */
+/* ------------------------------------------------------------------ */
+
+export const adminSessionQuerySchema = adminListQuerySchema.extend({
+  q: z.string().trim().min(1).max(80).optional(),
+  state: z.enum(['active', 'revoked']).optional(),
+});
+export type AdminSessionQuery = z.infer<typeof adminSessionQuerySchema>;
+
+export type AdminSessionResult = {
+  id: string;
+  user: { id: string; name: string; memberId: string };
+  device: { name: string; platform: string } | null;
+  isActive: boolean;
+  createdAt: string;
+  expiresAt: string;
+  revokedAt: string | null;
+  lastActiveAt: string | null;
+};
+
+export type AdminSessionSearchPage = {
+  items: AdminSessionResult[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+/* ------------------------------------------------------------------ */
+/* Webhook events                                                     */
+/* ------------------------------------------------------------------ */
+
+export const adminWebhookQuerySchema = adminListQuerySchema.extend({
+  q: z.string().trim().min(1).max(120).optional(),
+  state: z.enum(['pending', 'processed', 'failed']).optional(),
+});
+export type AdminWebhookQuery = z.infer<typeof adminWebhookQuerySchema>;
+
+export type AdminWebhookEventResult = {
+  id: string;
+  eventId: string;
+  event: string;
+  transactionReference: string;
+  processed: boolean;
+  errorPresent: boolean;
+  error: string | null;
+  createdAt: string;
+  processedAt: string | null;
+};
+
+export type AdminWebhookEventPage = {
+  items: AdminWebhookEventResult[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+/* ------------------------------------------------------------------ */
+/* Reconciliation                                                     */
+/* ------------------------------------------------------------------ */
+
+export const adminReconciliationQuerySchema = adminListQuerySchema.extend({
+  state: z.enum(['stale', 'unsettled', 'all']).default('stale'),
+});
+export type AdminReconciliationQuery = z.infer<typeof adminReconciliationQuerySchema>;
+
+export type AdminReconciliationResult = {
+  id: string;
+  reference: string;
+  type: string;
+  status: string;
+  channel: string;
+  amount: string;
+  currency: string;
+  provider: string | null;
+  providerStatus: string | null;
+  ageSeconds: number;
+  createdAt: string;
+  settledAt: string | null;
+};
+
+export type AdminReconciliationPage = {
+  items: AdminReconciliationResult[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  staleSeconds: number;
+};
+
+/* ------------------------------------------------------------------ */
+/* Reports                                                            */
+/* ------------------------------------------------------------------ */
+
+export const adminReportQuerySchema = z.object({
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+}).refine(
+  ({ from, to }) => !from || !to || from <= to,
+  { message: 'The start date must be before the end date', path: ['from'] },
+);
+export type AdminReportQuery = z.infer<typeof adminReportQuerySchema>;
+
+export type AdminReport = {
+  generatedAt: string;
+  from: string | null;
+  to: string | null;
+  users: { created: number; active: number; restricted: number };
+  transactions: {
+    total: number;
+    completed: number;
+    failed: number;
+    pending: number;
+    volume: string;
+    fees: string;
+    currency: string;
+    byChannel: Array<{ channel: string; count: number; volume: string }>;
+    byStatus: Array<{ status: string; count: number }>;
+  };
+  merchants: {
+    applications: number;
+    approved: number;
+    activeAccounts: number;
+  };
+};
+
+/* ------------------------------------------------------------------ */
+/* System health                                                      */
+/* ------------------------------------------------------------------ */
+
+export type AdminHealth = {
+  generatedAt: string;
+  status: 'ok' | 'degraded';
+  uptimeSeconds: number;
+  environment: string;
+  database: { ok: boolean; responseMs: number };
+  heapUsedMb: number;
+  webhooks: { awaitingProcessing: number; failedProcessing: number };
+};
+
+/* ------------------------------------------------------------------ */
+/* Promotions & banners                                               */
+/* ------------------------------------------------------------------ */
+
+export const promotionPlacementSchema = z.enum(['home_banner', 'wallet_banner', 'notification']);
+export type PromotionPlacement = z.infer<typeof promotionPlacementSchema>;
+
+const promotionBaseSchema = z.object({
+  title: z.string().trim().min(2).max(120),
+  body: z.string().trim().min(2).max(400),
+  placement: promotionPlacementSchema,
+  imageUrl: z.string().trim().url().max(500).optional(),
+  active: z.boolean().default(true),
+  startsAt: z.coerce.date().optional(),
+  endsAt: z.coerce.date().optional(),
+});
+
+export const promotionInputSchema = promotionBaseSchema.refine(
+  ({ startsAt, endsAt }) => !startsAt || !endsAt || startsAt <= endsAt,
+  { message: 'The start date must be before the end date', path: ['startsAt'] },
+);
+export type PromotionInput = z.infer<typeof promotionInputSchema>;
+
+export const promotionUpdateSchema = promotionBaseSchema.partial();
+export type PromotionUpdate = z.infer<typeof promotionUpdateSchema>;
+
+export type Promotion = {
+  id: string;
+  title: string;
+  body: string;
+  placement: PromotionPlacement;
+  imageUrl: string | null;
+  active: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PromotionPage = {
+  items: Promotion[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };

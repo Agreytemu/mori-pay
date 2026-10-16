@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -20,11 +21,29 @@ import type {
   AdminTransactionSearchPage,
   AdminUserDetail,
   AdminUserSearchPage,
+  AdminUserStatusUpdate,
+  AdminUserKycUpdate,
+  AdminUserTierUpdate,
+  AdminSessionQuery,
+  AdminSessionSearchPage,
+  AdminWebhookQuery,
+  AdminWebhookEventPage,
+  AdminReconciliationQuery,
+  AdminReconciliationPage,
+  AdminReportQuery,
+  AdminReport,
+  AdminHealth,
+  Promotion,
+  PromotionInput,
+  PromotionUpdate,
+  PromotionPage,
 } from '@mori-pay/contracts';
 
 import { Prisma } from '../generated/prisma/client.js';
+import type { Promotion as PromotionRow } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/app-config.service.js';
+import { ReconciliationSweeper } from '../webhooks/reconciliation.sweeper.js';
 
 export type AdminAuditContext = { ip?: string; userAgent?: string };
 
@@ -33,6 +52,7 @@ export class AdminService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
+    private readonly sweeper: ReconciliationSweeper,
   ) {}
 
   async staffRole(userId: string): Promise<AdminStaffRole> {
@@ -362,6 +382,9 @@ export class AdminService {
           id: true,
           action: true,
           createdAt: true,
+          ip: true,
+          userAgent: true,
+          metadata: true,
           user: { select: { id: true, fullName: true } },
         },
         orderBy: { createdAt: 'desc' },
@@ -376,6 +399,9 @@ export class AdminService {
         id: record.id,
         action: record.action,
         createdAt: record.createdAt.toISOString(),
+        ip: record.ip,
+        userAgent: record.userAgent,
+        metadata: record.metadata ?? null,
         actor: record.user
           ? { id: record.user.id, name: record.user.fullName }
           : null,
@@ -596,6 +622,8 @@ export class AdminService {
         },
         devices: {
           select: {
+            id: true,
+            name: true,
             platform: true,
             lastActiveAt: true,
             isCurrent: true,
@@ -633,6 +661,8 @@ export class AdminService {
           }
         : null,
       devices: user.devices.map((device) => ({
+        id: device.id,
+        name: device.name,
         platform: device.platform,
         lastActiveAt: device.lastActiveAt.toISOString(),
         isCurrent: device.isCurrent,
@@ -741,6 +771,615 @@ export class AdminService {
     };
   }
 
+  async updateUserStatus(
+    userId: string,
+    input: AdminUserStatusUpdate,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<{ id: string; status: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, status: true, role: true },
+      });
+      if (!target) throw new NotFoundException('User record not found');
+      if (target.role === 'admin' && input.status !== 'active') {
+        throw new ConflictException(
+          'Administrator accounts are managed from Staff access, not here',
+        );
+      }
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: { status: input.status },
+        select: { id: true, status: true },
+      });
+      if (input.status !== 'active') {
+        await tx.refreshToken.updateMany({
+          where: { userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+      }
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.user.status.update',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: {
+            targetId: userId,
+            previousStatus: target.status,
+            status: updated.status,
+            reason: input.reason ?? null,
+          },
+        },
+      });
+      return updated;
+    });
+  }
+
+  async updateUserKyc(
+    userId: string,
+    input: AdminUserKycUpdate,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<{ id: string; kycLevel: number }> {
+    return this.prisma.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, kycLevel: true },
+      });
+      if (!target) throw new NotFoundException('User record not found');
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: { kycLevel: input.kycLevel },
+        select: { id: true, kycLevel: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.user.kyc.update',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: {
+            targetId: userId,
+            previousKycLevel: target.kycLevel,
+            kycLevel: updated.kycLevel,
+            reason: input.reason ?? null,
+          },
+        },
+      });
+      return updated;
+    });
+  }
+
+  async updateUserTier(
+    userId: string,
+    input: AdminUserTierUpdate,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<{ id: string; tier: string }> {
+    return this.prisma.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, tier: true },
+      });
+      if (!target) throw new NotFoundException('User record not found');
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: { tier: input.tier },
+        select: { id: true, tier: true },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.user.tier.update',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: {
+            targetId: userId,
+            previousTier: target.tier,
+            tier: updated.tier,
+            reason: input.reason ?? null,
+          },
+        },
+      });
+      return updated;
+    });
+  }
+
+  async revokeUserSessions(
+    userId: string,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<{ revoked: number }> {
+    return this.prisma.$transaction(async (tx) => {
+      const target = await tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      });
+      if (!target) throw new NotFoundException('User record not found');
+      const result = await tx.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.user.sessions.revoke',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: { targetId: userId, revoked: result.count },
+        },
+      });
+      return { revoked: result.count };
+    });
+  }
+
+  async revokeUserDevice(
+    userId: string,
+    deviceId: string,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<{ id: string; revokedAt: string }> {
+    const revokedAt = new Date();
+    return this.prisma.$transaction(async (tx) => {
+      const device = await tx.device.findFirst({
+        where: { id: deviceId, userId },
+        select: { id: true },
+      });
+      if (!device) throw new NotFoundException('Device record not found');
+      await tx.refreshToken.updateMany({
+        where: { deviceId, revokedAt: null },
+        data: { revokedAt },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.user.device.revoke',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: { targetId: userId, deviceId },
+        },
+      });
+      return { id: deviceId, revokedAt: revokedAt.toISOString() };
+    });
+  }
+
+  async sessions(query: AdminSessionQuery): Promise<AdminSessionSearchPage> {
+    const now = new Date();
+    const userFilter = query.q
+      ? {
+          user: {
+            is: {
+              OR: [
+                { id: query.q },
+                { phone: { startsWith: query.q } },
+                { memberId: { startsWith: query.q, mode: 'insensitive' as const } },
+                { fullName: { contains: query.q, mode: 'insensitive' as const } },
+              ],
+            },
+          },
+        }
+      : {};
+    const where: Prisma.RefreshTokenWhereInput = {
+      ...userFilter,
+      ...(query.state === 'active'
+        ? { revokedAt: null, expiresAt: { gt: now } }
+        : {}),
+      ...(query.state === 'revoked' ? { revokedAt: { not: null } } : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.refreshToken.findMany({
+        where,
+        select: {
+          id: true,
+          createdAt: true,
+          expiresAt: true,
+          revokedAt: true,
+          device: {
+            select: { name: true, platform: true, lastActiveAt: true },
+          },
+          user: {
+            select: { id: true, fullName: true, memberId: true },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.refreshToken.count({ where }),
+    ]);
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        user: {
+          id: row.user.id,
+          name: row.user.fullName,
+          memberId: maskIdentifier(row.user.memberId),
+        },
+        device: row.device
+          ? { name: row.device.name, platform: row.device.platform }
+          : null,
+        isActive: row.revokedAt === null && row.expiresAt > now,
+        createdAt: row.createdAt.toISOString(),
+        expiresAt: row.expiresAt.toISOString(),
+        revokedAt: row.revokedAt?.toISOString() ?? null,
+        lastActiveAt: row.device?.lastActiveAt.toISOString() ?? null,
+      })),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      totalPages: Math.ceil(total / query.pageSize),
+    };
+  }
+
+  async webhookEvents(query: AdminWebhookQuery): Promise<AdminWebhookEventPage> {
+    const where: Prisma.AblinerWebhookEventWhereInput = {
+      ...(query.state === 'pending' ? { processedAt: null, error: null } : {}),
+      ...(query.state === 'processed' ? { processedAt: { not: null } } : {}),
+      ...(query.state === 'failed' ? { error: { not: null } } : {}),
+      ...(query.q
+        ? {
+            OR: [
+              { eventId: query.q },
+              { event: { contains: query.q, mode: 'insensitive' as const } },
+              {
+                transactionReference: {
+                  contains: query.q,
+                  mode: 'insensitive' as const,
+                },
+              },
+            ],
+          }
+        : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.ablinerWebhookEvent.findMany({
+        where,
+        select: {
+          id: true,
+          eventId: true,
+          event: true,
+          transactionReference: true,
+          processedAt: true,
+          error: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.ablinerWebhookEvent.count({ where }),
+    ]);
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        eventId: row.eventId,
+        event: row.event,
+        transactionReference: maskIdentifier(row.transactionReference),
+        processed: row.processedAt !== null,
+        errorPresent: row.error !== null,
+        error: row.error,
+        createdAt: row.createdAt.toISOString(),
+        processedAt: row.processedAt?.toISOString() ?? null,
+      })),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      totalPages: Math.ceil(total / query.pageSize),
+    };
+  }
+
+  async reconciliation(
+    query: AdminReconciliationQuery,
+  ): Promise<AdminReconciliationPage> {
+    const { staleSeconds } = this.config.reconciliation;
+    const cutoff = new Date(Date.now() - staleSeconds * 1000);
+    const where: Prisma.TransactionWhereInput = {
+      provider: 'abliner',
+      ...(query.state === 'all'
+        ? {}
+        : {
+            status: { in: ['pending', 'processing'] },
+            ...(query.state === 'stale' ? { createdAt: { lt: cutoff } } : {}),
+          }),
+    };
+    const [rows, total] = await Promise.all([
+      this.prisma.transaction.findMany({
+        where,
+        select: {
+          id: true,
+          reference: true,
+          type: true,
+          status: true,
+          channel: true,
+          amount: true,
+          currency: true,
+          provider: true,
+          providerStatus: true,
+          createdAt: true,
+          settledAt: true,
+        },
+        orderBy: { createdAt: 'asc' },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.transaction.count({ where }),
+    ]);
+    const now = Date.now();
+    return {
+      items: rows.map((row) => ({
+        id: row.id,
+        reference: maskIdentifier(row.reference),
+        type: row.type,
+        status: row.status,
+        channel: row.channel,
+        amount: row.amount.toString(),
+        currency: row.currency,
+        provider: row.provider,
+        providerStatus: row.providerStatus,
+        ageSeconds: Math.max(0, Math.round((now - row.createdAt.getTime()) / 1000)),
+        createdAt: row.createdAt.toISOString(),
+        settledAt: row.settledAt?.toISOString() ?? null,
+      })),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      totalPages: Math.ceil(total / query.pageSize),
+      staleSeconds,
+    };
+  }
+
+  async triggerReconciliation(
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<{ checked: number }> {
+    const checked = await this.sweeper.sweep();
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actorId,
+        action: 'admin.reconciliation.trigger',
+        ip: context.ip ?? null,
+        userAgent: context.userAgent ?? null,
+        metadata: { checked },
+      },
+    });
+    return { checked };
+  }
+
+  async report(query: AdminReportQuery): Promise<AdminReport> {
+    const dateFilter = query.from || query.to
+      ? {
+          createdAt: {
+            ...(query.from ? { gte: query.from } : {}),
+            ...(query.to ? { lte: query.to } : {}),
+          },
+        }
+      : {};
+    const [
+      usersCreated,
+      activeUsers,
+      restrictedUsers,
+      totalTransactions,
+      completedTransactions,
+      failedTransactions,
+      pendingTransactions,
+      volumeAgg,
+      feesAgg,
+      byChannel,
+      byStatus,
+      applications,
+      approvedApplications,
+      activeAccounts,
+    ] = await Promise.all([
+      this.prisma.user.count({ where: dateFilter }),
+      this.prisma.user.count({ where: { status: 'active' } }),
+      this.prisma.user.count({ where: { status: 'restricted' } }),
+      this.prisma.transaction.count({ where: dateFilter }),
+      this.prisma.transaction.count({
+        where: { ...dateFilter, status: 'completed' },
+      }),
+      this.prisma.transaction.count({
+        where: { ...dateFilter, status: 'failed' },
+      }),
+      this.prisma.transaction.count({
+        where: { ...dateFilter, status: { in: ['pending', 'processing'] } },
+      }),
+      this.prisma.transaction.aggregate({
+        where: { ...dateFilter, status: 'completed' },
+        _sum: { amount: true },
+      }),
+      this.prisma.transaction.aggregate({
+        where: { ...dateFilter, status: 'completed' },
+        _sum: { fee: true },
+      }),
+      this.prisma.transaction.groupBy({
+        by: ['channel'],
+        where: dateFilter,
+        _count: { _all: true },
+        _sum: { amount: true },
+        orderBy: { channel: 'asc' },
+      }),
+      this.prisma.transaction.groupBy({
+        by: ['status'],
+        where: dateFilter,
+        _count: { _all: true },
+        orderBy: { status: 'asc' },
+      }),
+      this.prisma.merchantApplication.count({ where: dateFilter }),
+      this.prisma.merchantApplication.count({
+        where: { ...dateFilter, status: 'approved' },
+      }),
+      this.prisma.merchantAccount.count({ where: { status: 'active' } }),
+    ]);
+
+    return {
+      generatedAt: new Date().toISOString(),
+      from: query.from?.toISOString() ?? null,
+      to: query.to?.toISOString() ?? null,
+      users: {
+        created: usersCreated,
+        active: activeUsers,
+        restricted: restrictedUsers,
+      },
+      transactions: {
+        total: totalTransactions,
+        completed: completedTransactions,
+        failed: failedTransactions,
+        pending: pendingTransactions,
+        volume: (volumeAgg._sum.amount ?? 0n).toString(),
+        fees: (feesAgg._sum.fee ?? 0n).toString(),
+        currency: 'TZS',
+        byChannel: byChannel.map((row) => ({
+          channel: row.channel,
+          count: row._count._all,
+          volume: (row._sum.amount ?? 0n).toString(),
+        })),
+        byStatus: byStatus.map((row) => ({
+          status: row.status,
+          count: row._count._all,
+        })),
+      },
+      merchants: {
+        applications,
+        approved: approvedApplications,
+        activeAccounts,
+      },
+    };
+  }
+
+  async health(): Promise<AdminHealth> {
+    const started = Date.now();
+    let databaseOk = true;
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+    } catch {
+      databaseOk = false;
+    }
+    const responseMs = Date.now() - started;
+    const [awaiting, failed] = await Promise.all([
+      this.prisma.ablinerWebhookEvent.count({ where: { processedAt: null } }),
+      this.prisma.ablinerWebhookEvent.count({
+        where: { error: { not: null } },
+      }),
+    ]);
+    return {
+      generatedAt: new Date().toISOString(),
+      status: databaseOk ? 'ok' : 'degraded',
+      uptimeSeconds: Math.round(process.uptime()),
+      environment: this.config.nodeEnv,
+      database: { ok: databaseOk, responseMs },
+      heapUsedMb: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+      webhooks: {
+        awaitingProcessing: awaiting,
+        failedProcessing: failed,
+      },
+    };
+  }
+
+  async listPromotions(query: AdminListQuery): Promise<PromotionPage> {
+    const [rows, total] = await Promise.all([
+      this.prisma.promotion.findMany({
+        orderBy: { createdAt: 'desc' },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.promotion.count(),
+    ]);
+    return {
+      items: rows.map((row) => toPromotion(row)),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      totalPages: Math.ceil(total / query.pageSize),
+    };
+  }
+
+  async createPromotion(
+    input: PromotionInput,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<Promotion> {
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.promotion.create({
+        data: {
+          title: input.title,
+          body: input.body,
+          placement: input.placement,
+          imageUrl: input.imageUrl ?? null,
+          active: input.active,
+          startsAt: input.startsAt ?? null,
+          endsAt: input.endsAt ?? null,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.promotion.create',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: { promotionId: created.id, title: created.title },
+        },
+      });
+      return toPromotion(created);
+    });
+  }
+
+  async updatePromotion(
+    id: string,
+    input: PromotionUpdate,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<Promotion> {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.promotion.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundException('Promotion not found');
+      const updated = await tx.promotion.update({
+        where: { id },
+        data: {
+          ...(input.title !== undefined ? { title: input.title } : {}),
+          ...(input.body !== undefined ? { body: input.body } : {}),
+          ...(input.placement !== undefined ? { placement: input.placement } : {}),
+          ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl } : {}),
+          ...(input.active !== undefined ? { active: input.active } : {}),
+          ...(input.startsAt !== undefined ? { startsAt: input.startsAt } : {}),
+          ...(input.endsAt !== undefined ? { endsAt: input.endsAt } : {}),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.promotion.update',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: { promotionId: id },
+        },
+      });
+      return toPromotion(updated);
+    });
+  }
+
+  async deletePromotion(
+    id: string,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.promotion.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundException('Promotion not found');
+      await tx.promotion.delete({ where: { id } });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.promotion.delete',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: { promotionId: id, title: existing.title },
+        },
+      });
+    });
+  }
+
   private async recordSensitiveSearch(
     action: string,
     actorId: string,
@@ -795,4 +1434,19 @@ function maskEmail(value: string | null): string | null {
   if (!domain) return maskIdentifier(value);
   const visible = local.slice(-1);
   return `${'*'.repeat(Math.max(1, local.length - visible.length))}${visible}@${domain}`;
+}
+
+function toPromotion(row: PromotionRow): Promotion {
+  return {
+    id: row.id,
+    title: row.title,
+    body: row.body,
+    placement: row.placement as Promotion['placement'],
+    imageUrl: row.imageUrl,
+    active: row.active,
+    startsAt: row.startsAt?.toISOString() ?? null,
+    endsAt: row.endsAt?.toISOString() ?? null,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
 }

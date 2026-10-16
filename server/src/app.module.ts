@@ -19,6 +19,7 @@ import { LimitsModule } from './limits/limits.module.js';
 import { MerchantsModule } from './merchants/merchants.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { PromotionsModule } from './promotions/promotions.module.js';
 import { ReceiveCodeModule } from './qr/receive-code.module.js';
 import { RequestsModule } from './requests/requests.module.js';
 import { SettlementModule } from './settlement/settlement.module.js';
@@ -81,6 +82,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     LimitsModule,
     ReceiveCodeModule,
     PaymentsModule,
+    PromotionsModule,
     SettlementModule,
     AblinerModule,
     AuthModule,

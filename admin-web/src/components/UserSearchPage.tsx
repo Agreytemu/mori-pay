@@ -1,9 +1,24 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 
-import { AdminApiError, getAdminUser, searchAdminUsers } from '../api';
+import {
+  AdminApiError,
+  getAdminUser,
+  revokeAdminUserDevice,
+  revokeAdminUserSessions,
+  searchAdminUsers,
+  updateAdminUserKyc,
+  updateAdminUserStatus,
+  updateAdminUserTier,
+} from '../api';
 import type { AdminUserDetail, AdminUserSearchPage } from '../types';
 
-export function UserSearchPage() {
+export function UserSearchPage({
+  canManage,
+  canManageSessions,
+}: {
+  canManage: boolean;
+  canManageSessions: boolean;
+}) {
   const [input, setInput] = useState('');
   const [term, setTerm] = useState('');
   const [page, setPage] = useState(1);
@@ -15,6 +30,14 @@ export function UserSearchPage() {
   const [selectedUser, setSelectedUser] = useState<AdminUserDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
+
+  const [statusValue, setStatusValue] = useState<'active' | 'pending' | 'restricted'>('active');
+  const [tierValue, setTierValue] = useState<'Standard' | 'Verified'>('Standard');
+  const [kycValue, setKycValue] = useState('0');
+  const [reason, setReason] = useState('');
+  const [manageBusy, setManageBusy] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [noticeError, setNoticeError] = useState(false);
 
   const load = useCallback(async () => {
     if (!term) return;
@@ -32,6 +55,15 @@ export function UserSearchPage() {
   }, [page, searchVersion, term]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (!selectedUser) return;
+    setStatusValue((selectedUser.status as typeof statusValue) ?? 'active');
+    setTierValue((selectedUser.tier as typeof tierValue) ?? 'Standard');
+    setKycValue(String(selectedUser.kycLevel));
+    setReason('');
+    setNotice('');
+  }, [selectedUser]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,6 +89,25 @@ export function UserSearchPage() {
       setDetailError('Mori Pay could not load this customer record. Try again.');
     } finally {
       setDetailLoading(false);
+    }
+  }
+
+  async function runManage(action: () => Promise<unknown>, successMessage: string) {
+    if (!selectedUser || manageBusy) return;
+    setManageBusy(true);
+    setNotice('');
+    try {
+      await action();
+      setNoticeError(false);
+      setNotice(successMessage);
+      setSelectedUser(await getAdminUser(selectedUser.id));
+    } catch (failure) {
+      setNoticeError(true);
+      setNotice(failure instanceof AdminApiError && failure.status === 403
+        ? 'Your account is not authorized to change this customer.'
+        : 'Mori Pay could not apply this change. Try again.');
+    } finally {
+      setManageBusy(false);
     }
   }
 
@@ -93,13 +144,45 @@ export function UserSearchPage() {
               <div><small>WALLET</small><strong>{selectedUser.wallet ? `${selectedUser.wallet.currency} · ${selectedUser.wallet.status} · ${selectedUser.wallet.accountNumber}` : 'No wallet account'}</strong></div>
               <div><small>SESSIONS</small><strong>{selectedUser.sessions.active} active · {selectedUser.sessions.revoked} revoked</strong></div>
             </div>
-            <div className="detail-subheading">Recent devices</div>
-            {selectedUser.devices.length ? <ul className="detail-list">{selectedUser.devices.map((device, index) => <li key={`${device.platform}-${device.lastActiveAt}-${index}`}><strong>{device.platform}{device.isCurrent ? ' · Current' : ''}</strong><span>Last active {new Date(device.lastActiveAt).toLocaleString()}</span></li>)}</ul> : <p className="muted-text">No registered devices.</p>}
+
+            {notice ? <p className={`inline-note ${noticeError ? 'error' : 'success'}`} role="status">{notice}</p> : null}
+
+            {canManage ? (
+              <div className="manage-section">
+                <div className="detail-subheading">Account management</div>
+                <div className="manage-row">
+                  <label>Status<select value={statusValue} onChange={(event) => setStatusValue(event.target.value as typeof statusValue)}><option value="active">active</option><option value="pending">pending</option><option value="restricted">restricted</option></select></label>
+                  <label>Tier<select value={tierValue} onChange={(event) => setTierValue(event.target.value as typeof tierValue)}><option value="Standard">Standard</option><option value="Verified">Verified</option></select></label>
+                  <label>KYC level<input type="number" min={0} max={3} value={kycValue} onChange={(event) => setKycValue(event.target.value)} style={{ width: 90 }} /></label>
+                  <button type="button" className="button button-secondary" disabled={manageBusy} onClick={() => void runManage(
+                    () => Promise.all([
+                      updateAdminUserStatus(selectedUser.id, statusValue, reason || undefined),
+                      updateAdminUserTier(selectedUser.id, tierValue, reason || undefined),
+                      updateAdminUserKyc(selectedUser.id, Math.max(0, Math.min(3, Number(kycValue) || 0)), reason || undefined),
+                    ]),
+                    'Account profile updated.',
+                  )}>Apply changes</button>
+                </div>
+                <div className="manage-row">
+                  <label>Reason (optional, recorded in audit)<input value={reason} maxLength={200} onChange={(event) => setReason(event.target.value)} placeholder="e.g. verified documents in branch" style={{ minWidth: 260 }} /></label>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="manage-section">
+              <div className="detail-subheading">Recent devices</div>
+              {selectedUser.devices.length ? <ul className="detail-list">{selectedUser.devices.map((device) => <li key={device.id}><strong>{device.name || device.platform}{device.isCurrent ? ' · Current' : ''}<br /><span className="muted-text">{device.platform} · last active {new Date(device.lastActiveAt).toLocaleString()}</span></strong>{canManageSessions ? <button type="button" className="action-button reject" disabled={manageBusy} onClick={() => void runManage(() => revokeAdminUserDevice(selectedUser.id, device.id), 'Device session revoked.')}>Revoke</button> : null}</li>)}</ul> : <p className="muted-text">No registered devices.</p>}
+              {canManageSessions ? (
+                <div className="manage-row">
+                  <button type="button" className="button button-secondary" disabled={manageBusy} onClick={() => void runManage(() => revokeAdminUserSessions(selectedUser.id), 'All active sessions revoked.')}>Revoke all sessions</button>
+                </div>
+              ) : null}
+            </div>
           </section>
         ) : null}
         {data ? <div className="pagination"><span>{data.total.toLocaleString()} matching accounts</span><div><button type="button" className="button button-secondary" disabled={loading || page <= 1} onClick={() => setPage((value) => value - 1)}>Previous</button><span>Page {page} of {Math.max(1, data.totalPages)}</span><button type="button" className="button button-secondary" disabled={loading || page >= data.totalPages} onClick={() => setPage((value) => value + 1)}>Next</button></div></div> : null}
       </section>
-      <p className="privacy-note">Search activity is recorded for operational accountability. Customer credentials, national IDs, wallet balances, and device tokens are not shown.</p>
+      <p className="privacy-note">Search and account changes are recorded for operational accountability. Customer credentials, national IDs, wallet balances, and device tokens are not shown.</p>
     </>
   );
 }

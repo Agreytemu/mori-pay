@@ -11,6 +11,7 @@ import {
   WalletActivityItem,
 } from '@/components/wallet/wallet-components';
 import { PAYMENT_FLOW_ROUTES } from '@/constants/payment-routes';
+import { PromotionBanner } from '@/components/promotions/promotion-banner';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppIllustration } from '@/components/ui/AppIllustration';
@@ -117,6 +118,8 @@ export function WalletScreen({ isTab = false }: { isTab?: boolean }) {
               </View>
               <AppIllustration name="wallet" width={104} height={82} />
             </View>
+
+            <PromotionBanner placement="wallet_banner" />
 
             <View style={styles.actionsSection}>
               <SectionHeader title="Wallet actions" />

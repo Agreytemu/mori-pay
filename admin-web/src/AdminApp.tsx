@@ -12,13 +12,19 @@ import {
 import { AdminShell } from './components/AdminShell';
 import type { AdminTab } from './components/AdminShell';
 import { AuditPage } from './components/AuditPage';
+import { HealthPage } from './components/HealthPage';
 import { LoginPage } from './components/LoginPage';
 import { MerchantOperationsPage } from './components/MerchantOperationsPage';
 import { OverviewPage } from './components/OverviewPage';
+import { PromotionsPage } from './components/PromotionsPage';
+import { ReconciliationPage } from './components/ReconciliationPage';
+import { ReportsPage } from './components/ReportsPage';
+import { SessionsPage } from './components/SessionsPage';
 import { SystemSettingsPage } from './components/SystemSettingsPage';
 import { StaffAccessPage } from './components/StaffAccessPage';
 import { TransactionSearchPage } from './components/TransactionSearchPage';
 import { UserSearchPage } from './components/UserSearchPage';
+import { WebhooksPage } from './components/WebhooksPage';
 import type { AdminSession } from './types';
 
 type ViewState = 'checking' | 'signed-out' | 'authorized';
@@ -110,6 +116,10 @@ export function AdminApp() {
     );
   }
 
+  const isSuperAdmin = session.staffRole === 'super_admin';
+  const can = (capability: Parameters<typeof session.capabilities.includes>[0]) =>
+    isSuperAdmin || session.capabilities.includes(capability);
+
   return (
     <AdminShell
       firstName={firstName}
@@ -120,12 +130,18 @@ export function AdminApp() {
       onSignOut={() => void handleSignOut()}
     >
       {activeTab === 'overview' ? <OverviewPage /> : null}
-      {activeTab === 'users' && session.capabilities.includes('admin:user:read') ? <UserSearchPage /> : null}
-      {activeTab === 'transactions' && session.capabilities.includes('admin:transaction:read') ? <TransactionSearchPage /> : null}
-      {activeTab === 'merchants' && session.capabilities.includes('admin:merchant:read') ? <MerchantOperationsPage canEditFee={session.capabilities.includes('admin:settings:write')} /> : null}
-      {activeTab === 'settings' && session.capabilities.includes('admin:settings:read') ? <SystemSettingsPage /> : null}
-      {activeTab === 'staff' && session.capabilities.includes('admin:staff:manage') ? <StaffAccessPage currentUserId={session.userId} /> : null}
-      {activeTab === 'audit' && session.capabilities.includes('admin:audit:read') ? <AuditPage /> : null}
+      {activeTab === 'reports' && can('admin:report:read') ? <ReportsPage /> : null}
+      {activeTab === 'users' && can('admin:user:read') ? <UserSearchPage canManage={can('admin:user:write')} canManageSessions={can('admin:session:write')} /> : null}
+      {activeTab === 'transactions' && can('admin:transaction:read') ? <TransactionSearchPage /> : null}
+      {activeTab === 'reconciliation' && can('admin:reconciliation:read') ? <ReconciliationPage canRun={can('admin:reconciliation:write')} /> : null}
+      {activeTab === 'webhooks' && can('admin:webhook:read') ? <WebhooksPage /> : null}
+      {activeTab === 'merchants' && can('admin:merchant:read') ? <MerchantOperationsPage canEditFee={can('admin:settings:write')} /> : null}
+      {activeTab === 'sessions' && can('admin:session:read') ? <SessionsPage /> : null}
+      {activeTab === 'settings' && can('admin:settings:read') ? <SystemSettingsPage /> : null}
+      {activeTab === 'staff' && can('admin:staff:manage') ? <StaffAccessPage currentUserId={session.userId} /> : null}
+      {activeTab === 'audit' && can('admin:audit:read') ? <AuditPage /> : null}
+      {activeTab === 'promotions' && can('admin:promotion:read') ? <PromotionsPage canManage={can('admin:promotion:write')} /> : null}
+      {activeTab === 'health' && can('admin:health:read') ? <HealthPage /> : null}
     </AdminShell>
   );
 }

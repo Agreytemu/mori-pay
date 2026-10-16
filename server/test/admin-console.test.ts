@@ -123,7 +123,7 @@ test('staff role changes revoke sessions and write their audit entry atomically'
         },
       });
     },
-  } as never, {} as never);
+  } as never, {} as never, {} as never);
 
   const result = await service.updateStaffRole(
     'new-staff',
@@ -156,7 +156,7 @@ test('staff role changes cannot remove the last active super administrator', asy
         refreshToken: { updateMany: async () => undefined },
         auditLog: { create: async () => undefined },
       }),
-  } as never, {} as never);
+  } as never, {} as never, {} as never);
 
   await assert.rejects(
     () => service.updateStaffRole('last-admin', null, 'actor', {}),
@@ -169,7 +169,7 @@ test('staff role changes cannot demote the acting administrator', async () => {
   let transactionStarted = false;
   const service = new AdminService({
     $transaction: async () => { transactionStarted = true; },
-  } as never, {} as never);
+  } as never, {} as never, {} as never);
   await assert.rejects(
     () => service.updateStaffRole('actor', null, 'actor', {}),
     /cannot change your own/,
@@ -200,7 +200,7 @@ test('staff search is bounded, masked, and does not audit the search term', asyn
       },
       count: async () => 1,
     },
-  } as never, {} as never);
+  } as never, {} as never, {} as never);
 
   const result = await service.searchStaff(
     { q: 'amani', page: 1, pageSize: 20 },
@@ -232,7 +232,7 @@ test('staff role assignment rejects a user without a verified email', async () =
         refreshToken: { updateMany: async () => undefined },
         auditLog: { create: async () => undefined },
       }),
-  } as never, {} as never);
+  } as never, {} as never, {} as never);
 
   await assert.rejects(
     () => service.updateStaffRole('unverified-user', 'customer_support', 'actor', {}),
@@ -283,7 +283,7 @@ test('system settings expose effective operational configuration without secrets
     abliner: { baseUrl: 'https://provider.example', apiKey: 'api-secret', webhookSecret: 'webhook-secret' },
     email: { apiKey: 'email-secret', smtp: { host: '', user: '', pass: '' } },
     sms: { provider: 'console', apiKey: 'sms-secret' },
-  } as never);
+  } as never, {} as never);
 
   const result = await service.systemSettings();
   const serialized = JSON.stringify(result);
@@ -321,7 +321,7 @@ test('overview reports transaction channels and webhook error counts', async () 
         return webhookCountFilters.length === 1 ? 4 : 2;
       },
     },
-  } as never, {} as never);
+  } as never, {} as never, {} as never);
 
   const overview = await service.overview();
 
@@ -351,7 +351,7 @@ test('audit query applies filters and bounded pagination', async () => {
         return 0;
       },
     },
-  } as never, {} as never);
+  } as never, {} as never, {} as never);
   const from = new Date('2026-01-01T00:00:00.000Z');
   const to = new Date('2026-01-31T23:59:59.999Z');
 
@@ -395,7 +395,7 @@ test('user search audits access and returns only masked contact identifiers', as
       },
       count: async () => 1,
     },
-  } as never, {} as never);
+  } as never, {} as never, {} as never);
 
   const result = await service.searchUsers(
     { q: 'Amani', page: 2, pageSize: 10 },
@@ -458,7 +458,7 @@ test('transaction search audits access and serializes monetary values without le
       },
       count: async () => 1,
     },
-  } as never, {} as never);
+  } as never, {} as never, {} as never);
 
   const result = await service.searchTransactions(
     { q: 'MORI', page: 1, pageSize: 20 },
@@ -519,7 +519,7 @@ test('user detail is audited and excludes wallet balances, credentials, and devi
     refreshToken: {
       count: async () => 2,
     },
-  } as never, {} as never);
+  } as never, {} as never, {} as never);
 
   const result = await service.userDetail('user-id', 'staff-id', {
     ip: '127.0.0.1',
@@ -589,7 +589,7 @@ test('transaction detail exposes read-only ledger and reconciliation summaries w
         payload: { secret: 'raw-webhook-payload' },
       }],
     },
-  } as never, {} as never);
+  } as never, {} as never, {} as never);
 
   const result = await service.transactionDetail('transaction-id', 'staff-id', {});
 

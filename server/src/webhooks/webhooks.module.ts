@@ -7,6 +7,6 @@ import { WebhooksController } from './webhooks.controller.js';
 @Module({
   controllers: [WebhooksController],
   providers: [ReconciliationService, ReconciliationSweeper],
-  exports: [ReconciliationService],
+  exports: [ReconciliationService, ReconciliationSweeper],
 })
 export class WebhooksModule {}

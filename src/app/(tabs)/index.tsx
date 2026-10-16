@@ -4,6 +4,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { AccountCard } from '@/components/wallet/wallet-components';
+import { PromotionBanner } from '@/components/promotions/promotion-banner';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
@@ -141,6 +142,8 @@ export default function HomeScreen() {
             Loading your wallet…
           </AppText>
         )}
+
+        <PromotionBanner placement="home_banner" />
 
         <View
           style={[

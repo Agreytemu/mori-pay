@@ -1,5 +1,9 @@
 import type {
   AdminAuditPage,
+  AdminHealth,
+  AdminReconciliationPage,
+  AdminReport,
+  AdminSessionSearchPage,
   AdminStaffRole,
   AdminStaffSearchPage,
   AdminMerchantAccountPage,
@@ -11,7 +15,12 @@ import type {
   AdminTransactionSearchPage,
   AdminUserDetail,
   AdminUserSearchPage,
+  AdminWebhookEventPage,
   AuthSession,
+  Promotion,
+  PromotionInput,
+  PromotionPage,
+  PromotionUpdate,
   RegistrationFee,
 } from './types';
 
@@ -110,7 +119,7 @@ async function refreshSession(): Promise<boolean> {
 async function fetchJson<T>(
   path: string,
   options: {
-    method?: 'GET' | 'POST' | 'PATCH';
+    method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
     body?: unknown;
     accessToken?: string;
     retry?: boolean;
@@ -149,7 +158,9 @@ async function fetchJson<T>(
   }
   if (!response.ok) throw new AdminApiError(response.status);
   if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+  const text = await response.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
 }
 
 export async function signIn(email: string, password: string): Promise<AdminSession> {
@@ -307,6 +318,140 @@ export function updateRegistrationFee(amount: number): Promise<RegistrationFee> 
   return fetchJson<RegistrationFee>('/merchants/admin/registration-fee', {
     method: 'PATCH',
     body: { amount },
+  });
+}
+
+export function updateAdminUserStatus(
+  userId: string,
+  status: 'active' | 'pending' | 'restricted',
+  reason?: string,
+): Promise<{ id: string; status: string }> {
+  return fetchJson(`/admin/users/${encodeURIComponent(userId)}/status`, {
+    method: 'PATCH',
+    body: { status, ...(reason ? { reason } : {}) },
+  });
+}
+
+export function updateAdminUserKyc(
+  userId: string,
+  kycLevel: number,
+  reason?: string,
+): Promise<{ id: string; kycLevel: number }> {
+  return fetchJson(`/admin/users/${encodeURIComponent(userId)}/kyc`, {
+    method: 'PATCH',
+    body: { kycLevel, ...(reason ? { reason } : {}) },
+  });
+}
+
+export function updateAdminUserTier(
+  userId: string,
+  tier: 'Standard' | 'Verified',
+  reason?: string,
+): Promise<{ id: string; tier: string }> {
+  return fetchJson(`/admin/users/${encodeURIComponent(userId)}/tier`, {
+    method: 'PATCH',
+    body: { tier, ...(reason ? { reason } : {}) },
+  });
+}
+
+export function revokeAdminUserSessions(
+  userId: string,
+): Promise<{ revoked: number }> {
+  return fetchJson(`/admin/users/${encodeURIComponent(userId)}/sessions/revoke`, {
+    method: 'POST',
+  });
+}
+
+export function revokeAdminUserDevice(
+  userId: string,
+  deviceId: string,
+): Promise<{ id: string; revokedAt: string }> {
+  return fetchJson(
+    `/admin/users/${encodeURIComponent(userId)}/devices/${encodeURIComponent(deviceId)}/revoke`,
+    { method: 'POST' },
+  );
+}
+
+export function listAdminSessions(
+  page = 1,
+  pageSize = 20,
+  filters: { q?: string; state?: 'active' | 'revoked' } = {},
+): Promise<AdminSessionSearchPage> {
+  return fetchJson<AdminSessionSearchPage>('/admin/sessions', {
+    query: {
+      page,
+      pageSize,
+      ...(filters.q ? { q: filters.q } : {}),
+      ...(filters.state ? { state: filters.state } : {}),
+    },
+  });
+}
+
+export function listAdminWebhooks(
+  page = 1,
+  pageSize = 20,
+  filters: { q?: string; state?: 'pending' | 'processed' | 'failed' } = {},
+): Promise<AdminWebhookEventPage> {
+  return fetchJson<AdminWebhookEventPage>('/admin/webhooks', {
+    query: {
+      page,
+      pageSize,
+      ...(filters.q ? { q: filters.q } : {}),
+      ...(filters.state ? { state: filters.state } : {}),
+    },
+  });
+}
+
+export function listAdminReconciliation(
+  page = 1,
+  pageSize = 20,
+  state: 'stale' | 'unsettled' | 'all' = 'stale',
+): Promise<AdminReconciliationPage> {
+  return fetchJson<AdminReconciliationPage>('/admin/reconciliation', {
+    query: { page, pageSize, state },
+  });
+}
+
+export function runAdminReconciliation(): Promise<{ checked: number }> {
+  return fetchJson('/admin/reconciliation/run', { method: 'POST' });
+}
+
+export function getAdminReport(from?: string, to?: string): Promise<AdminReport> {
+  return fetchJson<AdminReport>('/admin/reports', {
+    query: {
+      ...(from ? { from } : {}),
+      ...(to ? { to } : {}),
+    },
+  });
+}
+
+export function getAdminHealth(): Promise<AdminHealth> {
+  return fetchJson<AdminHealth>('/admin/health');
+}
+
+export function listAdminPromotions(page = 1, pageSize = 20): Promise<PromotionPage> {
+  return fetchJson<PromotionPage>('/admin/promotions', {
+    query: { page, pageSize },
+  });
+}
+
+export function createAdminPromotion(input: PromotionInput): Promise<Promotion> {
+  return fetchJson('/admin/promotions', { method: 'POST', body: input });
+}
+
+export function updateAdminPromotion(
+  id: string,
+  input: PromotionUpdate,
+): Promise<Promotion> {
+  return fetchJson(`/admin/promotions/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: input,
+  });
+}
+
+export function deleteAdminPromotion(id: string): Promise<void> {
+  return fetchJson(`/admin/promotions/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
   });
 }
 
