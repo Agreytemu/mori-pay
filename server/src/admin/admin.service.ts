@@ -37,15 +37,31 @@ import type {
   PromotionInput,
   PromotionUpdate,
   PromotionPage,
+  AdminFeeRule,
+  AdminFeeRuleInput,
+  AdminFeeRuleUpdate,
 } from '@mori-pay/contracts';
 
 import { Prisma } from '../generated/prisma/client.js';
-import type { Promotion as PromotionRow } from '../generated/prisma/client.js';
+import type {
+  Promotion as PromotionRow,
+  FeeRule as FeeRuleRow,
+} from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/app-config.service.js';
 import { ReconciliationSweeper } from '../webhooks/reconciliation.sweeper.js';
 
 export type AdminAuditContext = { ip?: string; userAgent?: string };
+
+/** A user is shown as online when seen within this window. */
+const ONLINE_WINDOW_MS = 15 * 60 * 1000;
+
+type UserActivity = {
+  isOnline: boolean;
+  lastActiveAt: Date | null;
+  activeSessions: number;
+  deviceCount: number;
+};
 
 @Injectable()
 export class AdminService {
@@ -306,6 +322,7 @@ export class AdminService {
       }),
       this.prisma.feeRule.findMany({
         select: {
+          id: true,
           type: true,
           channel: true,
           flat: true,
@@ -313,6 +330,7 @@ export class AdminService {
           minAmount: true,
           maxAmount: true,
           active: true,
+          createdAt: true,
         },
         orderBy: [{ type: 'asc' }, { channel: 'asc' }, { minAmount: 'asc' }],
         take: 200,
@@ -328,6 +346,7 @@ export class AdminService {
       merchantRegistrationFee:
         merchantConfiguration?.registrationFeeAmount?.toString() ?? null,
       feeRules: feeRules.map((rule) => ({
+        id: rule.id,
         type: rule.type,
         channel: rule.channel,
         flat: rule.flat.toString(),
@@ -335,6 +354,7 @@ export class AdminService {
         minAmount: rule.minAmount.toString(),
         maxAmount: rule.maxAmount?.toString() ?? null,
         active: rule.active,
+        createdAt: rule.createdAt.toISOString(),
       })),
       tierLimits: {
         standard: {
@@ -458,15 +478,17 @@ export class AdminService {
   ): Promise<AdminUserSearchPage> {
     await this.recordSensitiveSearch('admin.user.search', actorId, query, context);
     const search = query.q;
-    const where = {
-      OR: [
-        { id: search },
-        { phone: { startsWith: search } },
-        { email: { startsWith: search, mode: 'insensitive' as const } },
-        { fullName: { contains: search, mode: 'insensitive' as const } },
-        { memberId: { startsWith: search, mode: 'insensitive' as const } },
-      ],
-    };
+    const where = search
+      ? {
+          OR: [
+            { id: search },
+            { phone: { startsWith: search } },
+            { email: { contains: search, mode: 'insensitive' as const } },
+            { fullName: { contains: search, mode: 'insensitive' as const } },
+            { memberId: { startsWith: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
     const [users, total] = await Promise.all([
       this.prisma.user.findMany({
         where,
@@ -488,23 +510,100 @@ export class AdminService {
       this.prisma.user.count({ where }),
     ]);
 
+    const ids = users.map((user) => user.id);
+    const activity = await this.loadUserActivity(ids);
+
     return {
-      items: users.map((user) => ({
-        id: user.id,
-        name: user.fullName,
-        phone: maskPhone(user.phone),
-        email: maskEmail(user.email),
-        memberId: maskIdentifier(user.memberId),
-        status: user.status,
-        tier: user.tier,
-        kycLevel: user.kycLevel,
-        createdAt: user.createdAt.toISOString(),
-      })),
+      items: users.map((user) => {
+        const record = activity.get(user.id);
+        return {
+          id: user.id,
+          name: user.fullName,
+          phone: maskPhone(user.phone),
+          email: maskEmail(user.email),
+          memberId: maskIdentifier(user.memberId),
+          status: user.status,
+          tier: user.tier,
+          kycLevel: user.kycLevel,
+          isOnline: record?.isOnline ?? false,
+          lastActiveAt: record?.lastActiveAt?.toISOString() ?? null,
+          activeSessions: record?.activeSessions ?? 0,
+          deviceCount: record?.deviceCount ?? 0,
+          createdAt: user.createdAt.toISOString(),
+        };
+      }),
       page: query.page,
       pageSize: query.pageSize,
       total,
       totalPages: Math.ceil(total / query.pageSize),
     };
+  }
+
+  /**
+   * Batched presence lookup for a page of users. A user is considered online
+   * when they hold a live refresh token or a device that checked in recently,
+   * because `lastActiveAt` advances on every session refresh.
+   */
+  private async loadUserActivity(
+    userIds: string[],
+  ): Promise<Map<string, UserActivity>> {
+    const activity = new Map<string, UserActivity>();
+    if (userIds.length === 0) return activity;
+
+    const now = Date.now();
+    const onlineSince = new Date(now - ONLINE_WINDOW_MS);
+
+    const [sessions, devices] = await Promise.all([
+      this.prisma.refreshToken.groupBy({
+        by: ['userId'],
+        where: {
+          userId: { in: userIds },
+          revokedAt: null,
+          expiresAt: { gt: new Date(now) },
+        },
+        _count: { _all: true },
+        _max: { createdAt: true },
+      }),
+      this.prisma.device.groupBy({
+        by: ['userId'],
+        where: { userId: { in: userIds } },
+        _count: { _all: true },
+        _max: { lastActiveAt: true },
+      }),
+    ]);
+
+    for (const id of userIds) {
+      activity.set(id, {
+        isOnline: false,
+        lastActiveAt: null,
+        activeSessions: 0,
+        deviceCount: 0,
+      });
+    }
+
+    for (const session of sessions) {
+      const record = activity.get(session.userId);
+      if (!record) continue;
+      record.activeSessions = session._count._all;
+      const seenAt = session._max.createdAt ?? null;
+      if (seenAt && (!record.lastActiveAt || seenAt > record.lastActiveAt)) {
+        record.lastActiveAt = seenAt;
+      }
+      if (seenAt && seenAt >= onlineSince) record.isOnline = true;
+    }
+
+    for (const device of devices) {
+      const record = activity.get(device.userId);
+      if (!record) continue;
+      record.deviceCount = device._count._all;
+      const seenAt = device._max.lastActiveAt ?? null;
+      if (seenAt && (!record.lastActiveAt || seenAt > record.lastActiveAt)) {
+        record.lastActiveAt = seenAt;
+      }
+      if (seenAt && seenAt >= onlineSince) record.isOnline = true;
+    }
+
+    return activity;
   }
 
   async searchTransactions(
@@ -514,23 +613,29 @@ export class AdminService {
   ): Promise<AdminTransactionSearchPage> {
     await this.recordSensitiveSearch('admin.transaction.search', actorId, query, context);
     const search = query.q;
-    const where = {
-      OR: [
-        { id: search },
-        { reference: { startsWith: search, mode: 'insensitive' as const } },
-        {
-          user: {
-            is: {
-              OR: [
-                { id: search },
-                { phone: { startsWith: search } },
-                { memberId: { startsWith: search, mode: 'insensitive' as const } },
-              ],
+    const where = search
+      ? {
+          OR: [
+            { id: search },
+            { reference: { contains: search, mode: 'insensitive' as const } },
+            { internalReference: { contains: search, mode: 'insensitive' as const } },
+            { providerRef: { contains: search, mode: 'insensitive' as const } },
+            { counterparty: { contains: search, mode: 'insensitive' as const } },
+            {
+              user: {
+                is: {
+                  OR: [
+                    { id: search },
+                    { phone: { startsWith: search } },
+                    { fullName: { contains: search, mode: 'insensitive' as const } },
+                    { memberId: { startsWith: search, mode: 'insensitive' as const } },
+                  ],
+                },
+              },
             },
-          },
-        },
-      ],
-    };
+          ],
+        }
+      : {};
     const [transactions, total] = await Promise.all([
       this.prisma.transaction.findMany({
         where,
@@ -1380,13 +1485,109 @@ export class AdminService {
     });
   }
 
+  async createFeeRule(
+    input: AdminFeeRuleInput,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<AdminFeeRule> {
+    assertFeeRuleRange(input.minAmount, input.maxAmount ?? null);
+    return this.prisma.$transaction(async (tx) => {
+      const created = await tx.feeRule.create({
+        data: {
+          type: input.type,
+          channel: input.channel ?? null,
+          flat: BigInt(input.flat),
+          percentage: input.percentage,
+          minAmount: BigInt(input.minAmount),
+          maxAmount: input.maxAmount == null ? null : BigInt(input.maxAmount),
+          active: input.active,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.feeRule.create',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: { feeRuleId: created.id, type: created.type, channel: created.channel },
+        },
+      });
+      return toFeeRule(created);
+    });
+  }
+
+  async updateFeeRule(
+    id: string,
+    input: AdminFeeRuleUpdate,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<AdminFeeRule> {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.feeRule.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundException('Fee rule not found');
+      const minAmount = input.minAmount ?? Number(existing.minAmount);
+      const maxAmount =
+        input.maxAmount === undefined
+          ? existing.maxAmount == null
+            ? null
+            : Number(existing.maxAmount)
+          : input.maxAmount;
+      assertFeeRuleRange(minAmount, maxAmount);
+      const updated = await tx.feeRule.update({
+        where: { id },
+        data: {
+          ...(input.type !== undefined ? { type: input.type } : {}),
+          ...(input.channel !== undefined ? { channel: input.channel } : {}),
+          ...(input.flat !== undefined ? { flat: BigInt(input.flat) } : {}),
+          ...(input.percentage !== undefined ? { percentage: input.percentage } : {}),
+          ...(input.minAmount !== undefined ? { minAmount: BigInt(input.minAmount) } : {}),
+          ...(input.maxAmount !== undefined
+            ? { maxAmount: input.maxAmount == null ? null : BigInt(input.maxAmount) }
+            : {}),
+          ...(input.active !== undefined ? { active: input.active } : {}),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.feeRule.update',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: { feeRuleId: id, type: updated.type, channel: updated.channel },
+        },
+      });
+      return toFeeRule(updated);
+    });
+  }
+
+  async deleteFeeRule(
+    id: string,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.feeRule.findUnique({ where: { id } });
+      if (!existing) throw new NotFoundException('Fee rule not found');
+      await tx.feeRule.delete({ where: { id } });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.feeRule.delete',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: { feeRuleId: id, type: existing.type, channel: existing.channel },
+        },
+      });
+    });
+  }
+
   private async recordSensitiveSearch(
     action: string,
     actorId: string,
     query: AdminSearchQuery,
     context: AdminAuditContext,
   ): Promise<void> {
-    await this.prisma.auditLog.create({
+    if (!query.q) return;    await this.prisma.auditLog.create({
       data: {
         userId: actorId,
         action,
@@ -1449,4 +1650,26 @@ function toPromotion(row: PromotionRow): Promotion {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function toFeeRule(row: FeeRuleRow): AdminFeeRule {
+  return {
+    id: row.id,
+    type: row.type,
+    channel: row.channel,
+    flat: row.flat.toString(),
+    percentage: row.percentage,
+    minAmount: row.minAmount.toString(),
+    maxAmount: row.maxAmount?.toString() ?? null,
+    active: row.active,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function assertFeeRuleRange(minAmount: number, maxAmount: number | null): void {
+  if (maxAmount != null && maxAmount < minAmount) {
+    throw new ConflictException(
+      'The maximum amount must be greater than or equal to the minimum',
+    );
+  }
 }

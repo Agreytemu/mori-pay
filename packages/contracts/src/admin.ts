@@ -134,7 +134,9 @@ export const adminListQuerySchema = z.object({
 export type AdminListQuery = z.infer<typeof adminListQuerySchema>;
 
 export const adminSearchQuerySchema = adminListQuerySchema.extend({
-  q: z.string().trim().min(3).max(80),
+  // Optional so administrators can browse the full directory without typing a
+  // query. When provided it must be a meaningful length.
+  q: z.string().trim().min(3).max(80).optional(),
   page: z.coerce.number().int().min(1).max(10_000).default(1),
 });
 
@@ -242,6 +244,10 @@ export type AdminUserSearchResult = {
   status: string;
   tier: string;
   kycLevel: number;
+  isOnline: boolean;
+  lastActiveAt: string | null;
+  activeSessions: number;
+  deviceCount: number;
   createdAt: string;
 };
 
@@ -348,18 +354,41 @@ export type AdminTransactionDetail = {
   }>;
 };
 
+export type AdminFeeRule = {
+  id: string;
+  type: string;
+  channel: string | null;
+  flat: string;
+  percentage: number;
+  minAmount: string;
+  maxAmount: string | null;
+  active: boolean;
+  createdAt: string;
+};
+
+const adminFeeRuleBaseSchema = z.object({
+  type: z.string().trim().min(1).max(60),
+  channel: z.string().trim().min(1).max(60).nullable().optional(),
+  flat: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  percentage: z.coerce.number().min(0).max(1),
+  minAmount: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  maxAmount: z.coerce.number().int().min(0).max(Number.MAX_SAFE_INTEGER).nullable().optional(),
+  active: z.boolean().default(true),
+});
+
+export const adminFeeRuleInputSchema = adminFeeRuleBaseSchema.refine(
+  ({ minAmount, maxAmount }) => maxAmount == null || maxAmount >= minAmount,
+  { message: 'The maximum amount must be greater than or equal to the minimum', path: ['maxAmount'] },
+);
+export type AdminFeeRuleInput = z.infer<typeof adminFeeRuleInputSchema>;
+
+export const adminFeeRuleUpdateSchema = adminFeeRuleBaseSchema.partial();
+export type AdminFeeRuleUpdate = z.infer<typeof adminFeeRuleUpdateSchema>;
+
 export type AdminSystemSettings = {
   generatedAt: string;
   merchantRegistrationFee: string | null;
-  feeRules: Array<{
-    type: string;
-    channel: string | null;
-    flat: string;
-    percentage: number;
-    minAmount: string;
-    maxAmount: string | null;
-    active: boolean;
-  }>;
+  feeRules: AdminFeeRule[];
   tierLimits: {
     standard: { dailyOutflow: string; perTransaction: string };
     verified: { dailyOutflow: string; perTransaction: string };

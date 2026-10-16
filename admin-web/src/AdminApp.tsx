@@ -137,7 +137,7 @@ export function AdminApp() {
       {activeTab === 'webhooks' && can('admin:webhook:read') ? <WebhooksPage /> : null}
       {activeTab === 'merchants' && can('admin:merchant:read') ? <MerchantOperationsPage canEditFee={can('admin:settings:write')} /> : null}
       {activeTab === 'sessions' && can('admin:session:read') ? <SessionsPage /> : null}
-      {activeTab === 'settings' && can('admin:settings:read') ? <SystemSettingsPage /> : null}
+      {activeTab === 'settings' && can('admin:settings:read') ? <SystemSettingsPage canEdit={can('admin:settings:write')} /> : null}
       {activeTab === 'staff' && can('admin:staff:manage') ? <StaffAccessPage currentUserId={session.userId} /> : null}
       {activeTab === 'audit' && can('admin:audit:read') ? <AuditPage /> : null}
       {activeTab === 'promotions' && can('admin:promotion:read') ? <PromotionsPage canManage={can('admin:promotion:write')} /> : null}

@@ -1,6 +1,9 @@
 import type {
   AdminAuditPage,
   AdminHealth,
+  AdminFeeRule,
+  AdminFeeRuleInput,
+  AdminFeeRuleUpdate,
   AdminReconciliationPage,
   AdminReport,
   AdminSessionSearchPage,
@@ -259,12 +262,12 @@ export function listMerchantAccounts(
 }
 
 export function searchAdminUsers(
-  q: string,
+  q = '',
   page = 1,
   pageSize = 20,
 ): Promise<AdminUserSearchPage> {
   return fetchJson<AdminUserSearchPage>('/admin/users', {
-    query: { q, page, pageSize },
+    query: { page, pageSize, ...(q ? { q } : {}) },
   });
 }
 
@@ -273,12 +276,12 @@ export function getAdminUser(userId: string): Promise<AdminUserDetail> {
 }
 
 export function searchAdminTransactions(
-  q: string,
+  q = '',
   page = 1,
   pageSize = 20,
 ): Promise<AdminTransactionSearchPage> {
   return fetchJson<AdminTransactionSearchPage>('/admin/transactions', {
-    query: { q, page, pageSize },
+    query: { page, pageSize, ...(q ? { q } : {}) },
   });
 }
 
@@ -318,6 +321,26 @@ export function updateRegistrationFee(amount: number): Promise<RegistrationFee> 
   return fetchJson<RegistrationFee>('/merchants/admin/registration-fee', {
     method: 'PATCH',
     body: { amount },
+  });
+}
+
+export function createAdminFeeRule(input: AdminFeeRuleInput): Promise<AdminFeeRule> {
+  return fetchJson('/admin/fee-rules', { method: 'POST', body: input });
+}
+
+export function updateAdminFeeRule(
+  id: string,
+  input: AdminFeeRuleUpdate,
+): Promise<AdminFeeRule> {
+  return fetchJson(`/admin/fee-rules/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: input,
+  });
+}
+
+export function deleteAdminFeeRule(id: string): Promise<void> {
+  return fetchJson(`/admin/fee-rules/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
   });
 }
 

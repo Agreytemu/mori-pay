@@ -29,6 +29,8 @@ import {
   adminReportQuerySchema,
   promotionInputSchema,
   promotionUpdateSchema,
+  adminFeeRuleInputSchema,
+  adminFeeRuleUpdateSchema,
   capabilitiesForAdminRole,
   type AdminAuditQuery,
   type AdminCapability,
@@ -45,6 +47,8 @@ import {
   type AdminReportQuery,
   type PromotionInput,
   type PromotionUpdate,
+  type AdminFeeRuleInput,
+  type AdminFeeRuleUpdate,
 } from '@mori-pay/contracts';
 
 import type { AuthenticatedUser } from '../auth/auth.types.js';
@@ -401,6 +405,51 @@ export class AdminController {
     @Req() request: Request,
   ) {
     return this.admin.deletePromotion(promotionId, user.userId, {
+      ip: request.ip,
+      userAgent: request.get('user-agent'),
+    });
+  }
+
+  @Post('fee-rules')
+  @UseGuards(AdminRoleGuard)
+  @RequireAdminCapabilities('admin:settings:write')
+  createFeeRule(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+    @Body(new ZodValidationPipe(adminFeeRuleInputSchema))
+    input: AdminFeeRuleInput,
+  ) {
+    return this.admin.createFeeRule(input, user.userId, {
+      ip: request.ip,
+      userAgent: request.get('user-agent'),
+    });
+  }
+
+  @Patch('fee-rules/:feeRuleId')
+  @UseGuards(AdminRoleGuard)
+  @RequireAdminCapabilities('admin:settings:write')
+  updateFeeRule(
+    @Param('feeRuleId') feeRuleId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+    @Body(new ZodValidationPipe(adminFeeRuleUpdateSchema))
+    input: AdminFeeRuleUpdate,
+  ) {
+    return this.admin.updateFeeRule(feeRuleId, input, user.userId, {
+      ip: request.ip,
+      userAgent: request.get('user-agent'),
+    });
+  }
+
+  @Delete('fee-rules/:feeRuleId')
+  @UseGuards(AdminRoleGuard)
+  @RequireAdminCapabilities('admin:settings:write')
+  deleteFeeRule(
+    @Param('feeRuleId') feeRuleId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.admin.deleteFeeRule(feeRuleId, user.userId, {
       ip: request.ip,
       userAgent: request.get('user-agent'),
     });

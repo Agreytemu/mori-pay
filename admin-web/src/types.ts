@@ -149,6 +149,10 @@ export type AdminUserSearchPage = {
     status: string;
     tier: string;
     kycLevel: number;
+    isOnline: boolean;
+    lastActiveAt: string | null;
+    activeSessions: number;
+    deviceCount: number;
     createdAt: string;
   }>;
   page: number;
@@ -223,18 +227,34 @@ export type AdminTransactionDetail = {
   reconciliationEvents: Array<{ event: string; processed: boolean; errorPresent: boolean; createdAt: string }>;
 };
 
+export type AdminFeeRule = {
+  id: string;
+  type: string;
+  channel: string | null;
+  flat: string;
+  percentage: number;
+  minAmount: string;
+  maxAmount: string | null;
+  active: boolean;
+  createdAt: string;
+};
+
+export type AdminFeeRuleInput = {
+  type: string;
+  channel?: string | null;
+  flat: number;
+  percentage: number;
+  minAmount: number;
+  maxAmount?: number | null;
+  active: boolean;
+};
+
+export type AdminFeeRuleUpdate = Partial<AdminFeeRuleInput>;
+
 export type AdminSystemSettings = {
   generatedAt: string;
   merchantRegistrationFee: string | null;
-  feeRules: Array<{
-    type: string;
-    channel: string | null;
-    flat: string;
-    percentage: number;
-    minAmount: string;
-    maxAmount: string | null;
-    active: boolean;
-  }>;
+  feeRules: AdminFeeRule[];
   tierLimits: {
     standard: { dailyOutflow: string; perTransaction: string };
     verified: { dailyOutflow: string; perTransaction: string };

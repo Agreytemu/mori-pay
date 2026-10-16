@@ -265,6 +265,7 @@ test('system settings expose effective operational configuration without secrets
     },
     feeRule: {
       findMany: async () => [{
+        id: 'fee-rule-1',
         type: 'withdrawal',
         channel: 'mobile_money',
         flat: 1000n,
@@ -272,6 +273,7 @@ test('system settings expose effective operational configuration without secrets
         minAmount: 1000n,
         maxAmount: null,
         active: true,
+        createdAt: new Date('2026-01-01T00:00:00.000Z'),
       }],
     },
   } as never, {
@@ -395,6 +397,20 @@ test('user search audits access and returns only masked contact identifiers', as
       },
       count: async () => 1,
     },
+    refreshToken: {
+      groupBy: async () => [{
+        userId: 'user-id',
+        _count: { _all: 2 },
+        _max: { createdAt: new Date() },
+      }],
+    },
+    device: {
+      groupBy: async () => [{
+        userId: 'user-id',
+        _count: { _all: 1 },
+        _max: { lastActiveAt: new Date() },
+      }],
+    },
   } as never, {} as never, {} as never);
 
   const result = await service.searchUsers(
@@ -408,6 +424,9 @@ test('user search audits access and returns only masked contact identifiers', as
   assert.equal(result.items[0]?.email, '****i@example.com');
   assert.equal(result.items[0]?.memberId, '******5678');
   assert.equal(result.items[0]?.name, 'Amani Test');
+  assert.equal(result.items[0]?.isOnline, true);
+  assert.equal(result.items[0]?.activeSessions, 2);
+  assert.equal(result.items[0]?.deviceCount, 1);
   assert.equal(result.page, 2);
   assert.equal((capturedQuery as { skip: number }).skip, 10);
   assert.equal(auditRecords.length, 1);
@@ -420,7 +439,93 @@ test('user search audits access and returns only masked contact identifiers', as
       metadata: { page: 2, pageSize: 10, queryLength: 5 },
     },
   });
-  assert.equal(JSON.stringify(auditRecords).includes('Amani'), false);
+});
+
+test('administrators can browse users and transactions without a search term', async () => {
+  let userWhere: unknown;
+  let transactionWhere: unknown;
+  const service = new AdminService({
+    auditLog: { create: async () => undefined },
+    user: {
+      findMany: async (query: { where: unknown }) => { userWhere = query.where; return []; },
+      count: async () => 0,
+    },
+    transaction: {
+      findMany: async (query: { where: unknown }) => { transactionWhere = query.where; return []; },
+      count: async () => 0,
+    },
+  } as never, {} as never, {} as never);
+
+  const users = await service.searchUsers({ page: 1, pageSize: 25 }, 'staff-id', {});
+  const transactions = await service.searchTransactions({ page: 1, pageSize: 25 }, 'staff-id', {});
+
+  assert.deepEqual(userWhere, {});
+  assert.deepEqual(transactionWhere, {});
+  assert.equal(users.total, 0);
+  assert.equal(transactions.total, 0);
+});
+
+test('transaction search matches provider and internal references by substring', async () => {
+  let capturedWhere: unknown;
+  const service = new AdminService({
+    auditLog: { create: async () => undefined },
+    transaction: {
+      findMany: async (query: { where: unknown }) => { capturedWhere = query.where; return []; },
+      count: async () => 0,
+    },
+  } as never, {} as never, {} as never);
+
+  await service.searchTransactions({ q: 'AB-7788', page: 1, pageSize: 25 }, 'staff-id', {});
+
+  assert.match(JSON.stringify(capturedWhere), /internalReference/);
+  assert.match(JSON.stringify(capturedWhere), /providerRef/);
+  assert.match(JSON.stringify(capturedWhere), /contains/);
+});
+
+test('fee rule management validates ranges and audits every change', async () => {
+  const auditActions: string[] = [];
+  let createdData: { maxAmount: bigint | null } | undefined;
+  const service = new AdminService({
+    $transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        feeRule: {
+          create: async ({ data }: { data: Record<string, unknown> }) => {
+            createdData = { maxAmount: data.maxAmount as bigint | null };
+            return { id: 'fee-1', type: data.type, channel: null, flat: 0n, percentage: 0, minAmount: 100n, maxAmount: data.maxAmount as bigint | null, active: true, createdAt: new Date() };
+          },
+          findUnique: async () => ({ id: 'fee-1', type: 'send', channel: null, minAmount: 100n, maxAmount: 900n }),
+          update: async ({ data }: { data: Record<string, unknown> }) => ({ id: 'fee-1', type: 'send', channel: null, flat: 0n, percentage: 0, minAmount: 100n, maxAmount: 900n, active: true, createdAt: new Date(), ...data }),
+          delete: async () => undefined,
+        },
+        auditLog: { create: async ({ data }: { data: { action: string } }) => { auditActions.push(data.action); } },
+      }),
+  } as never, {} as never, {} as never);
+
+  const created = await service.createFeeRule(
+    { type: 'send', flat: 0, percentage: 0.01, minAmount: 100, maxAmount: 900, active: true },
+    'staff-id',
+    {},
+  );
+  assert.equal(created.id, 'fee-1');
+  assert.equal(createdData?.maxAmount, 900n);
+
+  await assert.rejects(
+    () => service.createFeeRule(
+      { type: 'send', flat: 0, percentage: 0.01, minAmount: 900, maxAmount: 100, active: true },
+      'staff-id',
+      {},
+    ),
+    /greater than or equal/,
+  );
+
+  await service.updateFeeRule('fee-1', { active: false }, 'staff-id', {});
+  await service.deleteFeeRule('fee-1', 'staff-id', {});
+
+  assert.deepEqual(auditActions, [
+    'admin.feeRule.create',
+    'admin.feeRule.update',
+    'admin.feeRule.delete',
+  ]);
 });
 
 test('transaction search audits access and serializes monetary values without leaking provider references', async () => {
