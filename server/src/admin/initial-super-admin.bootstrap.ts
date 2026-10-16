@@ -32,7 +32,7 @@ export class InitialSuperAdminBootstrap implements OnApplicationBootstrap {
       ?? 'Mori Pay Super Admin';
 
     const outcome = await this.prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`
+      await tx.$executeRaw`
         SELECT pg_advisory_xact_lock(${BOOTSTRAP_LOCK_CLASS}, ${BOOTSTRAP_LOCK_ID})
       `;
 

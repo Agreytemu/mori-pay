@@ -40,7 +40,7 @@ test('initial admin bootstrap skips creation when a super admin already exists',
     async (callback, options) => {
       assert.deepEqual(options, { isolationLevel: 'ReadCommitted' });
       return callback({
-        $queryRaw: async () => { calls.push('lock'); },
+        $executeRaw: async () => { calls.push('lock'); },
         user: {
           findFirst: async () => {
             calls.push('existing-super-admin');
@@ -65,7 +65,7 @@ test('initial admin bootstrap creates a verified admin wallet and ledger once', 
       INITIAL_SUPER_ADMIN_NAME: 'Root Admin',
     },
     async (callback) => callback({
-      $queryRaw: async () => undefined,
+      $executeRaw: async () => undefined,
       user: {
         findFirst: async ({ where }: { where: Record<string, unknown> }) => {
           calls.push({ model: 'user.findFirst', data: where });
@@ -131,7 +131,7 @@ test('initial admin bootstrap refuses to promote an existing account by email', 
       INITIAL_SUPER_ADMIN_PASSWORD: 'a-long-bootstrap-password',
     },
     async (callback) => callback({
-      $queryRaw: async () => undefined,
+      $executeRaw: async () => undefined,
       user: {
         findFirst: async () => {
           lookupCount += 1;
