@@ -8,6 +8,7 @@ export type SavedPaymentMethod = {
   identifier: string;
   addedDate: string;
   status: 'Active' | 'Pending';
+  usableForDeposit: boolean;
   isDefault: boolean;
 };
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
@@ -37,6 +37,10 @@ import {
 import { ApiError } from '@/lib/api';
 import { IdempotencyKeyCache } from '@/lib/idempotency';
 import {
+  loadPaymentMethods,
+  usePaymentMethods,
+} from '@/data/payment-method-store';
+import {
   createWithdrawal,
   getTransaction,
   topupCard,
@@ -66,6 +70,21 @@ function isDefinitiveProviderFailure(error: unknown): error is ApiError {
   );
 }
 
+function getUserFacingError(error: unknown, fallback: string): string {
+  if (!(error instanceof ApiError)) return fallback;
+  if (error.code === 'PROVIDER_ERROR') {
+    return 'The payment service is temporarily unavailable. Please try again.';
+  }
+  return error.message;
+}
+
+function getTzPhoneInputDigits(value: string): string {
+  let digits = value.replace(/\D/g, '');
+  if (digits.startsWith('255')) digits = digits.slice(3);
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  return digits.slice(0, 9);
+}
+
 const MIN_AMOUNT = 500;
 const MAX_DEPOSIT_AMOUNT = 3_000_000;
 
@@ -85,12 +104,29 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const router = useRouter();
   const { colors, space, radius } = useAppTheme();
   const { setWallet } = useSession();
+  const {
+    methods: savedPaymentMethods,
+    loading: savedPaymentMethodsLoading,
+    error: savedPaymentMethodsError,
+  } = usePaymentMethods();
+  const savedMobileMethods = useMemo(
+    () =>
+      savedPaymentMethods.filter(
+        (savedMethod) =>
+          savedMethod.kind === 'mobile-money' &&
+          savedMethod.status === 'Active' &&
+          savedMethod.usableForDeposit,
+      ),
+    [savedPaymentMethods],
+  );
 
   const isDeposit = operation === 'deposit';
   const title = isDeposit ? 'Deposit' : 'Withdraw';
 
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'mobile' | 'card'>('mobile');
+  const [mobilePaymentSource, setMobilePaymentSource] = useState<'saved' | 'custom'>('custom');
+  const [savedMobileMethodId, setSavedMobileMethodId] = useState<string | null>(null);
   const [mobileNumber, setMobileNumber] = useState('');
   const [entry, setEntry] = useState('');
   const [step, setStep] = useState<Step>('form');
@@ -113,7 +149,6 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     feePercentage: number;
     total: number;
     providerAvailable?: boolean;
-    availabilityMessage?: string;
   } | null>(null);
   const [previewError, setPreviewError] = useState<{
     forAmount: number;
@@ -125,6 +160,12 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idempotencyKeys = useRef(new IdempotencyKeyCache());
 
+  useFocusEffect(
+    useCallback(() => {
+      void loadPaymentMethods();
+    }, [])
+  );
+
   const numericAmount = Number(amount || '0');
   const amountValid = numericAmount >= MIN_AMOUNT;
   const depositAmountOverLimit =
@@ -132,6 +173,19 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const normalizedPhone = normalizeTzPhone(mobileNumber);
   const activeLookup =
     lookup && normalizedPhone && lookup.phone === normalizedPhone ? lookup : null;
+  const needsNumberLookup =
+    (!isDeposit || method === 'mobile' && mobilePaymentSource === 'custom') &&
+    Boolean(normalizedPhone) &&
+    !activeLookup;
+  const usingSavedMobileMethod = useMemo(
+    () =>
+      isDeposit &&
+      method === 'mobile' &&
+      mobilePaymentSource === 'saved' &&
+      savedMobileMethods.some((savedMethod) => savedMethod.id === savedMobileMethodId),
+    [isDeposit, method, mobilePaymentSource, savedMobileMethodId, savedMobileMethods],
+  );
+  const showCustomLookup = !isDeposit || mobilePaymentSource === 'custom';
   const detectedNetwork = resolveMobileNetwork(activeLookup?.network);
   const previewMethod: FeePreviewMethod = isDeposit ? method : 'withdraw';
   const activePreview =
@@ -145,7 +199,9 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     !depositAmountOverLimit;
   const requiresNumberVerification = !isDeposit || method === 'mobile';
   const numberVerified =
-    !requiresNumberVerification || activeLookup?.found === true;
+    usingSavedMobileMethod ||
+    !requiresNumberVerification ||
+    activeLookup?.found === true;
   const canContinue =
     amountValid &&
     !depositAmountOverLimit &&
@@ -170,7 +226,10 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   }, [setWallet]);
 
   useEffect(() => {
-    if (isDeposit && method === 'card') return;
+    if (
+      isDeposit &&
+      (method === 'card' || mobilePaymentSource === 'saved')
+    ) return;
 
     const normalized = normalizeTzPhone(mobileNumber);
     if (!normalized) return;
@@ -190,7 +249,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     return () => {
       if (lookupTimer.current) clearTimeout(lookupTimer.current);
     };
-  }, [mobileNumber, isDeposit, method]);
+  }, [mobileNumber, isDeposit, method, mobilePaymentSource]);
 
   useEffect(() => {
     if (
@@ -220,9 +279,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               forAmount: numericAmount,
               forMethod: previewMethod,
               message:
-                err instanceof ApiError
-                  ? err.message
-                  : 'Could not calculate the fee. Please try again.',
+                getUserFacingError(err, 'Could not calculate the fee. Please try again.'),
             });
           }
         }
@@ -339,18 +396,32 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         );
       }
     },
-    [activePreview?.fee, pollUntilSettled, refreshWallet]
+    [activePreview?.fee, pollUntilSettled, refreshWallet, setError, setResultMessage, setResultTransaction, setStep]
   );
 
   const runMobileDeposit = useCallback(
     async (value: number) => {
       const normalized = normalizeTzPhone(mobileNumber);
-      if (!normalized) throw new Error('Enter a valid mobile money number.');
-      const intent = `mobile-deposit:${value}:${normalized}`;
+      if (usingSavedMobileMethod && !savedMobileMethodId) {
+        throw new Error('Choose a saved mobile-money method.');
+      }
+      if (!usingSavedMobileMethod && !normalized) {
+        throw new Error('Enter a valid mobile money number.');
+      }
+      const intent = usingSavedMobileMethod
+        ? `mobile-deposit:${value}:saved:${savedMobileMethodId}`
+        : `mobile-deposit:${value}:${normalized}`;
+      const paymentMethodInput = usingSavedMobileMethod
+        ? savedMobileMethodId
+          ? { savedPaymentMethodId: savedMobileMethodId }
+          : null
+        : normalized
+          ? { mobileNumber: normalized, network: activeLookup?.network }
+          : null;
+      if (!paymentMethodInput) throw new Error('Enter a valid mobile money number.');
       const result = await topupMobileMoney({
         amount: value,
-        mobileNumber: normalized,
-        network: activeLookup?.network,
+        ...paymentMethodInput,
         expectedFee: activePreview?.fee,
         idempotencyKey: idempotencyKeys.current.get(intent, 'mobile-deposit'),
       });
@@ -375,7 +446,19 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         setResultMessage('Still processing. It will show in your wallet once confirmed.');
       }
     },
-    [activeLookup?.network, activePreview?.fee, mobileNumber, pollUntilSettled, refreshWallet]
+    [
+      activeLookup?.network,
+      activePreview?.fee,
+      mobileNumber,
+      pollUntilSettled,
+      refreshWallet,
+      savedMobileMethodId,
+      setError,
+      setResultMessage,
+      setResultTransaction,
+      setStep,
+      usingSavedMobileMethod,
+    ]
   );
 
   /* --------------------------------------------------------------- withdraw */
@@ -419,7 +502,17 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         setResultMessage('Your withdrawal is processing. We will update its status when confirmed.');
       }
     },
-    [activeLookup?.network, activePreview?.fee, mobileNumber, pollUntilSettled, refreshWallet]
+    [
+      activeLookup?.network,
+      activePreview?.fee,
+      mobileNumber,
+      pollUntilSettled,
+      refreshWallet,
+      setError,
+      setResultTransaction,
+      setStep,
+      setResultMessage,
+    ]
   );
 
   /* ---------------------------------------------------------------- handlers */
@@ -440,7 +533,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     }
 
     if (isDeposit) {
-      if (method === 'mobile' && !activeLookup) {
+      if (method === 'mobile' && !usingSavedMobileMethod && !activeLookup) {
         setError('Wait for the mobile number lookup to finish before continuing.');
         return;
       }
@@ -466,7 +559,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
           setPreview(null);
           setPreviewAttempt((attempt) => attempt + 1);
         }
-        setError(err instanceof ApiError ? err.message : 'Deposit failed. Please try again.');
+        setError(getUserFacingError(err, 'Deposit failed. Please try again.'));
       } finally {
         setBusy(false);
         setDialog((current) => (current ? current : null));
@@ -518,10 +611,10 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       } else if (isDefinitiveProviderFailure(err)) {
         setStep('failed');
         setResultTransaction(null);
-        setError(err.message);
+        setError(getUserFacingError(err, 'Withdrawal failed. Please try again.'));
       } else {
         setStep('pin');
-        setError(err instanceof ApiError ? err.message : 'Withdrawal failed. Please try again.');
+        setError(getUserFacingError(err, 'Withdrawal failed. Please try again.'));
       }
       setEntry('');
     } finally {
@@ -822,21 +915,159 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
 
           {!isDeposit || method === 'mobile' ? (
             <View style={styles.fields}>
-              <ProfileField
-                label={isDeposit ? 'Mobile money number' : 'Payout number'}
-                value={mobileNumber}
-                onChangeText={(value) => setMobileNumber(value)}
-                keyboardType="phone-pad"
-                autoComplete="tel"
-                placeholder="0712 345 678"
-                hint={
-                  isDeposit
-                    ? 'We will prompt this number for payment.'
-                    : 'Double-check the number — payouts cannot be reversed.'
-                }
-              />
+              {isDeposit ? (
+                <View style={styles.methods}>
+                  <AppText variant="bodySmallStrong">Mobile-money number</AppText>
+                  {savedMobileMethods.length ? (
+                    <Pressable
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: mobilePaymentSource === 'saved' }}
+                      onPress={() => setMobilePaymentSource('saved')}
+                      style={({ pressed }) => [
+                        styles.methodRow,
+                        {
+                          backgroundColor: pressed ? colors.surfacePressed : colors.surface,
+                          borderColor: mobilePaymentSource === 'saved' ? colors.primary : colors.border,
+                          borderWidth: mobilePaymentSource === 'saved' ? 1.5 : 1,
+                          borderRadius: radius.md,
+                          padding: space.base,
+                        },
+                      ]}>
+                      <View style={[styles.methodIcon, { backgroundColor: colors.primarySoft, borderRadius: radius.md }]}>
+                        <AppIcon name="phone" size={20} color={colors.primary} />
+                      </View>
+                      <View style={styles.methodCopy}>
+                        <AppText variant="bodySmallStrong">Use a saved payment method</AppText>
+                        <AppText variant="caption" color={colors.textSecondary}>
+                          Choose a saved mobile-money number
+                        </AppText>
+                      </View>
+                      {mobilePaymentSource === 'saved' ? <AppIcon name="check" size={18} color={colors.primary} /> : null}
+                    </Pressable>
+                  ) : null}
+                  <Pressable
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: mobilePaymentSource === 'custom' }}
+                    onPress={() => setMobilePaymentSource('custom')}
+                    style={({ pressed }) => [
+                      styles.methodRow,
+                      {
+                        backgroundColor: pressed ? colors.surfacePressed : colors.surface,
+                        borderColor: mobilePaymentSource === 'custom' ? colors.primary : colors.border,
+                        borderWidth: mobilePaymentSource === 'custom' ? 1.5 : 1,
+                        borderRadius: radius.md,
+                        padding: space.base,
+                      },
+                    ]}>
+                    <View style={[styles.methodIcon, { backgroundColor: colors.primarySoft, borderRadius: radius.md }]}>
+                      <AppIcon name="phone" size={20} color={colors.primary} />
+                    </View>
+                    <View style={styles.methodCopy}>
+                      <AppText variant="bodySmallStrong">Use a different number</AppText>
+                      <AppText variant="caption" color={colors.textSecondary}>
+                        Enter a mobile-money number for this deposit
+                      </AppText>
+                    </View>
+                    {mobilePaymentSource === 'custom' ? <AppIcon name="check" size={18} color={colors.primary} /> : null}
+                  </Pressable>
+                  {savedPaymentMethodsLoading ? (
+                    <AppText variant="caption" color={colors.textSecondary}>Loading saved payment methods…</AppText>
+                  ) : savedPaymentMethodsError ? (
+                    <View style={styles.noSavedMethods}>
+                      <StatusBanner
+                        tone="error"
+                        title="Could not load saved payment methods"
+                        message="Check your connection and try again."
+                      />
+                      <SecondaryButton
+                        label="Try again"
+                        size="sm"
+                        onPress={() => void loadPaymentMethods()}
+                      />
+                    </View>
+                  ) : savedMobileMethods.length ? (
+                    mobilePaymentSource === 'saved' ? (
+                      <View style={styles.savedMethods}>
+                        {savedMobileMethods.map((savedMethod) => {
+                          const selected = savedMethod.id === savedMobileMethodId;
+                          return (
+                            <Pressable
+                              key={savedMethod.id}
+                              accessibilityRole="radio"
+                              accessibilityState={{ checked: selected }}
+                              accessibilityLabel={`${savedMethod.provider} ending in ${savedMethod.identifier.slice(-4)}`}
+                              onPress={() => setSavedMobileMethodId(savedMethod.id)}
+                              style={({ pressed }) => [
+                                styles.savedMethod,
+                                {
+                                  backgroundColor: pressed ? colors.surfacePressed : colors.surface,
+                                  borderColor: selected ? colors.primary : colors.border,
+                                  borderWidth: selected ? 1.5 : 1,
+                                  borderRadius: radius.md,
+                                },
+                              ]}>
+                              <AppText variant="bodySmallStrong">{savedMethod.provider}</AppText>
+                              <AppText variant="bodySmall" color={colors.textSecondary}>
+                                {savedMethod.identifier}
+                              </AppText>
+                              {selected ? <AppIcon name="check" size={18} color={colors.primary} /> : null}
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null
+                  ) : (
+                    <View style={[styles.noSavedMethods, { backgroundColor: colors.surfaceMuted, borderRadius: radius.md }]}>
+                      <AppText variant="bodySmallStrong">No usable saved mobile-money methods</AppText>
+                      <AppText variant="caption" color={colors.textSecondary}>
+                        Add a mobile-money number to use it for future deposits, or enter a different number below.
+                      </AppText>
+                      <SecondaryButton
+                        label="Add payment method"
+                        size="sm"
+                        onPress={() => router.push('/payment-methods/add')}
+                      />
+                    </View>
+                  )}
+                </View>
+              ) : null}
 
-              {activeLookup?.found ? (
+              {!isDeposit || mobilePaymentSource === 'custom' ? (
+                <ProfileField
+                  label={isDeposit ? 'Mobile money number' : 'Payout number'}
+                  value={mobileNumber}
+                  onChangeText={(value) => setMobileNumber(getTzPhoneInputDigits(value))}
+                  floatingLabel={false}
+                  keyboardType="phone-pad"
+                  autoComplete="tel"
+                  placeholder="712 345 678"
+                  leadingContent={
+                    <View style={styles.phonePrefix} accessible accessibilityLabel="Tanzania, country code plus 255">
+                      <AppText variant="bodySmall">🇹🇿</AppText>
+                      <AppText variant="bodySmallStrong" color={colors.textSecondary}>+255</AppText>
+                    </View>
+                  }
+                  hint={
+                    isDeposit
+                      ? 'We will prompt this number for payment.'
+                      : 'Double-check the number — payouts cannot be reversed.'
+                  }
+                />
+              ) : null}
+
+              {showCustomLookup && needsNumberLookup ? (
+                <View
+                  accessible
+                  accessibilityLabel="Verifying phone number"
+                  style={[styles.lookupLoading, { backgroundColor: colors.surfaceMuted, borderRadius: radius.md }]}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <AppText variant="caption" color={colors.textSecondary}>
+                    Verifying number…
+                  </AppText>
+                </View>
+              ) : null}
+
+              {showCustomLookup && activeLookup?.found ? (
                 <View
                   accessibilityRole="summary"
                   style={[
@@ -882,11 +1113,11 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                 </View>
               ) : null}
 
-              {activeLookup && !activeLookup.found ? (
+              {showCustomLookup && activeLookup && !activeLookup.found ? (
                 <StatusBanner
                   tone="info"
                   title="Network not identified"
-                  message="Abliner could not confirm the number's network. Check the number; the provider will still route it automatically."
+                  message="We could not confirm this number's network. Check the number; your payment may still be routed automatically."
                 />
               ) : null}
 
@@ -940,10 +1171,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               <StatusBanner
                 tone="error"
                 title="Withdrawal method unavailable"
-                message={
-                  activePreview.availabilityMessage ??
-                  'Abliner could not confirm that mobile withdrawals are available. Try checking again.'
-                }
+                message="Mobile withdrawals are temporarily unavailable. Please check again."
               />
               <SecondaryButton
                 label="Check availability again"
@@ -956,11 +1184,17 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
             </View>
           ) : null}
           {needsFeePreview && !activePreview && !activePreviewError ? (
-            <AppText variant="caption" color={colors.textSecondary}>
-              {!isDeposit
-                ? 'Checking recipient, withdrawal fee and provider availability…'
-                : 'Calculating fee and total…'}
-            </AppText>
+            <View
+              accessible
+              accessibilityLabel={!isDeposit ? 'Checking recipient and withdrawal fee' : 'Calculating fee and total'}
+              style={[styles.lookupLoading, { backgroundColor: colors.surfaceMuted, borderRadius: radius.md }]}>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <AppText variant="caption" color={colors.textSecondary}>
+                {!isDeposit
+                  ? 'Checking recipient, withdrawal fee and availability…'
+                  : 'Calculating fee and total…'}
+              </AppText>
+            </View>
           ) : null}
           {needsFeePreview && activePreviewError ? (
             <View style={styles.previewRetry}>
@@ -1032,6 +1266,11 @@ const styles = StyleSheet.create({
   methodIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   methodCopy: { flex: 1, gap: 2 },
   fields: { gap: 16 },
+  savedMethods: { gap: 8 },
+  savedMethod: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12 },
+  noSavedMethods: { gap: 8, padding: 12 },
+  phonePrefix: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  lookupLoading: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12 },
   networkLookupCard: {
     minHeight: 76,
     flexDirection: 'row',

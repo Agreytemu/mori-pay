@@ -110,6 +110,7 @@ export function toSavedPaymentMethod(method: ApiSavedPaymentMethod): SavedPaymen
     identifier,
     addedDate: formatDate(method.createdAt),
     status: method.status === 'Pending' ? 'Pending' : 'Active',
+    usableForDeposit: method.usableForDeposit,
     isDefault: method.isDefault,
   };
 }

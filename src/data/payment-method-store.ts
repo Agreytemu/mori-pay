@@ -82,11 +82,12 @@ export async function loadPaymentMethods(userId = state.userId): Promise<void> {
   }
 }
 
-function toInput(method: SavedPaymentMethod): SavePaymentMethodInput {
+function toInput(method: SavedPaymentMethod, phoneNumber?: string): SavePaymentMethodInput {
   return {
     kind: method.kind,
     provider: method.provider,
     lastFour: method.identifier.replace(/\D/g, '').slice(-4),
+    ...(phoneNumber ? { phoneNumber } : {}),
     isDefault: method.isDefault,
   };
 }
@@ -101,8 +102,8 @@ function replaceMethod(method: ApiPaymentMethod) {
   }
 }
 
-export async function savePaymentMethod(method: SavedPaymentMethod) {
-  const input = toInput(method);
+export async function savePaymentMethod(method: SavedPaymentMethod, phoneNumber?: string) {
+  const input = toInput(method, phoneNumber);
   const saved = method.id.startsWith('method-')
     ? await createMethod(input)
     : await patchMethod(method.id, input);

@@ -11,6 +11,7 @@ const productionConfig = {
   JWT_REFRESH_SECRET: 'refresh-secret-that-is-long-enough',
   ABLINER_API_KEY: 'tsl_live_test',
   ABLINER_WEBHOOK_SECRET: 'whsec_test',
+  PAYMENT_METHOD_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
   RESEND_API_KEY: 're_test',
   EMAIL_FROM: 'payments@example.com',
 };

@@ -28,6 +28,8 @@ export const envSchema = z.object({
 
   /** Optional dedicated secret for receive-code QR signing; falls back to JWT. */
   RECEIVE_QR_SECRET: z.string().min(16).optional(),
+  /** Base64-encoded 32-byte key used to encrypt reusable mobile-money numbers. */
+  PAYMENT_METHOD_ENCRYPTION_KEY: z.string().optional(),
 
   OTP_TTL_SECONDS: z.coerce.number().int().positive().default(300),
   OTP_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
@@ -199,6 +201,15 @@ export function validateEnv(config: Record<string, unknown>): Env {
       missing.push('ABLINER_WEBHOOK_SECRET');
     } else if (!result.data.ABLINER_WEBHOOK_SECRET.startsWith('whsec_')) {
       missing.push('ABLINER_WEBHOOK_SECRET (must be the Abliner whsec_ signing secret)');
+    }
+    const paymentMethodKey = result.data.PAYMENT_METHOD_ENCRYPTION_KEY;
+    if (!paymentMethodKey) {
+      missing.push('PAYMENT_METHOD_ENCRYPTION_KEY');
+    } else {
+      const decodedKey = Buffer.from(paymentMethodKey, 'base64');
+      if (decodedKey.length !== 32 || decodedKey.toString('base64') !== paymentMethodKey) {
+        missing.push('PAYMENT_METHOD_ENCRYPTION_KEY (must be a base64-encoded 32-byte key)');
+      }
     }
     if (missing.length > 0) {
       throw new Error(

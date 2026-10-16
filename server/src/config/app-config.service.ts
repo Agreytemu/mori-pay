@@ -63,6 +63,10 @@ export class AppConfigService {
     return this.get('RECEIVE_QR_SECRET');
   }
 
+  get paymentMethodEncryptionKey() {
+    return this.get('PAYMENT_METHOD_ENCRYPTION_KEY');
+  }
+
   get otp() {
     return {
       ttlSeconds: this.get('OTP_TTL_SECONDS'),

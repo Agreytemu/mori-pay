@@ -334,6 +334,7 @@ model SavedPaymentMethod {
   kind             String
   provider         String
   identifier       String
+  encryptedPhoneNumber String?
   network          String?
   isDefault        Boolean  @default(false)
   status           String   @default("Active")

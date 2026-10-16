@@ -53,6 +53,8 @@ export type SavedPaymentMethod = {
   provider: string;
   /** Only the last four digits are ever accepted or returned. */
   lastFour: string;
+  /** Whether this saved method can be used for a mobile-money deposit. */
+  usableForDeposit: boolean;
   isDefault: boolean;
   status: string;
   createdAt: string;

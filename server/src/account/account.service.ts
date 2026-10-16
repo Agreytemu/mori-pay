@@ -17,11 +17,16 @@ import type {
 } from '@mori-pay/contracts';
 
 import type { SavedPaymentMethod as SavedPaymentMethodRow } from '../generated/prisma/client.js';
+import { encryptPaymentMethodPhone } from '../common/payment-method-crypto.js';
+import { AppConfigService } from '../config/app-config.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 @Injectable()
 export class AccountService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly config: AppConfigService,
+  ) {}
 
   async getProfile(userId: string): Promise<AccountProfile> {
     const user = await this.prisma.user.findUniqueOrThrow({
@@ -101,6 +106,7 @@ export class AccountService {
     userId: string,
     input: SavePaymentMethodInput,
   ): Promise<SavedPaymentMethod> {
+    const encryptedPhoneNumber = this.encryptPhoneNumber(input);
     const count = await this.prisma.savedPaymentMethod.count({
       where: { userId },
     });
@@ -119,6 +125,7 @@ export class AccountService {
           kind: input.kind,
           provider: input.provider,
           identifier: input.lastFour,
+          encryptedPhoneNumber,
           isDefault,
         },
       });
@@ -133,9 +140,19 @@ export class AccountService {
   ): Promise<SavedPaymentMethod> {
     const existing = await this.prisma.savedPaymentMethod.findFirst({
       where: { id, userId },
-      select: { id: true },
+      select: { id: true, identifier: true },
     });
     if (!existing) throw new NotFoundException('Payment method not found');
+    if (
+      input.kind === 'mobile-money' &&
+      !input.phoneNumber &&
+      existing.identifier.replace(/\D/g, '').slice(-4) !== input.lastFour
+    ) {
+      throw new BadRequestException(
+        'Enter the full phone number when changing a saved mobile-money method.',
+      );
+    }
+    const encryptedPhoneNumber = this.encryptPhoneNumber(input, false);
 
     const method = await this.prisma.$transaction(async (tx) => {
       if (input.isDefault) {
@@ -150,6 +167,11 @@ export class AccountService {
           kind: input.kind,
           provider: input.provider,
           identifier: input.lastFour,
+          ...(input.kind === 'mobile-money'
+            ? encryptedPhoneNumber
+              ? { encryptedPhoneNumber }
+              : {}
+            : { encryptedPhoneNumber: null }),
           ...(input.isDefault === undefined ? {} : { isDefault: input.isDefault }),
         },
       });
@@ -336,10 +358,51 @@ export class AccountService {
       kind: this.toPaymentMethodKind(method.kind),
       provider: method.provider,
       lastFour: method.identifier.replace(/\D/g, '').slice(-4),
+      usableForDeposit: method.kind === 'mobile-money' && Boolean(method.encryptedPhoneNumber),
       isDefault: method.isDefault,
       status: method.status,
       createdAt: method.createdAt.toISOString(),
     };
+  }
+
+  private encryptPhoneNumber(
+    input: SavePaymentMethodInput,
+    required = true,
+  ): string | null {
+    if (input.kind !== 'mobile-money') {
+      if (input.phoneNumber) {
+        throw new BadRequestException(
+          'A phone number can only be attached to a mobile-money method.',
+        );
+      }
+      return null;
+    }
+    if (!input.phoneNumber) {
+      if (required) {
+        throw new BadRequestException(
+          'Enter the full phone number to save a usable mobile-money method.',
+        );
+      }
+      return null;
+    }
+    if (input.phoneNumber.slice(-4) !== input.lastFour) {
+      throw new BadRequestException(
+        'The phone number does not match its last four digits.',
+      );
+    }
+    try {
+      return encryptPaymentMethodPhone(
+        input.phoneNumber,
+        this.config.paymentMethodEncryptionKey,
+      );
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('not configured')) {
+        throw new BadRequestException(
+          'Saving mobile-money methods is not configured on this server.',
+        );
+      }
+      throw error;
+    }
   }
 
   private toPaymentMethodKind(

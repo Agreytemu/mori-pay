@@ -134,6 +134,8 @@ The current fee rules are stored in `FeeRule` and are created by the approved-fe
 
 Fee totals are disclosed before confirmation and saved on each transaction. Outflow limits include both the transaction amount and its fee. Standard defaults are TZS 1,000,000 per rolling 24 hours and TZS 500,000 per transaction; Verified defaults are TZS 5,000,000 and TZS 3,000,000. These limits can be overridden using the `LIMIT_*` variables in `server/.env`.
 
+Deposits can use a saved mobile-money number or a one-time custom number. Saved mobile numbers are encrypted at rest with `PAYMENT_METHOD_ENCRYPTION_KEY`; configure a unique 32-byte base64 key and keep a secure backup. Saved cards are not charged directly: card deposits continue through Abliner's hosted checkout, where the payer enters card details.
+
 ## Getting started
 
 ### Prerequisites
@@ -361,6 +363,7 @@ the API, a managed Postgres database and a Render Key Value (Redis) instance.
    | `ABLINER_API_KEY` | Enabled Abliner key, starts with `tsl_live_`. |
    | `ABLINER_WEBHOOK_SECRET` | Exact webhook signing secret generated in Abliner Dashboard (starts with `whsec_`); do not use or prepend the API key. |
    | `ABLINER_CALLBACK_URL` | `https://<public-api-host>/api/v1/webhooks/abliner` (set to the deployed API host and register the exact URL with Abliner). |
+   | `PAYMENT_METHOD_ENCRYPTION_KEY` | Unique base64-encoded 32-byte key used to encrypt saved mobile-money numbers; keep it stable and back it up securely. |
    | `RESEND_API_KEY` / `EMAIL_FROM` | Transactional email; required in production. Verify the sender domain in Resend first; use an address such as `noreply@agreyflix.online`. |
    | `SMS_API_KEY` | Credentials for the configured `SMS_PROVIDER`. |
    | `SENTRY_DSN` | Optional error reporting. |
@@ -454,6 +457,7 @@ ABLINER_BASE_URL="https://abliner.net"
 ABLINER_API_KEY="your-live-key"
 ABLINER_WEBHOOK_SECRET="your-whsec-secret"
 ABLINER_CALLBACK_URL="https://your-api.example.com/api/v1/webhooks/abliner"
+PAYMENT_METHOD_ENCRYPTION_KEY="generate-a-unique-base64-32-byte-key"
 SMS_PROVIDER="abliner"
 ```
 
@@ -506,6 +510,7 @@ ABLINER_BASE_URL="https://abliner.net"
 ABLINER_API_KEY="your-live-key"
 ABLINER_WEBHOOK_SECRET="your-whsec-secret"
 ABLINER_CALLBACK_URL="https://your-api.example.com/api/v1/webhooks/abliner"
+PAYMENT_METHOD_ENCRYPTION_KEY="generate-a-unique-base64-32-byte-key"
 SMS_PROVIDER="abliner"
 ```
 

@@ -136,6 +136,7 @@ export const savePaymentMethodSchema = z.object({
   kind: z.enum(['mobile-money', 'bank', 'card']),
   provider: z.string().trim().min(1).max(80),
   lastFour: z.string().regex(/^\d{4}$/, 'Only the last four digits are accepted'),
+  phoneNumber: tzPhoneSchema.optional(),
   isDefault: z.boolean().optional(),
 });
 
@@ -230,12 +231,16 @@ export const topupCardPreviewQuerySchema = topupDepositPreviewQuerySchema;
 
 export const topupMobileMoneySchema = z.object({
   amount: ablinerDepositAmountSchema,
-  mobileNumber: tzPhoneSchema,
+  mobileNumber: tzPhoneSchema.optional(),
+  savedPaymentMethodId: z.string().min(1).optional(),
   /** Display-only Abliner lookup result; Abliner routes the rail automatically. */
   network: z.string().trim().min(1).max(40).optional(),
   idempotencyKey: z.string().min(1).max(120).optional(),
   expectedFee: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
-});
+}).refine(
+  (input) => Boolean(input.mobileNumber) !== Boolean(input.savedPaymentMethodId),
+  'Provide either a mobile number or a saved payment method, not both.',
+);
 
 export const topupCardSchema = z.object({
   amount: ablinerDepositAmountSchema,

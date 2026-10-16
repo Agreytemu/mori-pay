@@ -20,6 +20,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/button';
 import { PaymentMethodSelector } from '@/components/payment/payment-components';
 import { PAYMENT_METHOD_TYPES, type SavedPaymentMethod } from '@/data/mock-payment-methods';
+import { normalizeTzPhone } from '@/lib/phone';
 import {
   removePaymentMethod,
   savePaymentMethod,
@@ -207,6 +208,14 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
     const lastFour = edit && original
       ? original.identifier.replace(/\D/g, '').slice(-4)
       : currentFields.identifier.replace(/\D/g, '').slice(-4);
+    const normalizedMobileNumber =
+      currentKind === 'mobile-money'
+        ? normalizeTzPhone(currentFields.identifier)
+        : null;
+    if (currentKind === 'mobile-money' && !edit && !normalizedMobileNumber) {
+      setErrors(['Enter a valid Tanzanian phone number.']);
+      return;
+    }
     const provider = currentKind === 'card' ? 'Card' : currentFields.provider.trim();
     const name = currentKind === 'mobile-money'
       ? provider
@@ -224,8 +233,11 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
       identifier: `•••• ${lastFour}`,
       addedDate: original?.addedDate ?? new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }),
       status: 'Active',
+      usableForDeposit: edit
+        ? original?.usableForDeposit ?? false
+        : currentKind === 'mobile-money' && Boolean(normalizedMobileNumber),
       isDefault: currentDefault,
-    });
+    }, normalizedMobileNumber ?? undefined);
     setFields(EMPTY_FIELDS);
     router.back();
     } catch (error) {

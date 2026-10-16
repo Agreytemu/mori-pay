@@ -63,7 +63,7 @@ import type {
 
 import { request } from './api';
 
-/** Abliner payout lookup mirror of the server's `RecipientLookupResult`. */
+/** Payout lookup data returned by the server. */
 export type PayoutLookup = {
   found: boolean;
   phoneNumber: string;

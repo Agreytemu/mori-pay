@@ -106,6 +106,24 @@ describe('AblinerClient contract', () => {
       false,
     );
     assert.equal(
+      topupMobileMoneySchema.safeParse({
+        amount: 5_000,
+        savedPaymentMethodId: 'saved-method-1',
+      }).success,
+      true,
+    );
+    assert.equal(
+      topupMobileMoneySchema.safeParse({
+        ...mobileTopup,
+        savedPaymentMethodId: 'saved-method-1',
+      }).success,
+      false,
+    );
+    assert.equal(
+      topupMobileMoneySchema.safeParse({ amount: 5_000 }).success,
+      false,
+    );
+    assert.equal(
       topupCardSchema.safeParse({ amount: 3_000_001 }).success,
       false,
     );

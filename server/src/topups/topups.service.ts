@@ -21,6 +21,7 @@ import {
 } from '../abliner/abliner.client.js';
 import { generateReference } from '../common/crypto.js';
 import { ProviderError } from '../common/errors.js';
+import { decryptPaymentMethodPhone } from '../common/payment-method-crypto.js';
 import { createTransactionNotification } from '../account/notification-writer.js';
 import { AppConfigService } from '../config/app-config.service.js';
 import { Prisma, type Transaction } from '../generated/prisma/client.js';
@@ -76,6 +77,33 @@ export class TopUpsService {
     input: TopupMobileMoneyInput,
   ): Promise<TopupInitResult> {
     const amount = BigInt(input.amount);
+    let mobileNumber = input.mobileNumber;
+    let network = input.network;
+    if (input.savedPaymentMethodId) {
+      const savedMethod = await this.prisma.savedPaymentMethod.findFirst({
+        where: {
+          id: input.savedPaymentMethodId,
+          userId,
+          kind: 'mobile-money',
+          status: 'Active',
+        },
+      });
+      if (!savedMethod?.encryptedPhoneNumber) {
+        throw new BadRequestException(
+          'That saved mobile-money method is unavailable. Choose another number or add a new method.',
+        );
+      }
+      mobileNumber = decryptPaymentMethodPhone(
+        savedMethod.encryptedPhoneNumber,
+        this.config.paymentMethodEncryptionKey,
+      );
+      network = savedMethod.network ?? savedMethod.provider;
+    }
+    if (!mobileNumber) {
+      throw new BadRequestException(
+        'Provide a mobile number or choose a saved mobile-money method.',
+      );
+    }
     const reference = generateReference('DEP');
 
     let result: { transaction: Transaction; isNew: boolean };
@@ -95,7 +123,7 @@ export class TopUpsService {
         previous.type !== 'deposit' ||
         previous.channel !== 'mobileMoney' ||
         previous.amount !== amount ||
-        previous.counterparty !== input.mobileNumber
+        previous.counterparty !== mobileNumber
       ) {
         throw new BadRequestException(
           'This payment retry does not match the original request.',
@@ -133,7 +161,7 @@ export class TopUpsService {
               existing.type !== 'deposit' ||
               existing.channel !== 'mobileMoney' ||
               existing.amount !== amount ||
-              existing.counterparty !== input.mobileNumber
+              existing.counterparty !== mobileNumber
             ) {
               throw new BadRequestException(
                 'This payment retry does not match the original request.',
@@ -165,14 +193,14 @@ export class TopUpsService {
             feeFlat: configuredFee.flat,
             feePercentage: configuredFee.percentage,
             total: amount + configuredFee.fee,
-            counterparty: input.mobileNumber,
-            counterpartyDetail: input.network
-              ? mobileNetworkDisplayName(input.network)
+            counterparty: mobileNumber,
+            counterpartyDetail: network
+              ? mobileNetworkDisplayName(network)
               : 'Mobile money',
             provider: 'abliner',
             providerStatus: 'pending',
             idempotencyKey: input.idempotencyKey ?? null,
-            metadata: { network: input.network ?? null },
+            metadata: { network: network ?? null },
           },
         });
         await createTransactionNotification(tx, created);
@@ -199,7 +227,7 @@ export class TopUpsService {
         existing.type !== 'deposit' ||
         existing.channel !== 'mobileMoney' ||
         existing.amount !== amount ||
-        existing.counterparty !== input.mobileNumber
+        existing.counterparty !== mobileNumber
       ) {
         throw new BadRequestException(
           'This payment retry does not match the original request.',
@@ -235,7 +263,7 @@ export class TopUpsService {
         amount: Number(transaction.total),
         method: 'mobile',
         currency: 'TZS',
-        phone: input.mobileNumber,
+        phone: mobileNumber,
         reference: transaction.reference,
         callbackUrl: this.config.abliner.callbackUrl,
         idempotencyKey: transaction.id,
