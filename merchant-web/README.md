@@ -4,6 +4,11 @@ This is a separately buildable and deployable website for larger merchant
 management. It uses Mori Pay's existing authentication and merchant API; the
 Expo mobile app keeps its own approved-merchant dashboard.
 
+Unauthenticated visitors see a merchant landing page describing the available
+workspace features and onboarding flow. Signing in uses only the existing Mori
+Pay email/password or email/PIN options. The workspace overview welcomes the
+signed-in user by first name when available from the session.
+
 ## Local development
 
 Install the standalone website dependencies and start it from the repository
@@ -47,13 +52,11 @@ CORS_ORIGINS=https://merchant.example.com,https://existing-app.example.com
 ```
 
 Keep the API on HTTPS and restrict CORS to the real deployed app and website
-origins. Authentication uses Mori Pay's existing email/password, email/PIN, or phone
-SMS OTP login endpoints. Phone OTP requires the number already linked to an
-existing Mori Pay account; new users must register in the mobile app first.
-The short-lived bearer-token session is held in `sessionStorage` and is cleared
-when the browser tab session ends. Any signed-in user can check their merchant
-application status; access to merchant data and QR operations remains enforced
-by the authenticated backend.
+origins. Authentication uses only Mori Pay's existing email/password or
+email/PIN login endpoints. The short-lived bearer-token session is held in
+`sessionStorage` and is cleared when the browser tab session ends. Any signed-in
+user can check their merchant application status; access to merchant data and
+QR operations remains enforced by the authenticated backend.
 
 ## Current backend limitations
 

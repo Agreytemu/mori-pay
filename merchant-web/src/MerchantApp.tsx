@@ -9,13 +9,12 @@ import {
   getMerchantPortal,
   getTransaction,
   hasSession,
+  getSignedInFirstName,
   listQrCodes,
   listTransactions,
   MerchantApiError,
-  requestPhoneOtp,
   revokeQr,
   signIn,
-  signInWithPhoneOtp,
   signOut,
   type TransactionFilters,
 } from './api';
@@ -26,6 +25,7 @@ import { WorkspaceLayout, type WorkspaceTab } from './components/WorkspaceLayout
 import { ApplicationStatusPage } from './pages/ApplicationStatusPage';
 import { BusinessPage } from './pages/BusinessPage';
 import { LoginPage } from './pages/LoginPage';
+import { LandingPage } from './pages/LandingPage';
 import { OverviewPage } from './pages/OverviewPage';
 import { QrCodesPage, type QrExpiry } from './pages/QrCodesPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -59,6 +59,8 @@ function escapeHtml(value: string): string {
 
 export function MerchantApp() {
   const [authenticated, setAuthenticated] = useState(hasSession);
+  const [showLanding, setShowLanding] = useState(!hasSession());
+  const [firstName, setFirstName] = useState(() => getSignedInFirstName() ?? '');
   const [tab, setTab] = useState<WorkspaceTab>('overview');
   const [portal, setPortal] = useState<MerchantPortal | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -72,12 +74,7 @@ export function MerchantApp() {
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginPin, setLoginPin] = useState('');
-  const [loginPhone, setLoginPhone] = useState('');
-  const [loginOtp, setLoginOtp] = useState('');
-  const [otpRequested, setOtpRequested] = useState(false);
-  const [otpRetryAt, setOtpRetryAt] = useState(0);
-  const [otpRetrySeconds, setOtpRetrySeconds] = useState(0);
-  const [loginMode, setLoginMode] = useState<'password' | 'pin' | 'phone'>('password');
+  const [loginMode, setLoginMode] = useState<'password' | 'pin'>('password');
   const [transactionSearch, setTransactionSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
@@ -103,21 +100,6 @@ export function MerchantApp() {
     [from, to],
   );
   const pageCount = Math.max(1, Math.ceil(transactionTotal / 20));
-
-  useEffect(() => {
-    if (!otpRetryAt) {
-      setOtpRetrySeconds(0);
-      return;
-    }
-    const updateCountdown = () => {
-      const remaining = Math.max(0, Math.ceil((otpRetryAt - Date.now()) / 1000));
-      setOtpRetrySeconds(remaining);
-      if (remaining === 0) setOtpRetryAt(0);
-    };
-    updateCountdown();
-    const timer = window.setInterval(updateCountdown, 1000);
-    return () => window.clearInterval(timer);
-  }, [otpRetryAt]);
 
   const loadDashboard = useCallback(async () => {
     setLoading(true);
@@ -208,66 +190,25 @@ export function MerchantApp() {
     typeFilter,
   ]);
 
-  const requestPhoneCode = async () => {
-    if (loginPhone.length !== 9) {
-      setError('Enter the nine-digit Tanzanian mobile number linked to your Mori Pay account.');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    try {
-      const challenge = await requestPhoneOtp(`255${loginPhone}`);
-      setOtpRequested(true);
-      setLoginOtp('');
-      setOtpRetryAt(Date.now() + challenge.retryAfter * 1000);
-      setNotice('A verification code has been sent to your Mori Pay phone number.');
-    } catch (reason) {
-      setError(friendlyError(reason));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const onSignIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (loginMode === 'phone' && !otpRequested) {
-      await requestPhoneCode();
-      return;
-    }
     setBusy(true);
     setError('');
     try {
-      let firstName: string;
-      if (loginMode === 'phone') {
-        if (loginOtp.length !== 6) {
-          setError('Enter the six-digit verification code sent to your phone.');
-          return;
-        }
-        const result = await signInWithPhoneOtp(`255${loginPhone}`, loginOtp);
-        if (result.registrationRequired) {
-          setError('This number is not registered with Mori Pay yet. Create an account in the mobile app, then sign in here.');
-          return;
-        }
-        firstName = result.session.user.firstName;
-      } else {
-        const result: AuthSession = await signIn(
-          loginMode === 'password'
-            ? { mode: 'password', credentials: { email: loginEmail.trim(), password: loginPassword } }
-            : { mode: 'pin', credentials: { email: loginEmail.trim(), pin: loginPin } },
-        );
-        firstName = result.user.firstName;
-      }
+      const result: AuthSession = await signIn(
+        loginMode === 'password'
+          ? { mode: 'password', credentials: { email: loginEmail.trim(), password: loginPassword } }
+          : { mode: 'pin', credentials: { email: loginEmail.trim(), pin: loginPin } },
+      );
       setLoginPassword('');
       setLoginPin('');
-      setLoginOtp('');
+      setFirstName(result.user.firstName);
       setAuthenticated(true);
-      setNotice(`Welcome back, ${firstName}.`);
+      setNotice(`Welcome back, ${result.user.firstName}.`);
     } catch (reason) {
       setError(
         reason instanceof MerchantApiError && reason.status === 401
-          ? loginMode === 'phone'
-            ? 'The verification code is incorrect or expired. Check it or request a new code.'
-            : 'The email or password/PIN did not match your Mori Pay account.'
+          ? 'The email or password/PIN did not match your Mori Pay account.'
           : friendlyError(reason),
       );
     } finally {
@@ -283,6 +224,8 @@ export function MerchantApp() {
       setError('You were signed out on this device, but Mori Pay could not confirm server logout.');
     } finally {
       setAuthenticated(false);
+      setFirstName('');
+      setShowLanding(true);
       setPortal(null);
       setLoaded(false);
       setQrCodes([]);
@@ -391,8 +334,8 @@ export function MerchantApp() {
     }
     printWindow.document.write(
       `<!doctype html><html><head><meta charset="utf-8"><title>Mori Pay QR</title>
-      <style>body{font:16px Arial,sans-serif;text-align:center;padding:32px;color:#07162e}
-      img{width:320px;height:320px}p{color:#475569}</style></head>
+      <style>body{font:16px Inter,Arial,sans-serif;text-align:center;padding:32px;color:#12171f}
+      img{width:320px;height:320px}p{color:#5b6575}</style></head>
       <body><h1>Mori Pay</h1><img src="${newQrImage}" alt="Merchant payment QR code">
       <p>${escapeHtml(merchant.name)}</p></body></html>`,
     );
@@ -410,12 +353,12 @@ export function MerchantApp() {
     }
     receipt.document.write(
       `<!doctype html><html><head><title>Mori Pay receipt</title><style>
-      body{font:16px Arial,sans-serif;color:#10223d;margin:36px}
-      main{max-width:620px;margin:auto;border:1px solid #dce5f0;border-radius:18px;padding:32px}
-      h1{color:#07162e;margin:0 0 6px}.muted{color:#64748b}.amount{font-size:32px;font-weight:bold}
-      table{width:100%;border-collapse:collapse;margin-top:24px}td{padding:12px 0;border-bottom:1px solid #e2e8f0}
-      td:first-child{color:#64748b}td:last-child{text-align:right;font-weight:600;word-break:break-word}
-      footer{margin-top:26px;color:#64748b;font-size:12px}
+      body{font:16px Inter,Arial,sans-serif;color:#12171f;margin:36px}
+      main{max-width:620px;margin:auto;border:1px solid #e4e7ec;border-radius:16px;padding:32px}
+      h1{color:#0e7367;margin:0 0 6px}.muted{color:#5b6575}.amount{font-size:32px;font-weight:bold}
+      table{width:100%;border-collapse:collapse;margin-top:24px}td{padding:12px 0;border-bottom:1px solid #e4e7ec}
+      td:first-child{color:#5b6575}td:last-child{text-align:right;font-weight:600;word-break:break-word}
+      footer{margin-top:26px;color:#5b6575;font-size:12px}
       </style></head><body><main><h1>Mori Pay</h1><p class="muted">Merchant payment receipt</p>
       <p>Received by</p><strong>${escapeHtml(merchant.name)}</strong>
       <p class="amount">${escapeHtml(formatMoney(transaction.merchantAmount, transaction.currency))}</p>
@@ -435,36 +378,32 @@ export function MerchantApp() {
   };
 
   if (!authenticated) {
+    if (showLanding) {
+      return (
+        <LandingPage
+          feedback={error ? <Alert tone="error" onDismiss={() => setError('')}>{error}</Alert> : null}
+          onSignIn={() => { setShowLanding(false); setError(''); }}
+        />
+      );
+    }
     return (
       <LoginPage
-        error={error ? <Alert tone="error">{error}</Alert> : null}
+        error={error ? <Alert tone="error" onDismiss={() => setError('')}>{error}</Alert> : null}
         busy={busy}
         email={loginEmail}
         password={loginPassword}
         pin={loginPin}
-        phone={loginPhone}
-        otp={loginOtp}
-        otpRequested={otpRequested}
-        otpRetrySeconds={otpRetrySeconds}
         mode={loginMode}
         onEmail={setLoginEmail}
         onPassword={setLoginPassword}
         onPin={setLoginPin}
-        onPhone={setLoginPhone}
-        onOtp={setLoginOtp}
-        onResend={() => void requestPhoneCode()}
-        onResetPhone={() => {
-          setOtpRequested(false);
-          setLoginOtp('');
-          setError('');
-          setNotice('');
-        }}
         onMode={(mode) => {
           setLoginMode(mode);
           setError('');
           setNotice('');
         }}
         onSubmit={onSignIn}
+        onHome={() => { setShowLanding(true); setError(''); }}
       />
     );
   }
@@ -537,6 +476,7 @@ export function MerchantApp() {
             {tab === 'overview' ? (
               <OverviewPage
                 portal={portal}
+                firstName={firstName || 'there'}
                 onTransactions={() => setTab('transactions')}
                 onTransaction={(item) => void openTransaction(item)}
               />

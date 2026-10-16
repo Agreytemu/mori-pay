@@ -21,15 +21,6 @@ export type PinSignInInput = {
   pin: string;
 };
 
-export type OtpChallengeResult = {
-  expiresIn: number;
-  retryAfter: number;
-};
-
-export type VerifyOtpResult =
-  | { registrationRequired: true; setupToken: string; expiresIn: number }
-  | { registrationRequired: false; session: AuthSession };
-
 export type MerchantApplication = {
   id: string;
   businessName: string;

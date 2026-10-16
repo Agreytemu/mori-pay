@@ -2,20 +2,18 @@ import type {
   AuthSession,
   AuthTokens,
   EmailSignInInput,
-  OtpChallengeResult,
   PinSignInInput,
   MerchantPortal,
   MerchantPortalQrCode,
   MerchantPortalTransaction,
   MerchantPortalTransactions,
   MerchantQrCode,
-  VerifyOtpResult,
 } from './types';
 
 const API_URL = (import.meta.env.VITE_MORI_API_URL ?? '').replace(/\/+$/, '');
 const SESSION_KEY = 'mori.merchant.session';
 
-type BrowserSession = AuthTokens & { expiresAt: number };
+type BrowserSession = AuthTokens & { expiresAt: number; firstName?: string };
 let refreshInFlight: Promise<boolean> | null = null;
 export type TransactionFilters = {
   from?: string;
@@ -54,14 +52,18 @@ function session(): BrowserSession | null {
   }
 }
 
-function saveSession(tokens: AuthTokens | null): void {
+function saveSession(tokens: AuthTokens | null, firstName?: string): void {
   if (!tokens) {
     window.sessionStorage.removeItem(SESSION_KEY);
     return;
   }
   window.sessionStorage.setItem(
     SESSION_KEY,
-    JSON.stringify({ ...tokens, expiresAt: Date.now() + tokens.expiresIn * 1000 }),
+    JSON.stringify({
+      ...tokens,
+      expiresAt: Date.now() + tokens.expiresIn * 1000,
+      ...(firstName ? { firstName } : {}),
+    }),
   );
 }
 
@@ -89,7 +91,7 @@ async function refreshSession(): Promise<boolean> {
         saveSession(null);
         return false;
       }
-      saveSession((await response.json()) as AuthTokens);
+      saveSession((await response.json()) as AuthTokens, current.firstName);
       return true;
     } catch {
       return false;
@@ -163,25 +165,7 @@ export async function signIn(
     auth: false,
     },
   );
-  saveSession(result.tokens);
-  return result;
-}
-
-export function requestPhoneOtp(phone: string): Promise<OtpChallengeResult> {
-  return request<OtpChallengeResult>('/auth/otp/request', {
-    method: 'POST',
-    body: { phone },
-    auth: false,
-  });
-}
-
-export async function signInWithPhoneOtp(phone: string, code: string): Promise<VerifyOtpResult> {
-  const result = await request<VerifyOtpResult>('/auth/otp/verify', {
-    method: 'POST',
-    body: { phone, code },
-    auth: false,
-  });
-  if (!result.registrationRequired) saveSession(result.session.tokens);
+  saveSession(result.tokens, result.user.firstName);
   return result;
 }
 
@@ -202,6 +186,10 @@ export async function signOut(): Promise<void> {
 
 export function hasSession(): boolean {
   return session() !== null;
+}
+
+export function getSignedInFirstName(): string | null {
+  return session()?.firstName ?? null;
 }
 
 export function getMerchantPortal(filters: Pick<TransactionFilters, 'from' | 'to'> = {}) {

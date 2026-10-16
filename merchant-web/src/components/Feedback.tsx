@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { MerchantPortalTransaction } from '../types';
 import { formatDate, formatMoney, labelValue } from '../utils/format';
@@ -6,16 +7,27 @@ export function Alert({
   tone,
   children,
   onDismiss,
+  duration = 5000,
 }: {
   tone: 'error' | 'success';
   children: ReactNode;
   onDismiss?: () => void;
+  duration?: number;
 }) {
+  const dismissRef = useRef(onDismiss);
+  dismissRef.current = onDismiss;
+
+  useEffect(() => {
+    if (!onDismiss) return;
+    const timer = window.setTimeout(() => dismissRef.current?.(), duration);
+    return () => window.clearTimeout(timer);
+  }, [Boolean(onDismiss), children, duration]);
+
   return (
-    <div className={`alert ${tone}`} role="alert">
+    <div className={`alert ${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
       <span>{tone === 'error' ? '!' : '✓'}</span>
       <p>{children}</p>
-      {onDismiss ? <button aria-label="Dismiss" onClick={onDismiss}>×</button> : null}
+      {onDismiss ? <button aria-label="Dismiss notification" onClick={onDismiss}>×</button> : null}
     </div>
   );
 }

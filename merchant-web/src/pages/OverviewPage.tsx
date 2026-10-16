@@ -5,10 +5,12 @@ import { formatMoney } from '../utils/format';
 
 export function OverviewPage({
   portal,
+  firstName,
   onTransactions,
   onTransaction,
 }: {
   portal: MerchantPortal | null;
+  firstName: string;
   onTransactions: () => void;
   onTransaction: (transaction: MerchantPortalTransaction) => void;
 }) {
@@ -16,6 +18,14 @@ export function OverviewPage({
   const report = portal?.report;
   return (
     <section className="stack">
+      <header className="welcome-banner">
+        <div>
+          <span className="eyebrow">YOUR MERCHANT WORKSPACE</span>
+          <h2>Welcome, {firstName}</h2>
+          <p>{merchant?.name ?? 'Here is the latest activity on your Mori Pay merchant account.'}</p>
+        </div>
+        <span className="welcome-mark" aria-hidden="true">M</span>
+      </header>
       <div className="metric-grid">
         <Metric
           label="Merchant ledger balance"
