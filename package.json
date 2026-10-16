@@ -68,6 +68,8 @@
     "server:build": "npm run build --workspace @mori-pay/server",
     "server:lint": "npm run lint --workspace @mori-pay/server",
     "server:typecheck": "npm run typecheck --workspace @mori-pay/server",
-    "server:test": "npm run test --workspace @mori-pay/server"
+    "server:test": "npm run test --workspace @mori-pay/server",
+    "merchant:web": "npm --prefix merchant-web run dev",
+    "merchant:web:build": "npm --prefix merchant-web run build"
   }
 }
