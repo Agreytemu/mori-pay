@@ -10,6 +10,7 @@ import {
   FlowHeader,
   FlowOverviewCard,
   PaymentFailed,
+  PaymentPending,
   PaymentReview,
   PaymentStatus,
   PaymentSuccess,
@@ -28,6 +29,7 @@ import { AppIllustration, type AppIllustrationName } from '@/components/ui/AppIl
 import { AppText } from '@/components/ui/AppText';
 import { Button, SecondaryButton } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { SegmentedSpinner } from '@/components/ui/SegmentedSpinner';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { PAYMENT_FLOW_ROUTES, type PaymentFlow } from '@/constants/payment-routes';
 import type {
@@ -61,8 +63,10 @@ import {
 } from '@/lib/mori-api';
 import { normalizeTzPhone } from '@/lib/phone';
 import { useSession } from '@/lib/session';
+import { notifyTransactionCompleted } from '@/lib/transaction-feedback';
 import { useAsync } from '@/lib/use-async';
 import { useAppTheme } from '@/theme';
+import { reloadNotifications } from '@/data/notification-store';
 import { formatDateTime } from '@/utils/format';
 import { formatMoney } from '@/utils/format-money';
 
@@ -93,6 +97,24 @@ export const MIN_AMOUNT = 500;
 
 function prettyPhone(phone: string): string {
   return `+${phone.slice(0, 3)} ${phone.slice(3, 6)} ${phone.slice(6, 9)} ${phone.slice(9)}`;
+}
+
+function transactionErrorMessage(error: unknown, fallback: string): string {
+  if (!(error instanceof ApiError)) return fallback;
+  switch (error.code) {
+    case 'PROVIDER_ERROR':
+      return 'The payment service is temporarily unavailable. Check the transaction status before trying again.';
+    case 'UNAUTHORIZED':
+      return 'Your session expired. Sign in again to continue.';
+    case 'FORBIDDEN':
+      return 'The transaction could not be authorized. Check your PIN and try again.';
+    case 'RATE_LIMITED':
+      return 'Too many attempts. Wait a moment before trying again.';
+    case 'CONFLICT':
+      return 'The transaction details changed. Review the latest details before trying again.';
+    default:
+      return fallback;
+  }
 }
 
 function initialScreenForFlow(flow?: PaymentFlow): FlowName {
@@ -167,6 +189,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   const merchants = useAsync(() => listMerchants(), []);
   const sendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idempotencyKeys = useRef(new IdempotencyKeyCache());
+  const submissionLock = useRef(false);
 
   const wallet = session.wallet;
   const sendRecipientName =
@@ -395,6 +418,8 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
 
   const submitSend = async (pin: string) => {
     if (!sendPhoneNorm) return;
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     const amount = Number(sendAmount || '0');
     const note = sendNote.trim();
     const intent = `send:${sendPhoneNorm}:${amount}:${note}`;
@@ -408,7 +433,17 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
         pin,
         idempotencyKey: idempotencyKeys.current.get(intent, 'send'),
       });
-      idempotencyKeys.current.clear(intent);
+      if (
+        result.transaction.status === 'completed' ||
+        result.transaction.status === 'failed' ||
+        result.transaction.status === 'cancelled'
+      ) {
+        idempotencyKeys.current.clear(intent);
+      }
+      if (result.transaction.status === 'completed') {
+        void notifyTransactionCompleted(result.transaction.id);
+        void reloadNotifications(session.user?.id ?? null);
+      }
       setSendResult(result);
       setPinReason(null);
       setPinEntry('');
@@ -416,8 +451,9 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       setScreen('send-result');
     } catch (err) {
       setPinEntry('');
-      setError(err instanceof ApiError ? err.message : 'Transfer failed. Please try again.');
+      setError(transactionErrorMessage(err, 'Transfer could not be confirmed. Check your transaction history before trying again.'));
     } finally {
+      submissionLock.current = false;
       setBusy(false);
     }
   };
@@ -444,8 +480,13 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   };
 
   const submitRequest = async () => {
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setError(null);
-    if (!requestPhoneNorm) return;
+    if (!requestPhoneNorm) {
+      submissionLock.current = false;
+      return;
+    }
     setBusy(true);
     try {
       const result = await createRequest({
@@ -458,6 +499,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not send the request.');
     } finally {
+      submissionLock.current = false;
       setBusy(false);
     }
   };
@@ -486,6 +528,8 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
 
   const submitPay = async (pin: string) => {
     if (!payMerchantId) return;
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     const amount = Number(payAmount || '0');
     const note = payNote.trim();
     const intent = `merchant-pay:${payMerchantId}:${amount}:${note}`;
@@ -499,7 +543,17 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
         pin,
         idempotencyKey: idempotencyKeys.current.get(intent, 'merchant-pay'),
       });
-      idempotencyKeys.current.clear(intent);
+      if (
+        result.transaction.status === 'completed' ||
+        result.transaction.status === 'failed' ||
+        result.transaction.status === 'cancelled'
+      ) {
+        idempotencyKeys.current.clear(intent);
+      }
+      if (result.transaction.status === 'completed') {
+        void notifyTransactionCompleted(result.transaction.id);
+        void reloadNotifications(session.user?.id ?? null);
+      }
       setPayResult(result);
       setPinReason(null);
       setPinEntry('');
@@ -507,8 +561,9 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       setScreen('pay-result');
     } catch (err) {
       setPinEntry('');
-      setError(err instanceof ApiError ? err.message : 'Payment failed. Please try again.');
+      setError(transactionErrorMessage(err, 'Payment could not be confirmed. Check your transaction history before trying again.'));
     } finally {
+      submissionLock.current = false;
       setBusy(false);
     }
   };
@@ -561,6 +616,8 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
 
   const submitMerchantQrPay = async (pin: string) => {
     if (!merchantQrCode || !merchantQrPreview) return;
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     const intent = `merchant-qr:${merchantQrCode}:${merchantQrPreview.amount}`;
     setBusy(true);
     setError(null);
@@ -571,7 +628,17 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
         pin,
         idempotencyKey: idempotencyKeys.current.get(intent, 'merchant-qr'),
       });
-      idempotencyKeys.current.clear(intent);
+      if (
+        result.transaction.status === 'completed' ||
+        result.transaction.status === 'failed' ||
+        result.transaction.status === 'cancelled'
+      ) {
+        idempotencyKeys.current.clear(intent);
+      }
+      if (result.transaction.status === 'completed') {
+        void notifyTransactionCompleted(result.transaction.id);
+        void reloadNotifications(session.user?.id ?? null);
+      }
       setMerchantQrResult(result);
       setPinReason(null);
       setPinEntry('');
@@ -579,8 +646,9 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
       setScreen('qr-result');
     } catch (err) {
       setPinEntry('');
-      setError(err instanceof ApiError ? err.message : 'Merchant QR payment failed. Please try again.');
+      setError(transactionErrorMessage(err, 'Payment could not be confirmed. Check your transaction history before trying again.'));
     } finally {
+      submissionLock.current = false;
       setBusy(false);
     }
   };
@@ -832,6 +900,20 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   const renderSendResult = () => {
     if (!sendResult) return <EmptyState icon="transactions" title="…" description="" />;
     const { transaction } = sendResult;
+    if (transaction.status === 'pending' || transaction.status === 'processing') {
+      return (
+        <PaymentPending
+          amount={transaction.amount}
+          recipient={transaction.counterparty}
+          reference={transaction.reference}
+          onPrimary={() => router.push({ pathname: '/transaction/[id]', params: { id: transaction.id } })}
+          onSecondary={goHome}
+        />
+      );
+    }
+    if (transaction.status !== 'completed') {
+      return renderSendFailed(transaction.status === 'cancelled' ? 'cancelled' : 'failed');
+    }
     return (
       <PaymentSuccess
         amount={transaction.amount}
@@ -847,12 +929,13 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
     );
   };
 
-  const renderSendFailed = () => {
+  const renderSendFailed = (status: 'failed' | 'cancelled' = 'failed') => {
     const amount = Number(sendAmount || '0');
     return (
       <PaymentFailed
         amount={amount}
         recipient={sendRecipientLabel}
+        status={status}
         onPrimary={() => setScreen('send-amount')}
         onSecondary={goHome}
       />
@@ -1205,6 +1288,28 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   const renderMerchantQrResult = () => {
     if (!merchantQrResult) return <EmptyState icon="transactions" title="Payment complete" description="" />;
     const { transaction } = merchantQrResult;
+    if (transaction.status === 'pending' || transaction.status === 'processing') {
+      return (
+        <PaymentPending
+          amount={transaction.amount}
+          recipient={merchantQrResult.merchantName}
+          reference={transaction.reference}
+          onPrimary={() => router.push({ pathname: '/transaction/[id]', params: { id: transaction.id } })}
+          onSecondary={goHome}
+        />
+      );
+    }
+    if (transaction.status !== 'completed') {
+      return (
+        <PaymentFailed
+          amount={transaction.amount}
+          recipient={merchantQrResult.merchantName}
+          status={transaction.status === 'cancelled' ? 'cancelled' : 'failed'}
+          onPrimary={() => setScreen('merchant')}
+          onSecondary={goHome}
+        />
+      );
+    }
     return (
       <PaymentSuccess
         amount={transaction.amount}
@@ -1270,6 +1375,20 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   const renderPayResult = () => {
     if (!payResult) return <EmptyState icon="transactions" title="…" description="" />;
     const { transaction } = payResult;
+    if (transaction.status === 'pending' || transaction.status === 'processing') {
+      return (
+        <PaymentPending
+          amount={transaction.amount}
+          recipient={payResult.merchantName}
+          reference={transaction.reference}
+          onPrimary={() => router.push({ pathname: '/transaction/[id]', params: { id: transaction.id } })}
+          onSecondary={goHome}
+        />
+      );
+    }
+    if (transaction.status !== 'completed') {
+      return renderPayFailed(transaction.status === 'cancelled' ? 'cancelled' : 'failed');
+    }
     return (
       <PaymentSuccess
         amount={transaction.amount}
@@ -1285,10 +1404,11 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
     );
   };
 
-  const renderPayFailed = () => (
+  const renderPayFailed = (status: 'failed' | 'cancelled' = 'failed') => (
     <PaymentFailed
       amount={Number(payAmount || '0')}
       recipient={selectedMerchant?.name ?? 'Merchant'}
+      status={status}
       onPrimary={() => setScreen('pay-amount')}
       onSecondary={goHome}
     />
@@ -1395,6 +1515,21 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
         autoFocus
         editable={!busy}
       />
+      {busy ? (
+        <View style={styles.processingInline}>
+          <SegmentedSpinner
+            size={24}
+            label={
+              pinReason === 'send'
+                ? 'Sending transfer'
+                : 'Confirming payment'
+            }
+          />
+          <AppText variant="caption" color={colors.textSecondary}>
+            {pinReason === 'send' ? 'Sending your transfer…' : 'Confirming your payment…'}
+          </AppText>
+        </View>
+      ) : null}
       {error ? (
         <StatusBanner tone="error" title="PIN rejected" message={error} onDismiss={() => setError(null)} />
       ) : null}
@@ -1539,5 +1674,10 @@ const styles = StyleSheet.create({
   },
   pinSheet: {
     gap: 12,
+  },
+  processingInline: {
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
   },
 });

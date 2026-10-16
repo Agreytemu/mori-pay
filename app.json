@@ -46,6 +46,14 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/notification-icon.png",
+          "color": "#00CDEF",
+          "defaultChannel": "transaction-updates"
+        }
+      ],
       "expo-asset"
     ],
     "experiments": {

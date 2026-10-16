@@ -4,7 +4,6 @@ import * as WebBrowser from 'expo-web-browser';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
 import {
-  ActivityIndicator,
   KeyboardAvoidingView,
   Keyboard,
   Platform,
@@ -26,7 +25,9 @@ import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppIllustration } from '@/components/ui/AppIllustration';
 import { AppText } from '@/components/ui/AppText';
+import { SegmentedSpinner } from '@/components/ui/SegmentedSpinner';
 import { Button, PrimaryButton, SecondaryButton } from '@/components/ui/button';
+import { reloadNotifications } from '@/data/notification-store';
 import {
   mobileNetworkDisplayName,
   resolveMobileNetwork,
@@ -51,6 +52,7 @@ import {
   withdrawalPreview,
 } from '@/lib/mori-api';
 import { normalizeTzPhone } from '@/lib/phone';
+import { notifyTransactionCompleted } from '@/lib/transaction-feedback';
 import { useSession } from '@/lib/session';
 import { useAppTheme } from '@/theme';
 import { typography } from '@/theme/typography';
@@ -72,10 +74,20 @@ function isDefinitiveProviderFailure(error: unknown): error is ApiError {
 
 function getUserFacingError(error: unknown, fallback: string): string {
   if (!(error instanceof ApiError)) return fallback;
-  if (error.code === 'PROVIDER_ERROR') {
-    return 'The payment service is temporarily unavailable. Please try again.';
+  switch (error.code) {
+    case 'PROVIDER_ERROR':
+      return 'The payment service is temporarily unavailable. Check transaction status before trying again.';
+    case 'UNAUTHORIZED':
+      return 'Your session expired. Sign in again to continue.';
+    case 'FORBIDDEN':
+      return 'The transaction could not be authorized. Check your PIN and try again.';
+    case 'RATE_LIMITED':
+      return 'Too many attempts. Wait a moment before trying again.';
+    case 'CONFLICT':
+      return 'The transaction details changed. Review the latest fee and total before continuing.';
+    default:
+      return fallback;
   }
-  return error.message;
 }
 
 function getTzPhoneInputDigits(value: string): string {
@@ -103,7 +115,7 @@ const DEPOSIT_METHODS = [
 export function WalletOperationScreen({ operation }: { operation: WalletOperation }) {
   const router = useRouter();
   const { colors, space, radius } = useAppTheme();
-  const { setWallet } = useSession();
+  const { setWallet, user } = useSession();
   const {
     methods: savedPaymentMethods,
     loading: savedPaymentMethodsLoading,
@@ -134,6 +146,8 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const [error, setError] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [resultTransaction, setResultTransaction] = useState<Transaction | null>(null);
+  const [statusCheckAttempt, setStatusCheckAttempt] = useState(0);
+  const [checkingStatus, setCheckingStatus] = useState(false);
   const [lookup, setLookup] = useState<{
     phone: string;
     found: boolean;
@@ -159,6 +173,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const [dialog, setDialog] = useState<{ title: string; message: string } | null>(null);
   const lookupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idempotencyKeys = useRef(new IdempotencyKeyCache());
+  const submissionLock = useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -224,6 +239,12 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       // Best effort; the caller can still navigate.
     }
   }, [setWallet]);
+
+  const announceCompletedTransaction = useCallback((transaction: Transaction) => {
+    if (transaction.status !== 'completed') return;
+    void notifyTransactionCompleted(transaction.id);
+    void reloadNotifications(user?.id ?? null);
+  }, [user?.id]);
 
   useEffect(() => {
     if (
@@ -332,6 +353,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     if (step !== 'pending' || !resultTransactionId) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
 
     const checkStatus = async () => {
       try {
@@ -339,6 +361,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         if (!active) return;
         setResultTransaction(latest);
         if (latest.status === 'completed') {
+          announceCompletedTransaction(latest);
           setResultMessage(isDeposit ? 'Deposit received.' : 'Your withdrawal was confirmed.');
           setStep('done');
           await refreshWallet();
@@ -353,9 +376,17 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
           return;
         }
       } catch {
-        // Keep checking while the provider is still processing the request.
+        // A failed status read is not evidence that the transaction failed.
       }
-      if (active) timer = setTimeout(() => void checkStatus(), 3_000);
+      attempts += 1;
+      if (active && attempts < 10) {
+        timer = setTimeout(() => void checkStatus(), 3_000);
+      } else if (active) {
+        setCheckingStatus(false);
+        setResultMessage(
+          'Your transaction is still awaiting confirmation. Check its status again later; do not start another payment.',
+        );
+      }
     };
 
     timer = setTimeout(() => void checkStatus(), 1_500);
@@ -363,7 +394,14 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       active = false;
       if (timer) clearTimeout(timer);
     };
-  }, [step, resultTransactionId, isDeposit, refreshWallet]);
+  }, [
+    step,
+    resultTransactionId,
+    isDeposit,
+    refreshWallet,
+    announceCompletedTransaction,
+    statusCheckAttempt,
+  ]);
 
   const runCardDeposit = useCallback(
     async (value: number) => {
@@ -377,6 +415,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       const outcome = await pollUntilSettled(result.transaction);
       setResultTransaction(outcome.transaction);
       if (outcome.status === 'completed') {
+        announceCompletedTransaction(outcome.transaction);
         idempotencyKeys.current.clear(intent);
         await refreshWallet();
         setStep('done');
@@ -390,13 +429,14 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         setStep('failed');
         setError(getTransactionOutcomeReason(outcome.transaction));
       } else {
+        setCheckingStatus(true);
         setStep('pending');
         setResultMessage(
           'Your payment is still processing. It will appear in your wallet once confirmed.'
         );
       }
     },
-    [activePreview?.fee, pollUntilSettled, refreshWallet, setError, setResultMessage, setResultTransaction, setStep]
+    [activePreview?.fee, announceCompletedTransaction, pollUntilSettled, refreshWallet, setError, setResultMessage, setResultTransaction, setStep]
   );
 
   const runMobileDeposit = useCallback(
@@ -429,6 +469,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       const outcome = await pollUntilSettled(result.transaction);
       setResultTransaction(outcome.transaction);
       if (outcome.status === 'completed') {
+        announceCompletedTransaction(outcome.transaction);
         idempotencyKeys.current.clear(intent);
         await refreshWallet();
         setStep('done');
@@ -442,6 +483,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         setStep('failed');
         setError(getTransactionOutcomeReason(outcome.transaction));
       } else {
+        setCheckingStatus(true);
         setStep('pending');
         setResultMessage('Still processing. It will show in your wallet once confirmed.');
       }
@@ -449,6 +491,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     [
       activeLookup?.network,
       activePreview?.fee,
+      announceCompletedTransaction,
       mobileNumber,
       pollUntilSettled,
       refreshWallet,
@@ -486,6 +529,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         : await pollUntilSettled(result.transaction);
       setResultTransaction(outcome.transaction);
       if (outcome.status === 'completed') {
+        announceCompletedTransaction(outcome.transaction);
         idempotencyKeys.current.clear(intent);
         setStep('done');
         setResultMessage('Your withdrawal was confirmed.');
@@ -498,6 +542,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         setStep('failed');
         setError(getTransactionOutcomeReason(outcome.transaction));
       } else {
+        setCheckingStatus(true);
         setStep('pending');
         setResultMessage('Your withdrawal is processing. We will update its status when confirmed.');
       }
@@ -505,6 +550,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     [
       activeLookup?.network,
       activePreview?.fee,
+      announceCompletedTransaction,
       mobileNumber,
       pollUntilSettled,
       refreshWallet,
@@ -533,6 +579,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     }
 
     if (isDeposit) {
+      if (submissionLock.current) return;
       if (method === 'mobile' && !usingSavedMobileMethod && !activeLookup) {
         setError('Wait for the mobile number lookup to finish before continuing.');
         return;
@@ -546,6 +593,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         }
         return;
       }
+      submissionLock.current = true;
       setStep('busy');
       setBusy(true);
       try {
@@ -561,6 +609,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         }
         setError(getUserFacingError(err, 'Deposit failed. Please try again.'));
       } finally {
+        submissionLock.current = false;
         setBusy(false);
         setDialog((current) => (current ? current : null));
       }
@@ -597,6 +646,8 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   };
 
   const confirmWithPin = async (pinValue: string) => {
+    if (submissionLock.current) return;
+    submissionLock.current = true;
     setBusy(true);
     setStep('busy');
     setError(null);
@@ -607,7 +658,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
         setStep('form');
         setPreview(null);
         setPreviewAttempt((attempt) => attempt + 1);
-        setError(err.message);
+        setError('The transaction details changed. Review the latest fee and total before continuing.');
       } else if (isDefinitiveProviderFailure(err)) {
         setStep('failed');
         setResultTransaction(null);
@@ -618,6 +669,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       }
       setEntry('');
     } finally {
+      submissionLock.current = false;
       setBusy(false);
     }
   };
@@ -712,8 +764,8 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               weight="semibold"
             />
           </View>
-          {pending ? (
-            <ActivityIndicator size="small" color={colors.warning} />
+          {pending && checkingStatus ? (
+            <SegmentedSpinner size={22} label="Checking transaction status" />
           ) : null}
           <AppText variant="title2" align="center">
             {success
@@ -777,6 +829,17 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               </View>
             </View>
           ) : null}
+          {pending && !checkingStatus ? (
+            <SecondaryButton
+              label="Check transaction status"
+              block
+              onPress={() => {
+                setCheckingStatus(true);
+                setResultMessage('Checking the latest transaction status…');
+                setStatusCheckAttempt((attempt) => attempt + 1);
+              }}
+            />
+          ) : null}
           <View style={styles.resultActions}>
             {resultTransaction ? (
               <>
@@ -811,7 +874,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
           style={styles.brandLogo}
         />
         <View style={[styles.loadingOrbit, { borderColor: colors.primary }]}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <SegmentedSpinner size={68} label={isDeposit ? 'Processing deposit' : 'Processing withdrawal'} />
         </View>
         <AppText variant="title2" align="center">
           {isDeposit ? 'Confirming your deposit' : 'Processing your withdrawal'}
@@ -1060,7 +1123,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                   accessible
                   accessibilityLabel="Verifying phone number"
                   style={[styles.lookupLoading, { backgroundColor: colors.surfaceMuted, borderRadius: radius.md }]}>
-                  <ActivityIndicator size="small" color={colors.primary} />
+                  <SegmentedSpinner size={20} label="Checking the mobile-money number" />
                   <AppText variant="caption" color={colors.textSecondary}>
                     Verifying number…
                   </AppText>
@@ -1188,7 +1251,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               accessible
               accessibilityLabel={!isDeposit ? 'Checking recipient and withdrawal fee' : 'Calculating fee and total'}
               style={[styles.lookupLoading, { backgroundColor: colors.surfaceMuted, borderRadius: radius.md }]}>
-              <ActivityIndicator size="small" color={colors.primary} />
+              <SegmentedSpinner size={20} label="Calculating the fee" />
               <AppText variant="caption" color={colors.textSecondary}>
                 {!isDeposit
                   ? 'Checking recipient, withdrawal fee and availability…'

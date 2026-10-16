@@ -213,28 +213,24 @@ export class AccountService {
     });
     return notifications.map((notification) => {
       const transaction = notification.transaction;
-      const transactionText = transaction
-        ? `${transaction.amount.toString()} TZS ${transaction.direction === 'credit' ? 'from' : 'to'} ${transaction.counterparty}`
-        : null;
       const transactionCopy = !transaction
         ? null
-        : transaction.status === 'failed'
-          ? { title: 'Transaction failed', body: `The transaction of ${transactionText} failed.` }
-          : transaction.status === 'completed'
-            ? {
-                title: transaction.direction === 'credit' ? 'Money received' : 'Payment sent',
-                body: `${transaction.amount.toString()} TZS ${transaction.direction === 'credit' ? 'received from' : 'sent to'} ${transaction.counterparty}.`,
-              }
-            : transaction.status === 'pending' || transaction.status === 'processing'
-              ? { title: 'Transaction processing', body: `The transaction of ${transactionText} is processing.` }
-              : null;
+        : transaction.status === 'completed'
+          ? { title: 'Transaction completed', body: 'Transaction completed — open MORI PAY to view details.' }
+          : transaction.status === 'failed'
+            ? { title: 'Transaction not completed', body: 'This transaction was not completed. Open MORI PAY to view details.' }
+            : transaction.status === 'cancelled'
+              ? { title: 'Transaction cancelled', body: 'This transaction was cancelled. Open MORI PAY to view details.' }
+              : transaction.status === 'pending' || transaction.status === 'processing'
+                ? { title: 'Transaction processing', body: 'Your transaction is being processed. Open MORI PAY to check its status.' }
+                : { title: 'Transaction status update', body: 'Open MORI PAY to check your transaction status.' };
 
       return {
         id: notification.id,
         kind: this.toNotificationKind(notification.kind),
         title: transactionCopy?.title ?? notification.title,
         body: transactionCopy?.body ?? notification.body,
-        createdAt: notification.createdAt.toISOString(),
+        createdAt: (transaction?.settledAt ?? notification.createdAt).toISOString(),
         read: notification.read,
         ...(notification.transactionId
           ? { transactionId: notification.transactionId }

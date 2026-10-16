@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   View,
@@ -11,6 +10,7 @@ import {
 
 import { AppIcon, type AppIconWeight } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
+import { SegmentedSpinner } from '@/components/ui/SegmentedSpinner';
 import type { IconName } from '@/constants/icons';
 import { useAppTheme } from '@/theme';
 
@@ -108,7 +108,15 @@ export function Button({
       ]}
       {...rest}>
       {loading ? (
-        <ActivityIndicator size="small" color={surface.foreground} />
+        <>
+          <SegmentedSpinner size={18} label={label} />
+          <AppText
+            variant={size === 'sm' ? 'buttonSmall' : 'button'}
+            color={surface.foreground}
+            align="center">
+            {label}
+          </AppText>
+        </>
       ) : (
         <>
           {icon && iconPosition === 'leading' ? (

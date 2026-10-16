@@ -11,6 +11,7 @@ import { mobileNetworkDisplayName } from '@mori-pay/contracts';
 
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
+import { SegmentedSpinner } from '@/components/ui/SegmentedSpinner';
 import { SecondaryButton, PrimaryButton } from '@/components/ui/button';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import {
@@ -21,6 +22,7 @@ import {
 } from '@/types/transaction';
 import { toUiTransaction } from '@/lib/adapters';
 import { getTransaction } from '@/lib/mori-api';
+import { notifyTransactionCompleted } from '@/lib/transaction-feedback';
 import { useAppTheme, type StateTone } from '@/theme';
 import { formatAmount, formatDateTime } from '@/utils/format';
 import { getTransactionOutcomeReason } from '@/utils/transaction-outcome';
@@ -158,13 +160,15 @@ export function TransactionDetailScreen() {
     let active = true;
     getTransaction(id)
       .then((result) => {
-        if (active) setTransaction(toUiTransaction(result));
+        if (!active) return;
+        setTransaction(toUiTransaction(result));
+        if (result.status === 'completed') {
+          void notifyTransactionCompleted(result.id);
+        }
       })
-      .catch((cause: unknown) => {
+      .catch(() => {
         if (active) {
-          setError(
-            cause instanceof Error ? cause.message : 'Could not load this transaction.',
-          );
+          setError('Could not load this transaction. Check your connection and try again.');
         }
       })
       .finally(() => {
@@ -266,8 +270,8 @@ export function TransactionDetailScreen() {
       <SafeAreaView style={[styles.safeArea, { backgroundColor: colors.background }]} edges={['top']}>
         {header}
         <View style={styles.centered}>
-          <ActivityIndicator color={colors.primary} />
-          <AppText variant="bodySmall" color={colors.textSecondary}>Loading transaction…</AppText>
+          <SegmentedSpinner size={32} label="Loading transaction details" />
+          <AppText variant="bodySmall" color={colors.textSecondary}>Checking transaction status…</AppText>
         </View>
       </SafeAreaView>
     );

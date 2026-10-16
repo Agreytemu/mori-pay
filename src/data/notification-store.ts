@@ -60,17 +60,12 @@ function toNotification(item: ApiNotification): AppNotification {
     message: item.body,
     timestamp: formatRelativeTime(item.createdAt),
     read: item.read,
-    ...(transaction ? {
-      amount: transaction.amount,
-      reference: transaction.reference,
-      recipient: transaction.counterparty,
-    } : {}),
     ...(item.kind === 'security'
       ? { actionRoute: '/account/security' }
       : item.kind === 'request'
         ? { actionRoute: '/money-requests' }
-      : transaction
-        ? { actionRoute: '/(tabs)/transactions' }
+      : item.transactionId
+        ? { transactionId: item.transactionId }
         : {}),
   };
 }

@@ -458,11 +458,13 @@ export function PaymentSuccess({
 export function PaymentFailed({
   amount,
   recipient,
+  status = 'failed',
   onPrimary,
   onSecondary,
 }: {
   amount: number;
   recipient: string;
+  status?: 'failed' | 'cancelled';
   onPrimary: () => void;
   onSecondary: () => void;
 }) {
@@ -479,7 +481,7 @@ export function PaymentFailed({
         <AppIcon name="failed" size={28} color={colors.error} />
       </View>
       <AppText variant="title1" align="center">
-        Payment failed
+        {status === 'cancelled' ? 'Payment cancelled' : 'Payment not completed'}
       </AppText>
       <AppText variant="display" align="center" numeric style={{ marginTop: space.xs }}>
         {formatMoney(amount, 'TZS')}
@@ -496,7 +498,10 @@ export function PaymentFailed({
         ]}
       >
         <DetailCell label="Recipient" value={recipient} />
-        <DetailCell label="Status" value="Unable to complete" />
+        <DetailCell
+          label="Status"
+          value={status === 'cancelled' ? 'Cancelled or expired' : 'Unable to complete'}
+        />
       </View>
       <View style={styles.ctaRow}>
         <Button label="Retry" variant="secondary" fullWidth style={styles.ctaButton} onPress={onPrimary} />

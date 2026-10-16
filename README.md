@@ -136,6 +136,12 @@ Fee totals are disclosed before confirmation and saved on each transaction. Outf
 
 Deposits can use a saved mobile-money number or a one-time custom number. Saved mobile numbers are encrypted at rest with `PAYMENT_METHOD_ENCRYPTION_KEY`; configure a unique 32-byte base64 key and keep a secure backup. Saved cards are not charged directly: card deposits continue through Abliner's hosted checkout, where the payer enters card details.
 
+### Transaction feedback
+
+Confirmed deposits, withdrawals, wallet transfers, and merchant/QR payments show an in-app result and use a transaction-ID deduplicated success haptic. On native devices, Mori Pay may request notification permission after a successful transaction and show a private local completion notification; Android uses the `transaction-updates` channel. Notification taps open the authenticated transaction details screen. OS settings can suppress vibration or notifications.
+
+Remote push notifications, push-token registration, and background/terminated delivery are not configured. The local notification and haptic history is best-effort device-side deduplication, not a guarantee of exactly-once delivery across reinstall, storage failure, or OS delivery behavior. Because the notification icon and Android channel are native configuration, rebuild the development/production app after changing this configuration.
+
 ## Getting started
 
 ### Prerequisites

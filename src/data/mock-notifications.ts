@@ -13,5 +13,6 @@ export type AppNotification = {
   amount?: number;
   reference?: string;
   recipient?: string;
+  transactionId?: string;
   actionRoute?: string;
 };

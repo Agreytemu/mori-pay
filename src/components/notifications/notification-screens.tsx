@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
@@ -55,6 +55,12 @@ export function NotificationsScreen() {
   const [confirmClear, setConfirmClear] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  useFocusEffect(
+    useCallback(() => {
+      void reloadNotifications();
+    }, []),
+  );
+
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleNotificationPress = async (notification: AppNotification) => {
@@ -64,7 +70,14 @@ export function NotificationsScreen() {
       setActionError(error instanceof Error ? error.message : 'Could not mark notification as read.');
       return;
     }
-    router.push({ pathname: '/notifications/[id]', params: { id: notification.id } });
+    if (notification.transactionId) {
+      router.push({
+        pathname: '/transaction/[id]',
+        params: { id: notification.transactionId },
+      });
+    } else {
+      router.push({ pathname: '/notifications/[id]', params: { id: notification.id } });
+    }
   };
 
   return (

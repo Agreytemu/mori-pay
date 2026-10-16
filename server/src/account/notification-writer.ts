@@ -9,8 +9,6 @@ type TransactionNotice = {
   id: string;
   userId: string;
   direction: string;
-  amount: bigint;
-  counterparty: string;
 };
 
 export async function createTransactionNotification(
@@ -37,7 +35,7 @@ export async function createTransactionNotification(
       transactionId: transaction.id,
       kind: 'transaction',
       title: 'Transaction started',
-      body: `A transaction for ${transaction.amount.toString()} TZS involving ${transaction.counterparty} was started.`,
+      body: 'A transaction was started. Open MORI PAY to check its status.',
     },
   });
 }

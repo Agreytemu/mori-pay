@@ -21,6 +21,7 @@ import {
 } from '@expo-google-fonts/inter';
 
 import { AppLockPrompt } from '@/components/auth/AppLockPrompt';
+import { TransactionNotificationObserver } from '@/components/notifications/TransactionNotificationObserver';
 import { OnboardingScreen } from '@/components/onboarding/OnboardingScreen';
 import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
@@ -148,6 +149,7 @@ function ThemedStack() {
         <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
       </Stack>
       <AppLockPrompt />
+      <TransactionNotificationObserver />
     </View>
   );
 }

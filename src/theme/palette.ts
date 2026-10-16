@@ -40,6 +40,13 @@ export const brand = {
   900: '#073733',
 } as const;
 
+/** High-contrast motion colours used by transaction feedback. */
+export const feedback = {
+  navy: '#07162E',
+  electricBlue: '#1465FF',
+  cyan: '#00CDEF',
+} as const;
+
 /** Semantic state ramps used for status badges and inline feedback. */
 export const positive = {
   50: '#E9F7EE',
@@ -72,6 +79,7 @@ export const informational = {
 export const palette = {
   neutral,
   brand,
+  feedback,
   positive,
   caution,
   critical,
