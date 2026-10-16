@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 
 import type {
+  AdminListQuery,
+  AdminMerchantApplicationPage,
   Merchant,
   MerchantApplication as MerchantApplicationDto,
   MerchantApplicationInput,
@@ -15,6 +17,11 @@ import type {
   MerchantPaymentPreview,
   MerchantPaymentPreviewInput,
   MerchantQrCode as MerchantQrCodeDto,
+  MerchantPortal,
+  MerchantPortalQrCode,
+  MerchantPortalQuery,
+  MerchantPortalTransaction,
+  MerchantPortalTransactions,
   MerchantQrPreview,
   MerchantQrPreviewInput,
   MerchantRegistrationFee,
@@ -26,7 +33,7 @@ import type {
   PayMerchantResult,
 } from '@mori-pay/contracts';
 
-import { Prisma } from '../generated/prisma/client.js';
+import { Prisma, type Transaction } from '../generated/prisma/client.js';
 import { AuthService } from '../auth/auth.service.js';
 import { randomToken, sha256 } from '../common/crypto.js';
 import { SYSTEM_LEDGER_ACCOUNTS } from '../ledger/ledger.service.js';
@@ -40,6 +47,30 @@ import { toTransaction } from '../wallet/wallet.mapper.js';
 export type AuditContext = { ip?: string; userAgent?: string };
 
 const CONFIG_ID = 'merchant-registration';
+
+const portalTransactionSelect = (ledgerAccountId: string) =>
+  ({
+    id: true,
+    reference: true,
+    status: true,
+    type: true,
+    category: true,
+    channel: true,
+    amount: true,
+    fee: true,
+    total: true,
+    currency: true,
+    createdAt: true,
+    settledAt: true,
+    ledgerEntries: {
+      where: { ledgerAccountId, direction: 'credit' },
+      select: { amount: true },
+    },
+  }) satisfies Prisma.TransactionSelect;
+
+type PortalTransactionRow = Prisma.TransactionGetPayload<{
+  select: ReturnType<typeof portalTransactionSelect>;
+}>;
 
 @Injectable()
 export class MerchantsService {
@@ -163,6 +194,311 @@ export class MerchantsService {
       amount: configuration?.registrationFeeAmount == null
         ? null
         : Number(configuration.registrationFeeAmount),
+    };
+  }
+
+  async portal(
+    userId: string,
+    query: MerchantPortalQuery,
+  ): Promise<MerchantPortal> {
+    const account = await this.prisma.merchantAccount.findFirst({
+      where: { ownerId: userId },
+      select: {
+        id: true,
+        name: true,
+        identifier: true,
+        category: true,
+        phone: true,
+        status: true,
+        createdAt: true,
+        application: {
+          select: {
+            id: true,
+            businessName: true,
+            category: true,
+            phone: true,
+            status: true,
+            registrationFeeAmount: true,
+            paidAt: true,
+            createdAt: true,
+            reviewedAt: true,
+            reviewNote: true,
+          },
+        },
+        ledgerAccount: { select: { id: true, balance: true, currency: true } },
+      },
+    });
+
+    const application = account
+      ? this.toApplicationDto(account.application)
+      : await this.application(userId);
+    if (!account) {
+      return {
+        application,
+        merchant: null,
+        report: null,
+        recentTransactions: [],
+      };
+    }
+
+    const transactionWhere = this.portalTransactionWhere(
+      account.ledgerAccount.id,
+      { ...query, page: 1, pageSize: 25 },
+    );
+    const summaryWhere = this.portalTransactionWhere(account.ledgerAccount.id, {
+      from: query.from,
+      to: query.to,
+      page: 1,
+      pageSize: 25,
+    });
+    const [groups, credits, recent] = await Promise.all([
+      this.prisma.transaction.groupBy({
+        by: ['status'],
+        where: summaryWhere,
+        _count: { _all: true },
+        _sum: { fee: true },
+      }),
+      this.prisma.ledgerEntry.aggregate({
+        where: {
+          ledgerAccountId: account.ledgerAccount.id,
+          direction: 'credit',
+          ...(query.from || query.to
+            ? {
+                createdAt: {
+                  ...(query.from ? { gte: new Date(query.from) } : {}),
+                  ...(query.to ? { lte: new Date(query.to) } : {}),
+                },
+              }
+            : {}),
+        },
+        _sum: { amount: true },
+      }),
+      this.prisma.transaction.findMany({
+        where: transactionWhere,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        take: 5,
+        select: portalTransactionSelect(account.ledgerAccount.id),
+      }),
+    ]);
+    const countFor = (status: string) =>
+      groups.find((group) => group.status === status)?._count._all ?? 0;
+    const grossReceived = Number(credits._sum.amount ?? 0n);
+
+    return {
+      application,
+      merchant: {
+        id: account.id,
+        name: account.name,
+        identifier: account.identifier,
+        category: account.category,
+        phone: account.phone ?? undefined,
+        status: account.status,
+        approvedAt: account.application.reviewedAt?.toISOString(),
+        currency: account.ledgerAccount.currency,
+        ledgerBalance: Number(account.ledgerAccount.balance),
+      },
+      report: {
+        transactionCount: groups.reduce((sum, group) => sum + group._count._all, 0),
+        completedCount: countFor('completed'),
+        pendingCount: null,
+        failedCount: null,
+        cancelledCount: null,
+        grossReceived,
+        customerFees: Number(
+          groups.reduce((sum, group) => sum + (group._sum.fee ?? 0n), 0n),
+        ),
+        merchantFees: null,
+        netReceived: grossReceived,
+      },
+      recentTransactions: recent.map((transaction) =>
+        this.toPortalTransaction(transaction),
+      ),
+    };
+  }
+
+  async portalTransactions(
+    userId: string,
+    query: MerchantPortalQuery,
+  ): Promise<MerchantPortalTransactions> {
+    const merchant = await this.ownedMerchant(userId);
+    const where = this.portalTransactionWhere(merchant.ledgerAccountId, query);
+    const [total, transactions] = await Promise.all([
+      this.prisma.transaction.count({ where }),
+      this.prisma.transaction.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+        select: portalTransactionSelect(merchant.ledgerAccountId),
+      }),
+    ]);
+    return {
+      items: transactions.map((transaction) => this.toPortalTransaction(transaction)),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      totalPages: Math.ceil(total / query.pageSize),
+    };
+  }
+
+  async portalTransaction(userId: string, transactionId: string) {
+    const merchant = await this.ownedMerchant(userId);
+    const transaction = await this.prisma.transaction.findFirst({
+      where: {
+        id: transactionId,
+        ledgerEntries: {
+          some: {
+            ledgerAccountId: merchant.ledgerAccountId,
+            direction: 'credit',
+          },
+        },
+      },
+      select: portalTransactionSelect(merchant.ledgerAccountId),
+    });
+    if (!transaction) throw new NotFoundException('Merchant transaction not found');
+    return this.toPortalTransaction(transaction);
+  }
+
+  async portalQrCodes(userId: string): Promise<MerchantPortalQrCode[]> {
+    const merchant = await this.ownedMerchant(userId);
+    const qrCodes = await this.prisma.merchantQrCode.findMany({
+      where: { merchantAccountId: merchant.id },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        kind: true,
+        fixedAmount: true,
+        reusable: true,
+        uses: true,
+        createdAt: true,
+        expiresAt: true,
+        revokedAt: true,
+      },
+    });
+    return qrCodes.map((qr): MerchantPortalQrCode => ({
+      id: qr.id,
+      kind: qr.kind,
+      amount: qr.fixedAmount == null ? undefined : Number(qr.fixedAmount),
+      reusable: qr.reusable,
+      uses: qr.uses,
+      createdAt: qr.createdAt.toISOString(),
+      expiresAt: qr.expiresAt?.toISOString(),
+      revokedAt: qr.revokedAt?.toISOString(),
+    }));
+  }
+
+  async exportPortalTransactions(
+    userId: string,
+    query: MerchantPortalQuery,
+  ): Promise<string> {
+    const merchant = await this.ownedMerchant(userId);
+    const where = this.portalTransactionWhere(merchant.ledgerAccountId, query);
+    const exportLimit = 10_000;
+    const total = await this.prisma.transaction.count({ where });
+    if (total > exportLimit) {
+      throw new BadRequestException(
+        'Narrow the date range to export no more than 10,000 transactions at a time',
+      );
+    }
+    const transactions = await this.prisma.transaction.findMany({
+      where,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: exportLimit,
+      select: portalTransactionSelect(merchant.ledgerAccountId),
+    });
+    const escapeCell = (value: string | number) => {
+      const safe = String(value).replace(/^[=+\-@\t\r]/, "'$&");
+      return `"${safe.replace(/"/g, '""')}"`;
+    };
+    const header = [
+      'Reference',
+      'Transaction ID',
+      'Status',
+      'Amount received',
+      'Customer transaction fee',
+      'Customer total paid',
+      'Currency',
+      'Created at (UTC)',
+      'Confirmed at (UTC)',
+    ];
+    const rows = transactions.map((transaction) => {
+      const row = this.toPortalTransaction(transaction);
+      return [
+        row.reference,
+        row.id,
+        row.status,
+        row.merchantAmount,
+        row.fee,
+        row.total,
+        row.currency,
+        row.createdAt,
+        row.settledAt ?? '',
+      ];
+    });
+    return `\uFEFF${[header, ...rows]
+      .map((row) => row.map(escapeCell).join(','))
+      .join('\r\n')}\r\n`;
+  }
+
+  private async ownedMerchant(userId: string) {
+    const merchant = await this.prisma.merchantAccount.findFirst({
+      where: { ownerId: userId },
+      select: { id: true, ledgerAccountId: true },
+    });
+    if (!merchant) throw new NotFoundException('Merchant account not found');
+    return merchant;
+  }
+
+  private portalTransactionWhere(
+    ledgerAccountId: string,
+    query: MerchantPortalQuery,
+  ): Prisma.TransactionWhereInput {
+    const search = query.search?.trim();
+    return {
+      ledgerEntries: {
+        some: { ledgerAccountId, direction: 'credit' },
+      },
+      ...(query.from || query.to
+        ? {
+            createdAt: {
+              ...(query.from ? { gte: new Date(query.from) } : {}),
+              ...(query.to ? { lte: new Date(query.to) } : {}),
+            },
+          }
+        : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.type ? { type: query.type } : {}),
+      ...(query.channel ? { channel: query.channel } : {}),
+      ...(search
+        ? {
+            OR: [
+              { id: { contains: search, mode: 'insensitive' } },
+              { reference: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+  }
+
+  private toPortalTransaction(
+    transaction: PortalTransactionRow,
+  ): MerchantPortalTransaction {
+    return {
+      id: transaction.id,
+      reference: transaction.reference,
+      status: transaction.status,
+      type: transaction.type,
+      category: transaction.category,
+      channel: transaction.channel,
+      amount: Number(transaction.amount),
+      fee: Number(transaction.fee),
+      total: Number(transaction.total),
+      merchantAmount: Number(
+        transaction.ledgerEntries.reduce((sum, entry) => sum + entry.amount, 0n),
+      ),
+      currency: transaction.currency,
+      createdAt: transaction.createdAt.toISOString(),
+      settledAt: transaction.settledAt?.toISOString(),
     };
   }
 
@@ -322,19 +658,33 @@ export class MerchantsService {
     return this.toApplicationDto(paidApplication);
   }
 
-  async adminApplications(): Promise<
-    Array<MerchantApplicationDto & { applicantName: string; applicantPhone?: string }>
-  > {
-    const applications = await this.prisma.merchantApplication.findMany({
-      where: { status: { in: ['pending_payment', 'awaiting_review'] } },
-      include: { user: { select: { fullName: true, phone: true } } },
-      orderBy: { createdAt: 'asc' },
-    });
-    return applications.map((application) => ({
-      ...this.toApplicationDto(application),
-      applicantName: application.user.fullName,
-      applicantPhone: application.user.phone ?? undefined,
-    }));
+  async adminApplications(
+    query: AdminListQuery,
+  ): Promise<AdminMerchantApplicationPage> {
+    const where = {
+      status: { in: ['pending_payment', 'awaiting_review'] },
+    } satisfies Prisma.MerchantApplicationWhereInput;
+    const [applications, total] = await Promise.all([
+      this.prisma.merchantApplication.findMany({
+        where,
+        include: { user: { select: { fullName: true, phone: true } } },
+        orderBy: { createdAt: 'asc' },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.merchantApplication.count({ where }),
+    ]);
+    return {
+      items: applications.map((application) => ({
+        ...this.toApplicationDto(application),
+        applicantName: application.user.fullName,
+        applicantPhone: application.user.phone ?? undefined,
+      })),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      totalPages: Math.ceil(total / query.pageSize),
+    };
   }
 
   async setRegistrationFee(
@@ -474,6 +824,7 @@ export class MerchantsService {
           accountId,
           previousStatus: account.status,
           status: result.status,
+          reason: input.reason ?? null,
         },
         tx,
       );
@@ -499,8 +850,11 @@ export class MerchantsService {
     input: MerchantFixedQrInput,
   ): Promise<MerchantQrCodeDto> {
     const merchant = await this.ownedActiveMerchant(userId);
-    const expiresAt = new Date(input.expiresAt);
-    if (expiresAt <= new Date()) {
+    const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
+    if (expiresAt && Number.isNaN(expiresAt.getTime())) {
+      throw new BadRequestException('QR expiry must be a valid timestamp');
+    }
+    if (expiresAt && expiresAt <= new Date()) {
       throw new BadRequestException('QR expiry must be in the future');
     }
     return this.createQr(
@@ -550,6 +904,13 @@ export class MerchantsService {
       throw new BadRequestException('A merchant cannot pay its own QR code');
     }
     const amount = this.resolveAmount(qr, input.amount);
+    const fingerprint = this.qrPaymentFingerprint({
+      payerId: userId,
+      idempotencyKey: input.idempotencyKey,
+      qrCodeId: qr.id,
+      merchantAccountId: qr.merchantAccount.id,
+      amount,
+    });
 
     try {
       const transaction = await this.prisma.$transaction(async (tx) => {
@@ -562,13 +923,11 @@ export class MerchantsService {
           },
         });
         if (existing) {
-          const metadata = this.metadataObject(existing.metadata);
-          if (
-            existing.category !== 'merchant_qr' ||
-            metadata?.merchantQrCodeId !== qr.id
-          ) {
-            throw new ConflictException('This payment idempotency key was already used');
-          }
+          this.assertQrReplayMatches(existing, {
+            qrCodeId: qr.id,
+            amount,
+            fingerprint,
+          });
           return toTransaction(existing);
         }
 
@@ -610,6 +969,7 @@ export class MerchantsService {
             metadata: {
               merchantAccountId: qr.merchantAccount.id,
               merchantQrCodeId: qr.id,
+              paymentFingerprint: fingerprint,
             },
           },
           tx,
@@ -629,8 +989,12 @@ export class MerchantsService {
             },
           },
         });
-        const metadata = this.metadataObject(existing?.metadata);
-        if (existing?.category === 'merchant_qr' && metadata?.merchantQrCodeId === qr.id) {
+        if (existing) {
+          this.assertQrReplayMatches(existing, {
+            qrCodeId: qr.id,
+            amount,
+            fingerprint,
+          });
           return {
             transaction: toTransaction(existing),
             merchantName: qr.merchantAccount.name,
@@ -640,6 +1004,53 @@ export class MerchantsService {
         throw new ConflictException('This payment idempotency key was already used');
       }
       throw error;
+    }
+  }
+
+  /**
+   * Canonical fingerprint of a merchant QR payment. A replayed idempotency key
+   * must resolve to the same payer, QR code, merchant account, and amount;
+   * anything else is a conflict instead of a silent replay.
+   */
+  private qrPaymentFingerprint(input: {
+    payerId: string;
+    idempotencyKey: string;
+    qrCodeId: string;
+    merchantAccountId: string;
+    amount: bigint;
+  }): string {
+    return sha256(
+      [
+        input.payerId,
+        input.idempotencyKey,
+        'merchant_qr',
+        input.qrCodeId,
+        input.merchantAccountId,
+        input.amount.toString(),
+        'TZS',
+      ].join('|'),
+    );
+  }
+
+  private assertQrReplayMatches(
+    existing: Transaction,
+    expected: { qrCodeId: string; amount: bigint; fingerprint: string },
+  ): void {
+    const metadata = this.metadataObject(existing.metadata);
+    const storedFingerprint = metadata?.paymentFingerprint;
+    const mismatch =
+      existing.category !== 'merchant_qr' ||
+      metadata?.merchantQrCodeId !== expected.qrCodeId ||
+      existing.amount !== expected.amount ||
+      existing.fee !== 0n ||
+      existing.total !== expected.amount ||
+      (typeof storedFingerprint === 'string' &&
+        storedFingerprint !== expected.fingerprint);
+
+    if (mismatch) {
+      throw new ConflictException(
+        'This payment idempotency key was already used',
+      );
     }
   }
 

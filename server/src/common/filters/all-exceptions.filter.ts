@@ -12,12 +12,9 @@ import { ZodError } from 'zod';
 import type { ApiErrorBody, ApiErrorCode } from '@mori-pay/contracts';
 import { Prisma } from '../../generated/prisma/client.js';
 import { DomainError } from '../errors.js';
+import { scrubUrl } from '../redact.js';
 
 type HttpRequest = Request & { id?: string };
-
-/** Query keys whose values may contain PII or secrets; blanked before logging. */
-const SENSITIVE_QUERY_KEY =
-  /(phone|mobile|recipient|token|pin|otp|secret|api[_-]?key|password|email)/i;
 
 /**
  * Converts every thrown value into the shared `{ error, message, details }`
@@ -33,7 +30,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<HttpRequest>();
 
     const { status, error, message, details } = this.describe(exception);
-    const path = this.scrubUrl(request.url);
+    const path = scrubUrl(request.url);
 
     const body: ApiErrorBody & {
       requestId?: string;
@@ -56,25 +53,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
     }
 
     response.status(status).json(body);
-  }
-
-  /** Replaces sensitive query values with `[redacted]` before they reach logs. */
-  private scrubUrl(url: string): string {
-    const questionMark = url.indexOf('?');
-    if (questionMark === -1) return url;
-
-    const path = url.slice(0, questionMark);
-    const params = new URLSearchParams(url.slice(questionMark + 1));
-    let touched = false;
-    for (const key of params.keys()) {
-      if (SENSITIVE_QUERY_KEY.test(key)) {
-        params.set(key, '[redacted]');
-        touched = true;
-      }
-    }
-    if (!touched) return url;
-    const scrubbed = params.toString();
-    return scrubbed ? `${path}?${scrubbed}` : path;
   }
 
   private describe(exception: unknown): {

@@ -1,0 +1,339 @@
+import type {
+  AdminAuditPage,
+  AdminStaffRole,
+  AdminStaffSearchPage,
+  AdminMerchantAccountPage,
+  AdminMerchantApplicationPage,
+  AdminOverview,
+  AdminSession,
+  AdminSystemSettings,
+  AdminTransactionDetail,
+  AdminTransactionSearchPage,
+  AdminUserDetail,
+  AdminUserSearchPage,
+  AuthSession,
+  RegistrationFee,
+} from './types';
+
+export type AuthTokens = {
+  accessToken: string;
+  refreshToken: string;
+  expiresIn: number;
+};
+
+type StoredSession = AuthTokens & {
+  expiresAt: number;
+  firstName: string;
+};
+
+const API_URL = (import.meta.env.VITE_MORI_API_URL ?? '').replace(/\/+$/, '');
+const SESSION_KEY = 'mori.admin.session';
+let refreshInFlight: Promise<boolean> | null = null;
+
+export class AdminApiError extends Error {
+  constructor(readonly status: number) {
+    super('Mori Pay request failed');
+    this.name = 'AdminApiError';
+  }
+}
+
+function getStoredSession(): StoredSession | null {
+  const raw = window.sessionStorage.getItem(SESSION_KEY);
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as StoredSession;
+    if (
+      !value.accessToken ||
+      !value.refreshToken ||
+      !Number.isFinite(value.expiresAt) ||
+      typeof value.firstName !== 'string'
+    ) {
+      clearSession();
+      return null;
+    }
+    return value;
+  } catch {
+    clearSession();
+    return null;
+  }
+}
+
+function storeSession(tokens: AuthTokens, firstName: string): void {
+  window.sessionStorage.setItem(
+    SESSION_KEY,
+    JSON.stringify({
+      ...tokens,
+      expiresAt: Date.now() + tokens.expiresIn * 1000,
+      firstName,
+    } satisfies StoredSession),
+  );
+}
+
+export function clearSession(): void {
+  window.sessionStorage.removeItem(SESSION_KEY);
+}
+
+function apiUrl(path: string): string {
+  if (!API_URL) throw new AdminApiError(0);
+  return `${API_URL}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+async function refreshSession(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  const current = getStoredSession();
+  if (!current) return false;
+
+  refreshInFlight = (async () => {
+    try {
+      const response = await fetch(apiUrl('/auth/refresh'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ refreshToken: current.refreshToken }),
+      });
+      if (!response.ok) {
+        clearSession();
+        return false;
+      }
+      const tokens = (await response.json()) as AuthTokens;
+      storeSession(tokens, current.firstName);
+      return true;
+    } catch (error) {
+      if (error instanceof AdminApiError) throw error;
+      return false;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+async function fetchJson<T>(
+  path: string,
+  options: {
+    method?: 'GET' | 'POST' | 'PATCH';
+    body?: unknown;
+    accessToken?: string;
+    retry?: boolean;
+    query?: Record<string, string | number>;
+  } = {},
+): Promise<T> {
+  const current = getStoredSession();
+  const accessToken = options.accessToken ?? current?.accessToken;
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+
+  let response: Response;
+  try {
+    const target = new URL(apiUrl(path));
+    for (const [key, value] of Object.entries(options.query ?? {})) {
+      target.searchParams.set(key, String(value));
+    }
+    response = await fetch(target, {
+      method: options.method ?? 'GET',
+      headers,
+      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    });
+  } catch (error) {
+    if (error instanceof AdminApiError) throw error;
+    throw new AdminApiError(0);
+  }
+
+  if (
+    response.status === 401 &&
+    current?.refreshToken &&
+    options.retry !== false &&
+    (await refreshSession())
+  ) {
+    return fetchJson<T>(path, { ...options, retry: false });
+  }
+  if (!response.ok) throw new AdminApiError(response.status);
+  if (response.status === 204) return undefined as T;
+  return (await response.json()) as T;
+}
+
+export async function signIn(email: string, password: string): Promise<AdminSession> {
+  const auth = await fetchJson<AuthSession>('/auth/email/login', {
+    method: 'POST',
+    body: { email, password },
+  });
+
+  let adminSession: AdminSession;
+  try {
+    adminSession = await fetchJson<AdminSession>('/admin/session', {
+      accessToken: auth.tokens.accessToken,
+    });
+  } catch (error) {
+    if (error instanceof AdminApiError && error.status === 401) {
+      throw new AdminApiError(403);
+    }
+    throw error;
+  }
+
+  if (
+    adminSession.role !== 'admin' ||
+    !adminSession.capabilities.includes('admin:access')
+  ) {
+    throw new AdminApiError(403);
+  }
+
+  storeSession(auth.tokens, auth.user.firstName);
+  return adminSession;
+}
+
+export async function verifyAdminSession(): Promise<AdminSession> {
+  return fetchJson<AdminSession>('/admin/session');
+}
+
+export function getOverview(): Promise<AdminOverview> {
+  return fetchJson<AdminOverview>('/admin/overview');
+}
+
+export function getAdminSystemSettings(): Promise<AdminSystemSettings> {
+  return fetchJson<AdminSystemSettings>('/admin/settings');
+}
+
+export function listAudit(
+  page = 1,
+  pageSize = 20,
+  filters: { action?: string; from?: string; to?: string } = {},
+): Promise<AdminAuditPage> {
+  return fetchJson<AdminAuditPage>('/admin/audit', {
+    query: {
+      page,
+      pageSize,
+      ...(filters.action ? { action: filters.action } : {}),
+      ...(filters.from ? { from: filters.from } : {}),
+      ...(filters.to ? { to: filters.to } : {}),
+    },
+  });
+}
+
+export function searchAdminStaff(
+  q: string,
+  page = 1,
+  pageSize = 20,
+): Promise<AdminStaffSearchPage> {
+  return fetchJson<AdminStaffSearchPage>('/admin/staff', {
+    query: { q, page, pageSize },
+  });
+}
+
+export function updateAdminStaffRole(
+  userId: string,
+  role: AdminStaffRole | null,
+): Promise<{ userId: string; staffRole: AdminStaffRole | null }> {
+  return fetchJson(`/admin/staff/${encodeURIComponent(userId)}/role`, {
+    method: 'PATCH',
+    body: { role },
+  });
+}
+
+export function listMerchantApplications(
+  page = 1,
+  pageSize = 10,
+): Promise<AdminMerchantApplicationPage> {
+  return fetchJson<AdminMerchantApplicationPage>('/merchants/admin/applications', {
+    query: { page, pageSize },
+  });
+}
+
+export function listMerchantAccounts(
+  page = 1,
+  pageSize = 10,
+): Promise<AdminMerchantAccountPage> {
+  return fetchJson<AdminMerchantAccountPage>('/admin/merchants', {
+    query: { page, pageSize },
+  });
+}
+
+export function searchAdminUsers(
+  q: string,
+  page = 1,
+  pageSize = 20,
+): Promise<AdminUserSearchPage> {
+  return fetchJson<AdminUserSearchPage>('/admin/users', {
+    query: { q, page, pageSize },
+  });
+}
+
+export function getAdminUser(userId: string): Promise<AdminUserDetail> {
+  return fetchJson<AdminUserDetail>(`/admin/users/${encodeURIComponent(userId)}`);
+}
+
+export function searchAdminTransactions(
+  q: string,
+  page = 1,
+  pageSize = 20,
+): Promise<AdminTransactionSearchPage> {
+  return fetchJson<AdminTransactionSearchPage>('/admin/transactions', {
+    query: { q, page, pageSize },
+  });
+}
+
+export function getAdminTransaction(transactionId: string): Promise<AdminTransactionDetail> {
+  return fetchJson<AdminTransactionDetail>(
+    `/admin/transactions/${encodeURIComponent(transactionId)}`,
+  );
+}
+
+export function getRegistrationFee(): Promise<RegistrationFee> {
+  return fetchJson<RegistrationFee>('/merchants/registration-fee');
+}
+
+export function reviewMerchantApplication(
+  applicationId: string,
+  decision: 'approved' | 'rejected',
+  reviewNote?: string,
+) {
+  return fetchJson(`/merchants/admin/applications/${encodeURIComponent(applicationId)}/review`, {
+    method: 'PATCH',
+    body: { decision, ...(reviewNote ? { reviewNote } : {}) },
+  });
+}
+
+export function updateMerchantAccountStatus(
+  accountId: string,
+  status: 'active' | 'suspended' | 'revoked',
+  reason: string,
+) {
+  return fetchJson(`/merchants/admin/accounts/${encodeURIComponent(accountId)}/status`, {
+    method: 'PATCH',
+    body: { status, reason },
+  });
+}
+
+export function updateRegistrationFee(amount: number): Promise<RegistrationFee> {
+  return fetchJson<RegistrationFee>('/merchants/admin/registration-fee', {
+    method: 'PATCH',
+    body: { amount },
+  });
+}
+
+export function getSignedInFirstName(): string {
+  return getStoredSession()?.firstName ?? 'Administrator';
+}
+
+export function hasSession(): boolean {
+  return getStoredSession() !== null;
+}
+
+export async function signOut(): Promise<void> {
+  const current = getStoredSession();
+  try {
+    if (current) {
+      const response = await fetch(apiUrl('/auth/logout'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ refreshToken: current.refreshToken }),
+      });
+      if (!response.ok) throw new AdminApiError(response.status);
+    }
+  } catch (error) {
+    clearSession();
+    if (error instanceof AdminApiError) throw error;
+    throw new AdminApiError(0);
+  } finally {
+    clearSession();
+  }
+}

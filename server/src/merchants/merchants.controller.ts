@@ -2,11 +2,13 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -16,10 +18,12 @@ import type { Request } from 'express';
 
 import {
   merchantAccountStatusSchema,
+  adminListQuerySchema,
   merchantApplicationReviewSchema,
   merchantApplicationSchema,
   merchantFixedQrSchema,
   merchantPaymentPreviewSchema,
+  merchantPortalQuerySchema,
   merchantQrPreviewSchema,
   merchantRegistrationFeeSchema,
   merchantRegistrationPaymentSchema,
@@ -28,14 +32,19 @@ import {
   payMerchantSchema,
   type Merchant,
   type MerchantApplicationInput,
+  type AdminListQuery,
   type MerchantPaymentPreview,
   type MerchantPaymentPreviewInput,
+  type MerchantPortal,
+  type MerchantPortalQuery,
+  type MerchantPortalTransactions,
   type MerchantRegistrationFee,
   type PayMerchantInput,
   type PayMerchantResult,
 } from '@mori-pay/contracts';
 
 import type { AuthenticatedUser } from '../auth/auth.types.js';
+import { RequireAdminCapabilities } from '../common/decorators/admin-capabilities.decorator.js';
 import { CurrentUser } from '../common/decorators/current-user.decorator.js';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe.js';
 import { AdminRoleGuard } from './admin-role.guard.js';
@@ -60,6 +69,48 @@ export class MerchantsController {
   @Get('application')
   application(@CurrentUser() user: AuthenticatedUser) {
     return this.merchants.application(user.userId);
+  }
+
+  @Get('portal')
+  portal(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(merchantPortalQuerySchema))
+    query: MerchantPortalQuery,
+  ): Promise<MerchantPortal> {
+    return this.merchants.portal(user.userId, query);
+  }
+
+  @Get('portal/transactions')
+  portalTransactions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(merchantPortalQuerySchema))
+    query: MerchantPortalQuery,
+  ): Promise<MerchantPortalTransactions> {
+    return this.merchants.portalTransactions(user.userId, query);
+  }
+
+  @Get('portal/transactions/export.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  @Header('Content-Disposition', 'attachment; filename="mori-merchant-transactions.csv"')
+  exportPortalTransactions(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(merchantPortalQuerySchema))
+    query: MerchantPortalQuery,
+  ): Promise<string> {
+    return this.merchants.exportPortalTransactions(user.userId, query);
+  }
+
+  @Get('portal/transactions/:transactionId')
+  portalTransaction(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('transactionId') transactionId: string,
+  ) {
+    return this.merchants.portalTransaction(user.userId, transactionId);
+  }
+
+  @Get('portal/qr')
+  portalQrCodes(@CurrentUser() user: AuthenticatedUser) {
+    return this.merchants.portalQrCodes(user.userId);
   }
 
   @Post('application')
@@ -152,12 +203,17 @@ export class MerchantsController {
 
   @Get('admin/applications')
   @UseGuards(AdminRoleGuard)
-  adminApplications() {
-    return this.merchants.adminApplications();
+  @RequireAdminCapabilities('admin:merchant:read')
+  adminApplications(
+    @Query(new ZodValidationPipe(adminListQuerySchema))
+    query: AdminListQuery,
+  ) {
+    return this.merchants.adminApplications(query);
   }
 
   @Patch('admin/registration-fee')
   @UseGuards(AdminRoleGuard)
+  @RequireAdminCapabilities('admin:settings:write')
   setRegistrationFee(
     @CurrentUser() user: AuthenticatedUser,
     @Req() request: Request,
@@ -173,6 +229,7 @@ export class MerchantsController {
 
   @Patch('admin/applications/:applicationId/review')
   @UseGuards(AdminRoleGuard)
+  @RequireAdminCapabilities('admin:merchant:write')
   reviewApplication(
     @CurrentUser() user: AuthenticatedUser,
     @Req() request: Request,
@@ -190,6 +247,7 @@ export class MerchantsController {
 
   @Patch('admin/accounts/:accountId/status')
   @UseGuards(AdminRoleGuard)
+  @RequireAdminCapabilities('admin:merchant:write')
   setAccountStatus(
     @CurrentUser() user: AuthenticatedUser,
     @Req() request: Request,

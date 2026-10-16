@@ -13,6 +13,10 @@ import type {
   Merchant,
   MerchantApplication,
   MerchantApplicationInput,
+  MerchantPortal,
+  MerchantPortalQrCode,
+  MerchantPortalTransaction,
+  MerchantPortalTransactions,
   MerchantPaymentPreview,
   MerchantQrCode,
   MerchantQrPreview,
@@ -400,7 +404,7 @@ export function createMerchantStaticQr(input: {
 export function createMerchantFixedQr(input: {
   amount: number;
   reusable: boolean;
-  expiresAt: string;
+  expiresAt?: string;
 }): Promise<MerchantQrCode> {
   return request<MerchantQrCode>('/merchants/qr/fixed', { method: 'POST', body: input });
 }
@@ -424,6 +428,52 @@ export function payMerchantQr(input: {
 export function revokeMerchantQr(codeId: string): Promise<void> {
   return request<void>(`/merchants/qr/${encodeURIComponent(codeId)}/revoke`, {
     method: 'POST',
+  });
+}
+
+export type MerchantPortalFilters = {
+  from?: string;
+  to?: string;
+  search?: string;
+  status?: string;
+  type?: string;
+  channel?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export function getMerchantPortal(
+  filters: Pick<MerchantPortalFilters, 'from' | 'to'> = {},
+): Promise<MerchantPortal> {
+  return request<MerchantPortal>('/merchants/portal', { query: filters });
+}
+
+export function listMerchantPortalTransactions(
+  filters: MerchantPortalFilters = {},
+): Promise<MerchantPortalTransactions> {
+  return request<MerchantPortalTransactions>('/merchants/portal/transactions', {
+    query: filters,
+  });
+}
+
+export function getMerchantPortalTransaction(
+  transactionId: string,
+): Promise<MerchantPortalTransaction> {
+  return request<MerchantPortalTransaction>(
+    `/merchants/portal/transactions/${encodeURIComponent(transactionId)}`,
+  );
+}
+
+export function listMerchantPortalQrCodes(): Promise<MerchantPortalQrCode[]> {
+  return request<MerchantPortalQrCode[]>('/merchants/portal/qr');
+}
+
+export function exportMerchantPortalTransactions(
+  filters: Omit<MerchantPortalFilters, 'page' | 'pageSize'> = {},
+): Promise<Blob> {
+  return request<Blob>('/merchants/portal/transactions/export.csv', {
+    query: filters,
+    responseType: 'blob',
   });
 }
 

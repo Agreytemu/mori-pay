@@ -2,11 +2,20 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import type { AblinerTransaction, AblinerWebhookInput } from '@mori-pay/contracts';
 
-import { AblinerClient } from '../abliner/abliner.client.js';
+import { AblinerClient, AblinerProviderError } from '../abliner/abliner.client.js';
+import { AppConfigService } from '../config/app-config.service.js';
 import type { Transaction } from '../generated/prisma/client.js';
 import { isTerminalStatus } from '../payments/transaction-status.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SettlementService } from '../settlement/settlement.service.js';
+
+/** Never retry a provider submission closer together than this. */
+const MIN_SUBMISSION_COOLDOWN_MS = 60_000;
+
+type VerifyOutcome =
+  | { state: 'found'; transaction: AblinerTransaction }
+  | { state: 'absent' }
+  | { state: 'unknown' };
 
 /**
  * Applies signature-verified Abliner webhook outcomes after matching the
@@ -24,6 +33,7 @@ export class ReconciliationService {
     private readonly prisma: PrismaService,
     private readonly abliner: AblinerClient,
     private readonly settlement: SettlementService,
+    private readonly config: AppConfigService,
   ) {}
 
   async process(payload: AblinerWebhookInput): Promise<void> {
@@ -151,15 +161,22 @@ export class ReconciliationService {
    * Re-verifies a pending gateway transaction with Abliner and settles it.
    * A no-op for internal movements or already-final transactions.
    *
-   * A missing/empty provider lookup is never treated as failure: the
-   * transaction stays pending until Abliner reports a final status.
+   * A failed provider lookup is never treated as failure: the transaction
+   * stays pending until Abliner reports a final status. Only an authoritative
+   * "no such record" answer may trigger withdrawal resubmission.
    */
   async reconcile(transaction: Transaction): Promise<void> {
     if (isTerminalStatus(transaction.status)) return;
     if (transaction.provider !== 'abliner') return;
 
-    const verified = await this.verify(transaction);
-    if (!verified || verified.status === 'pending') return;
+    const outcome = await this.verify(transaction);
+    if (outcome.state === 'unknown') return;
+    if (outcome.state === 'absent') {
+      await this.recoverUnsubmittedWithdrawal(transaction);
+      return;
+    }
+    const verified = outcome.transaction;
+    if (verified.status === 'pending') return;
 
     const expectedAmount =
       transaction.type === 'deposit' ? transaction.total : transaction.amount;
@@ -225,10 +242,11 @@ export class ReconciliationService {
    * Looks the transaction up at Abliner, trying every identifier we hold:
    * the provider id, our reference (echoed as `customer_reference`), and — for
    * deposits — the `Idempotency-Key` we sent (the transaction id).
+   *
+   * Distinguishes "Abliner answered and has no such record" (authoritative
+   * absence, safe to act on) from "the lookup failed" (unknown, never act).
    */
-  private async verify(
-    transaction: Transaction,
-  ): Promise<AblinerTransaction | null> {
+  private async verify(transaction: Transaction): Promise<VerifyOutcome> {
     const providerId =
       transaction.internalReference ?? transaction.providerRef ?? undefined;
 
@@ -243,11 +261,13 @@ export class ReconciliationService {
       attempts.push({ idempotencyKey: transaction.id });
     }
 
+    let lookupFailed = false;
     for (const query of attempts) {
       try {
         const found = await this.abliner.findTransaction(query);
-        if (found) return found;
+        if (found) return { state: 'found', transaction: found };
       } catch (error) {
+        lookupFailed = true;
         this.logger.warn(
           `Reconcile lookup failed for ${transaction.reference}: ${
             error instanceof Error ? error.message : String(error)
@@ -255,6 +275,87 @@ export class ReconciliationService {
         );
       }
     }
-    return null;
+    return lookupFailed ? { state: 'unknown' } : { state: 'absent' };
+  }
+
+  /**
+   * Re-submits a withdrawal that was held but never accepted by the provider
+   * (the process died before or during the create call). Eligibility is
+   * claimed atomically, so concurrent instances and rapid sweeps cannot send
+   * the same payout twice; the same `Idempotency-Key` and reference are reused
+   * so a provider that honoured the first attempt replays it instead of paying
+   * again. A definitive provider rejection releases the hold exactly once via
+   * the settlement status claim; an uncertain outcome keeps the hold.
+   */
+  private async recoverUnsubmittedWithdrawal(
+    transaction: Transaction,
+  ): Promise<void> {
+    if (transaction.type !== 'withdrawal') return;
+    if (transaction.status !== 'processing') return;
+    if (transaction.internalReference || transaction.providerRef) return;
+    if (transaction.channel !== 'mobileMoney' || transaction.currency !== 'TZS') {
+      this.logger.warn(
+        `Cannot resubmit withdrawal ${transaction.reference}: unsupported channel or currency`,
+      );
+      return;
+    }
+
+    const staleMs = Math.max(
+      this.config.reconciliation.staleSeconds * 1000,
+      MIN_SUBMISSION_COOLDOWN_MS,
+    );
+    const cutoff = new Date(Date.now() - staleMs);
+    const claimed = await this.prisma.transaction.updateMany({
+      where: {
+        id: transaction.id,
+        status: 'processing',
+        providerRef: null,
+        internalReference: null,
+        OR: [
+          { providerSubmissionAt: null },
+          { providerSubmissionAt: { lt: cutoff } },
+        ],
+      },
+      data: { providerSubmissionAt: new Date() },
+    });
+    if (claimed.count !== 1) return;
+
+    let payout;
+    try {
+      payout = await this.abliner.createWithdrawal({
+        amount: Number(transaction.amount),
+        method: 'mobile',
+        currency: 'TZS',
+        recipient: transaction.counterparty,
+        reference: transaction.reference,
+        idempotencyKey: transaction.id,
+      });
+    } catch (error) {
+      if (error instanceof AblinerProviderError && !error.retryable) {
+        this.logger.warn(
+          `Provider rejected resubmission of withdrawal ${transaction.reference}; releasing its hold`,
+        );
+        await this.settlement.failWithdrawal(transaction);
+        return;
+      }
+      this.logger.warn(
+        `Resubmission of withdrawal ${transaction.reference} did not complete: ${
+          error instanceof Error ? error.message : String(error)
+        }; keeping its hold for another attempt`,
+      );
+      return;
+    }
+
+    await this.prisma.transaction.update({
+      where: { id: transaction.id },
+      data: {
+        providerRef: payout.id,
+        providerStatus: payout.status,
+        internalReference: payout.id,
+      },
+    });
+    this.logger.log(
+      `Resubmitted withdrawal ${transaction.reference} -> ${payout.id}`,
+    );
   }
 }

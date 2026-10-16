@@ -327,6 +327,11 @@ export function MerchantOnboardingScreen() {
 
       {approved ? (
         <View style={styles.section}>
+          <SecondaryButton
+            label="Open merchant dashboard"
+            block
+            onPress={() => router.push('/merchant-dashboard')}
+          />
           <AppText variant="title2">Merchant QR</AppText>
           <AppText variant="bodySmall" color={colors.textSecondary}>
             Create a static QR for customer-entered amounts, or a fixed-amount QR. Choose an expiry and whether fixed codes are reusable or one-time.

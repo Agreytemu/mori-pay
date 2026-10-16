@@ -449,6 +449,9 @@ describe('provider request outcomes', () => {
       {
         $transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
           callback(notificationTransaction(transaction)),
+        transaction: {
+          update: async () => undefined,
+        },
       } as unknown as PrismaService,
       {
         loadUserWithWallet: async () => ({

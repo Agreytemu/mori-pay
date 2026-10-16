@@ -128,6 +128,8 @@ type RequestOptions = {
   signal?: AbortSignal;
   /** Internal: prevents an endless refresh-and-retry loop. */
   retry?: boolean;
+  /** Return a successful response as a Blob instead of parsing JSON. */
+  responseType?: 'json' | 'blob';
 };
 
 async function refreshTokens(): Promise<boolean> {
@@ -191,11 +193,14 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
     query,
     signal,
     retry = true,
+    responseType = 'json',
   } = options;
 
   await hydrateTokens();
 
-  const headers: Record<string, string> = { Accept: 'application/json' };
+  const headers: Record<string, string> = {
+    Accept: responseType === 'blob' ? 'text/csv' : 'application/json',
+  };
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (auth && stored?.accessToken) headers.Authorization = `Bearer ${stored.accessToken}`;
 
@@ -214,6 +219,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   }
 
   if (response.status === 204) return undefined as T;
+  if (responseType === 'blob') return (await response.blob()) as T;
 
   const text = await response.text();
   const payload = parseJson(text);

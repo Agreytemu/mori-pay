@@ -142,6 +142,25 @@ Confirmed deposits, withdrawals, wallet transfers, and merchant/QR payments show
 
 Remote push notifications, push-token registration, and background/terminated delivery are not configured. The local notification and haptic history is best-effort device-side deduplication, not a guarantee of exactly-once delivery across reinstall, storage failure, or OS delivery behavior. Because the notification icon and Android channel are native configuration, rebuild the development/production app after changing this configuration.
 
+### Merchant web portal
+
+The responsive merchant portal is part of the existing Expo Router web application at `/merchant-dashboard`. Sign in through the existing Mori Pay email/password flow, then open **Profile → Merchant account → Open merchant dashboard**. The portal uses the existing bearer-token session and merchant approval records; it does not create a separate user database or payment engine.
+
+Run the web client and API locally from the repository root:
+
+```powershell
+$env:EXPO_PUBLIC_API_URL = "http://localhost:4000/api/v1"
+npm run server:dev
+# In a second terminal:
+npm run web
+```
+
+For production builds, set `EXPO_PUBLIC_API_URL` to the fully qualified API base URL ending in `/api/v1`, then run `npx expo export --platform web`. Deploy the generated `dist/` directory as a static site and configure the API's `CORS_ORIGINS` to allow the exact portal origin; production does not accept wildcard origins. Configure the static host to serve Expo's generated route files and SPA fallback as appropriate for the host.
+
+The authenticated merchant endpoints are `GET /merchants/portal`, `GET /merchants/portal/transactions`, `GET /merchants/portal/transactions/:transactionId`, `GET /merchants/portal/transactions/export.csv`, and `GET /merchants/portal/qr`. They scope records to the signed-in owner's merchant ledger. Existing application, QR creation, and QR cancellation endpoints are reused. No new environment variables, database migration, payment fee, or payout capability is required by the portal.
+
+Reports use posted merchant-ledger credits and customer transaction records. The displayed balance is an internal merchant ledger balance, not a bank settlement or guaranteed withdrawable balance. Merchant fees have not been configured; customer transaction fees are shown separately and are not described as merchant fees. The current backend does not retain merchant-linked pending or failed attempts; settlement, refund, and reversal reports are also unavailable because it has no merchant payout or reversal/refund records. QR secrets are stored as hashes and can only be displayed or printed at creation time; older QR values cannot be recovered. Business identity editing and notification preferences are not supported by the current API.
+
 ## Getting started
 
 ### Prerequisites
@@ -210,7 +229,7 @@ npm start
 Or explicitly:
 
 ```bash
-npx expo start
+npx expo star
 ```
 
 For platform-specific launch:

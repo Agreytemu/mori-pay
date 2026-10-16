@@ -26,6 +26,19 @@ export const envSchema = z.object({
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('30d'),
 
+  INITIAL_SUPER_ADMIN_EMAIL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().email().max(254).toLowerCase().optional(),
+  ),
+  INITIAL_SUPER_ADMIN_PASSWORD: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(10).max(128).optional(),
+  ),
+  INITIAL_SUPER_ADMIN_NAME: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().min(2).max(120).optional(),
+  ),
+
   /** Optional dedicated secret for receive-code QR signing; falls back to JWT. */
   RECEIVE_QR_SECRET: z.string().min(16).optional(),
   /** Base64-encoded 32-byte key used to encrypt reusable mobile-money numbers. */
@@ -89,6 +102,23 @@ export const envSchema = z.object({
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
   SENTRY_DSN: z.string().optional(),
+}).superRefine((env, context) => {
+  const hasEmail = env.INITIAL_SUPER_ADMIN_EMAIL !== undefined;
+  const hasPassword = env.INITIAL_SUPER_ADMIN_PASSWORD !== undefined;
+  if (hasEmail !== hasPassword) {
+    context.addIssue({
+      code: 'custom',
+      message: 'INITIAL_SUPER_ADMIN_EMAIL and INITIAL_SUPER_ADMIN_PASSWORD must be configured together',
+      path: ['INITIAL_SUPER_ADMIN_EMAIL'],
+    });
+  }
+  if (env.INITIAL_SUPER_ADMIN_NAME && !hasEmail) {
+    context.addIssue({
+      code: 'custom',
+      message: 'INITIAL_SUPER_ADMIN_NAME can only be set with the initial super-admin credentials',
+      path: ['INITIAL_SUPER_ADMIN_NAME'],
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -6,7 +6,10 @@ import type {
   AblinerWebhookInput,
 } from '@mori-pay/contracts';
 
-import type { AblinerClient } from '../src/abliner/abliner.client.js';
+import {
+  AblinerClient,
+  AblinerProviderError,
+} from '../src/abliner/abliner.client.js';
 import type { AppConfigService } from '../src/config/app-config.service.js';
 import type { Transaction } from '../src/generated/prisma/client.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
@@ -53,6 +56,10 @@ const pendingWithdrawal = {
   providerRef: null,
 } as unknown as Transaction;
 
+const reconciliationConfig = {
+  reconciliation: { enabled: true, intervalSeconds: 120, staleSeconds: 180 },
+} as unknown as AppConfigService;
+
 type TransactionLookup = {
   id?: string;
   customerReference?: string;
@@ -96,6 +103,7 @@ describe('ReconciliationService', () => {
           settled.push(transaction);
         },
       } as unknown as SettlementService,
+      reconciliationConfig,
     );
 
     await service.reconcile(pendingDeposit);
@@ -129,6 +137,7 @@ describe('ReconciliationService', () => {
           settled = transaction;
         },
       } as unknown as SettlementService,
+      reconciliationConfig,
     );
 
     await service.reconcile(pendingWithdrawal);
@@ -159,6 +168,7 @@ describe('ReconciliationService', () => {
           settled.push(transaction);
         },
       } as unknown as SettlementService,
+      reconciliationConfig,
     );
 
     await service.process(webhook);
@@ -190,6 +200,7 @@ describe('ReconciliationService', () => {
           failed = transaction;
         },
       } as unknown as SettlementService,
+      reconciliationConfig,
     );
 
     await service.process({
@@ -215,6 +226,7 @@ describe('ReconciliationService', () => {
           cancelled = transaction;
         },
       } as unknown as SettlementService,
+      reconciliationConfig,
     );
 
     await service.process({
@@ -239,6 +251,7 @@ describe('ReconciliationService', () => {
           failed = true;
         },
       } as unknown as SettlementService,
+      reconciliationConfig,
     );
 
     await service.reconcile(pendingDeposit);
@@ -268,6 +281,7 @@ describe('ReconciliationService', () => {
           settled = true;
         },
       } as unknown as SettlementService,
+      reconciliationConfig,
     );
 
     await service.reconcile(cardDeposit);
@@ -291,6 +305,7 @@ describe('ReconciliationService', () => {
           settled = true;
         },
       } as unknown as SettlementService,
+      reconciliationConfig,
     );
 
     await service.reconcile(pendingDeposit);
@@ -313,6 +328,7 @@ describe('ReconciliationService', () => {
           checkedReference = transaction.reference;
         },
       } as unknown as SettlementService,
+      reconciliationConfig,
     );
     const sweeper = new ReconciliationSweeper(
       {
@@ -328,5 +344,222 @@ describe('ReconciliationService', () => {
 
     assert.equal(await sweeper.sweep(), 1);
     assert.equal(checkedReference, pendingDeposit.reference);
+  });
+
+  it('resubmits a withdrawal that was never handed to the provider', async () => {
+    const unsubmittedWithdrawal = {
+      ...pendingWithdrawal,
+      id: 'withdrawal-id-2',
+      reference: 'WDR-REF-2',
+      channel: 'mobileMoney',
+      currency: 'TZS',
+      counterparty: '255700000001',
+    } as Transaction;
+    const claims: unknown[] = [];
+    const updates: unknown[] = [];
+    const submissions: Array<Record<string, unknown>> = [];
+    let failed = false;
+
+    const service = new ReconciliationService(
+      {
+        transaction: {
+          updateMany: async (args: unknown) => {
+            claims.push(args);
+            return { count: 1 };
+          },
+          update: async (args: unknown) => {
+            updates.push(args);
+            return unsubmittedWithdrawal;
+          },
+        },
+      } as unknown as PrismaService,
+      {
+        findTransaction: async () => null,
+        createWithdrawal: async (request: Record<string, unknown>) => {
+          submissions.push(request);
+          return {
+            id: 'abl-withdrawal-2',
+            status: 'processing',
+            amount: 5_000,
+            currency: 'TZS',
+          };
+        },
+      } as unknown as AblinerClient,
+      {
+        failWithdrawal: async () => {
+          failed = true;
+        },
+      } as unknown as SettlementService,
+      reconciliationConfig,
+    );
+
+    await service.reconcile(unsubmittedWithdrawal);
+
+    assert.equal(submissions.length, 1);
+    assert.equal(submissions[0].reference, 'WDR-REF-2');
+    assert.equal(submissions[0].recipient, '255700000001');
+    assert.equal(submissions[0].idempotencyKey, 'withdrawal-id-2');
+    assert.equal(claims.length, 1);
+    assert.equal(updates.length, 1);
+    assert.equal(failed, false);
+  });
+
+  it('does not resubmit when the provider lookup itself failed', async () => {
+    let submissions = 0;
+    let claims = 0;
+    const service = new ReconciliationService(
+      {
+        transaction: {
+          updateMany: async () => {
+            claims += 1;
+            return { count: 1 };
+          },
+        },
+      } as unknown as PrismaService,
+      {
+        findTransaction: async () => {
+          throw new Error('provider unreachable');
+        },
+        createWithdrawal: async () => {
+          submissions += 1;
+          return undefined;
+        },
+      } as unknown as AblinerClient,
+      {} as SettlementService,
+      reconciliationConfig,
+    );
+
+    await service.reconcile(pendingWithdrawal);
+
+    assert.equal(submissions, 0);
+    assert.equal(claims, 0);
+  });
+
+  it('does not resubmit a withdrawal that already holds a provider id', async () => {
+    let submissions = 0;
+    let claims = 0;
+    const service = new ReconciliationService(
+      {
+        transaction: {
+          updateMany: async () => {
+            claims += 1;
+            return { count: 1 };
+          },
+        },
+      } as unknown as PrismaService,
+      {
+        findTransaction: async () => null,
+        createWithdrawal: async () => {
+          submissions += 1;
+          return undefined;
+        },
+      } as unknown as AblinerClient,
+      {} as SettlementService,
+      reconciliationConfig,
+    );
+
+    await service.reconcile({
+      ...pendingWithdrawal,
+      providerRef: 'abl-withdrawal-1',
+      internalReference: 'abl-withdrawal-1',
+    } as Transaction);
+
+    assert.equal(submissions, 0);
+    assert.equal(claims, 0);
+  });
+
+  it('releases the hold when the provider definitively rejects the resubmission', async () => {
+    const unsubmittedWithdrawal = {
+      ...pendingWithdrawal,
+      channel: 'mobileMoney',
+      currency: 'TZS',
+      counterparty: '255700000001',
+    } as Transaction;
+    const released: Transaction[] = [];
+    const service = new ReconciliationService(
+      {
+        transaction: {
+          updateMany: async () => ({ count: 1 }),
+        },
+      } as unknown as PrismaService,
+      {
+        findTransaction: async () => null,
+        createWithdrawal: async () => {
+          throw new AblinerProviderError('invalid_phone', false);
+        },
+      } as unknown as AblinerClient,
+      {
+        failWithdrawal: async (transaction: Transaction) => {
+          released.push(transaction);
+        },
+      } as unknown as SettlementService,
+      reconciliationConfig,
+    );
+
+    await service.reconcile(unsubmittedWithdrawal);
+
+    assert.deepEqual(released, [unsubmittedWithdrawal]);
+  });
+
+  it('keeps the hold when the resubmission outcome is unknown', async () => {
+    const unsubmittedWithdrawal = {
+      ...pendingWithdrawal,
+      channel: 'mobileMoney',
+      currency: 'TZS',
+      counterparty: '255700000001',
+    } as Transaction;
+    let released = false;
+    const service = new ReconciliationService(
+      {
+        transaction: {
+          updateMany: async () => ({ count: 1 }),
+        },
+      } as unknown as PrismaService,
+      {
+        findTransaction: async () => null,
+        createWithdrawal: async () => {
+          throw new AblinerProviderError(undefined, true);
+        },
+      } as unknown as AblinerClient,
+      {
+        failWithdrawal: async () => {
+          released = true;
+        },
+      } as unknown as SettlementService,
+      reconciliationConfig,
+    );
+
+    await service.reconcile(unsubmittedWithdrawal);
+
+    assert.equal(released, false);
+  });
+
+  it('skips the resubmission when another instance already claimed it', async () => {
+    let submissions = 0;
+    const service = new ReconciliationService(
+      {
+        transaction: {
+          updateMany: async () => ({ count: 0 }),
+        },
+      } as unknown as PrismaService,
+      {
+        findTransaction: async () => null,
+        createWithdrawal: async () => {
+          submissions += 1;
+          return undefined;
+        },
+      } as unknown as AblinerClient,
+      {} as SettlementService,
+      reconciliationConfig,
+    );
+
+    await service.reconcile({
+      ...pendingWithdrawal,
+      channel: 'mobileMoney',
+      currency: 'TZS',
+      counterparty: '255700000001',
+    } as Transaction);
+
+    assert.equal(submissions, 0);
   });
 });

@@ -21,6 +21,8 @@
     "node_modules",
     "server",
     "packages",
+    "admin-web",
+
     "dist",
     "dist-test"
   ]

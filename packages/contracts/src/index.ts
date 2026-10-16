@@ -7,3 +7,4 @@ export * from './auth';
 export * from './abliner';
 export * from './schemas';
 export * from './merchant';
+export * from './admin';

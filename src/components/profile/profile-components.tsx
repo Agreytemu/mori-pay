@@ -443,6 +443,7 @@ export function ProfileField({
   hint,
   digitBoxes = false,
   floatingLabel = true,
+  leadingContent,
   containerStyle,
   style: inputStyle,
   value,
@@ -456,6 +457,7 @@ export function ProfileField({
   hint?: string;
   digitBoxes?: boolean;
   floatingLabel?: boolean;
+  leadingContent?: ReactNode;
   containerStyle?: StyleProp<ViewStyle>;
 } & ComponentProps<typeof TextInput>) {
   const { colors, radius } = useAppTheme();
@@ -524,20 +526,24 @@ export function ProfileField({
               {...inputProps}
             />
           ) : (
-            <TextInput
-              {...inputProps}
-              value={value}
-              placeholder={labelFloated ? placeholder : ''}
-              placeholderTextColor={colors.textTertiary}
-              accessibilityLabel={label}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
-              style={[
-                styles.floatingTextInput,
-                { color: colors.text },
-                inputStyle,
-              ]}
-            />
+            <View style={leadingContent ? styles.inputWithLeadingContent : undefined}>
+              {leadingContent}
+              <TextInput
+                {...inputProps}
+                value={value}
+                placeholder={labelFloated ? placeholder : ''}
+                placeholderTextColor={colors.textTertiary}
+                accessibilityLabel={label}
+                onFocus={handleFocus}
+                onBlur={handleBlur}
+                style={[
+                  styles.floatingTextInput,
+                  leadingContent ? styles.floatingTextInputWithLeadingContent : null,
+                  { color: colors.text },
+                  inputStyle,
+                ]}
+              />
+            </View>
           )}
           <Animated.View
             accessibilityElementsHidden
@@ -591,25 +597,55 @@ export function ProfileField({
           onBlur={handleBlur}
         />
       ) : (
-        <TextInput
-          placeholderTextColor={colors.textTertiary}
-          accessibilityLabel={label}
-          style={[
-            styles.input,
-            {
-              color: colors.text,
-              borderRadius: radius.md,
-              backgroundColor: colors.surface,
-              borderColor: error ? colors.error : focused ? colors.primary : flattenedInputStyle?.borderColor ?? colors.border,
-            },
-            inputStyle,
-          ]}
-          value={value}
-          placeholder={placeholder}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          {...inputProps}
-        />
+        leadingContent ? (
+          <View
+            style={[
+              styles.inputWithLeadingContent,
+              styles.inputWithLeadingContentOutlined,
+              {
+                borderRadius: radius.md,
+                backgroundColor: colors.surface,
+                borderColor: error ? colors.error : focused ? colors.primary : flattenedInputStyle?.borderColor ?? colors.border,
+              },
+            ]}>
+            {leadingContent}
+            <TextInput
+              placeholderTextColor={colors.textTertiary}
+              accessibilityLabel={label}
+              style={[
+                styles.input,
+                styles.inputWithLeadingContentText,
+                { color: colors.text },
+                inputStyle,
+              ]}
+              value={value}
+              placeholder={placeholder}
+              onFocus={handleFocus}
+              onBlur={handleBlur}
+              {...inputProps}
+            />
+          </View>
+        ) : (
+          <TextInput
+            placeholderTextColor={colors.textTertiary}
+            accessibilityLabel={label}
+            style={[
+              styles.input,
+              {
+                color: colors.text,
+                borderRadius: radius.md,
+                backgroundColor: colors.surface,
+                borderColor: error ? colors.error : focused ? colors.primary : flattenedInputStyle?.borderColor ?? colors.border,
+              },
+              inputStyle,
+            ]}
+            value={value}
+            placeholder={placeholder}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            {...inputProps}
+          />
+        )
       )}
       {error ? (
         <View style={styles.fieldMessage}>
@@ -977,6 +1013,28 @@ const styles = StyleSheet.create({
     borderWidth: 0,
     fontSize: 16,
     backgroundColor: 'transparent',
+  },
+  inputWithLeadingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+  },
+  inputWithLeadingContentOutlined: {
+    minHeight: 50,
+    borderWidth: 1,
+  },
+  inputWithLeadingContentText: {
+    flex: 1,
+    width: undefined,
+    minHeight: 48,
+    borderWidth: 0,
+    paddingHorizontal: spacing.sm,
+    backgroundColor: 'transparent',
+  },
+  floatingTextInputWithLeadingContent: {
+    flex: 1,
+    width: undefined,
+    paddingHorizontal: spacing.sm,
   },
   floatingDigitInput: {
     width: '100%',

@@ -174,7 +174,7 @@ export class AblinerClient {
   }
 
   createWithdrawal(
-    request: AblinerWithdrawalRequest,
+    request: AblinerWithdrawalRequest & { idempotencyKey?: string },
   ): Promise<AblinerWithdrawalData> {
     return this.data<AblinerWithdrawalData>('POST', '/api/v1/withdrawals', {
       body: {
@@ -187,6 +187,7 @@ export class AblinerClient {
           ? { callback_url: this.config.abliner.callbackUrl }
           : {}),
       },
+      idempotencyKey: request.idempotencyKey,
     });
   }
 

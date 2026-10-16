@@ -20,6 +20,7 @@ import {
 import { AuthService } from '../auth/auth.service.js';
 import { generateReference } from '../common/crypto.js';
 import { InsufficientFundsError } from '../common/errors.js';
+import { maskPhoneNumber } from '../common/redact.js';
 import { createTransactionNotification } from '../account/notification-writer.js';
 import { Prisma, type Transaction } from '../generated/prisma/client.js';
 import { FeesService, type FeeDetail } from '../payments/fees.service.js';
@@ -103,7 +104,7 @@ export class WithdrawalsService {
       };
     } catch (error) {
       this.logger.warn(
-        `Abliner lookup failed for ${phone}: ${
+        `Abliner lookup failed for ${maskPhoneNumber(phone)}: ${
           error instanceof Error ? error.message : String(error)
         }`,
       );
@@ -246,6 +247,14 @@ export class WithdrawalsService {
       };
     }
 
+    // Stamped before the provider call: if this process dies mid-flight, the
+    // reconciliation sweeper can tell an attempted submission from one that
+    // never started and retry it after the stale window.
+    await this.prisma.transaction.update({
+      where: { id: created.id },
+      data: { providerSubmissionAt: new Date() },
+    });
+
     let payout: AblinerWithdrawalData;
     try {
       payout = await this.abliner.createWithdrawal({
@@ -254,6 +263,7 @@ export class WithdrawalsService {
         currency: 'TZS',
         recipient: input.phoneNumber,
         reference: created.reference,
+        idempotencyKey: created.id,
       });
     } catch (error) {
       if (error instanceof AblinerProviderError && error.retryable) {

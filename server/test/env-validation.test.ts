@@ -17,6 +17,37 @@ const productionConfig = {
 };
 
 describe('environment validation', () => {
+  it('accepts complete initial super-admin credentials and normalizes the email', () => {
+    const env = validateEnv({
+      ...productionConfig,
+      INITIAL_SUPER_ADMIN_EMAIL: '  ROOT@example.com ',
+      INITIAL_SUPER_ADMIN_PASSWORD: 'a-long-bootstrap-password',
+      INITIAL_SUPER_ADMIN_NAME: 'Root Admin',
+    });
+
+    assert.equal(env.INITIAL_SUPER_ADMIN_EMAIL, 'root@example.com');
+    assert.equal(env.INITIAL_SUPER_ADMIN_PASSWORD, 'a-long-bootstrap-password');
+    assert.equal(env.INITIAL_SUPER_ADMIN_NAME, 'Root Admin');
+  });
+
+  it('rejects incomplete or weak initial super-admin credentials', () => {
+    assert.throws(
+      () => validateEnv({
+        ...productionConfig,
+        INITIAL_SUPER_ADMIN_EMAIL: 'root@example.com',
+      }),
+      /INITIAL_SUPER_ADMIN_EMAIL and INITIAL_SUPER_ADMIN_PASSWORD must be configured together/,
+    );
+    assert.throws(
+      () => validateEnv({
+        ...productionConfig,
+        INITIAL_SUPER_ADMIN_EMAIL: 'root@example.com',
+        INITIAL_SUPER_ADMIN_PASSWORD: 'short',
+      }),
+      /INITIAL_SUPER_ADMIN_PASSWORD: Too small/,
+    );
+  });
+
   it('accepts the configured public Abliner callback URL in production', () => {
     const env = validateEnv({
       ...productionConfig,

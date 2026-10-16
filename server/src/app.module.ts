@@ -8,7 +8,9 @@ import { LoggerModule } from 'nestjs-pino';
 
 import { AppConfigModule } from './config/config.module.js';
 import { AccountModule } from './account/account.module.js';
+import { AdminModule } from './admin/admin.module.js';
 import { validateEnv } from './config/env.validation.js';
+import { serializeRequest } from './common/redact.js';
 import { AblinerModule } from './abliner/abliner.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { HealthModule } from './health/health.module.js';
@@ -54,6 +56,9 @@ const isProduction = process.env.NODE_ENV === 'production';
           ],
           remove: true,
         },
+        serializers: {
+          req: serializeRequest,
+        },
         transport: isProduction
           ? undefined
           : {
@@ -70,6 +75,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     ]),
     AppConfigModule,
     AccountModule,
+    AdminModule,
     PrismaModule,
     LedgerModule,
     LimitsModule,

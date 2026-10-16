@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import { AppConfigService } from '../config/app-config.service.js';
+import { maskPhoneNumber } from '../common/redact.js';
 import type { SmsMessage, SmsProvider } from './sms.provider.js';
 
 /**
@@ -15,7 +16,7 @@ export class ConsoleSmsProvider implements SmsProvider {
   constructor(private readonly config: AppConfigService) {}
 
   async send(message: SmsMessage): Promise<void> {
-    const masked = message.to.replace(/.(?=.{3})/g, '*');
+    const masked = maskPhoneNumber(message.to);
     const body = this.config.isDevelopment
       ? ` body="${message.body}"`
       : ` bodyLength=${message.body.length}`;

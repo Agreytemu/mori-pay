@@ -29,6 +29,13 @@ enum UserRole {
   admin
 }
 
+enum AdminStaffRole {
+  super_admin
+  merchant_operations
+  customer_support
+  finance_reconciliation
+}
+
 enum MerchantApplicationStatus {
   pending_payment
   awaiting_review
@@ -63,6 +70,7 @@ model User {
   status         UserStatus    @default(active)
   tier           AccountTier   @default(Standard)
   role           UserRole      @default(user)
+  adminStaffRole AdminStaffRole?
   kycLevel       Int           @default(0)
   nationalId     String?
   pinHash        String?
@@ -89,6 +97,7 @@ model User {
   reviewedApplications   MerchantApplication[] @relation("MerchantApplicationReviewer")
 
   @@index([phone])
+  @@index([role, adminStaffRole, status])
 }
 
 model OtpChallenge {
@@ -221,6 +230,10 @@ model Transaction {
   provider           String?
   providerRef        String?
   providerStatus     String?
+  // When the payout was last handed to the provider, so a crashed or timed-out
+  // submission can be retried once the stale window passes without overlapping
+  // another attempt.
+  providerSubmissionAt DateTime?
   metadata           Json?
   idempotencyKey     String?
   createdAt          DateTime       @default(now())

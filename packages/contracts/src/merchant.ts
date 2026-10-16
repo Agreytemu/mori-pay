@@ -29,6 +29,7 @@ export const merchantApplicationReviewSchema = z.object({
 
 export const merchantAccountStatusSchema = z.object({
   status: z.enum(['active', 'suspended', 'revoked']),
+  reason: z.string().trim().min(1).max(500).optional(),
 });
 
 export const merchantStaticQrSchema = z.object({
@@ -38,8 +39,35 @@ export const merchantStaticQrSchema = z.object({
 export const merchantFixedQrSchema = z.object({
   amount: amountSchema,
   reusable: z.boolean().default(false),
-  expiresAt: z.string().datetime(),
+  // Optional so a reusable fixed-amount QR can live forever; when present it
+  // must be a future timestamp (enforced by the service).
+  expiresAt: z.string().datetime().optional(),
 });
+
+export const merchantPortalQuerySchema = z
+  .object({
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+    page: z.coerce.number().int().min(1).max(100_000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(100).default(25),
+    search: z.string().trim().max(100).optional(),
+    type: z
+      .enum(['send', 'receive', 'payment', 'request', 'deposit', 'withdrawal'])
+      .optional(),
+    channel: z.enum(['wallet', 'bank', 'mobileMoney', 'card']).optional(),
+    status: z
+      .enum(['completed', 'processing', 'pending', 'failed', 'cancelled'])
+      .optional(),
+  })
+  .superRefine((query, context) => {
+    if (query.from && query.to && new Date(query.from) > new Date(query.to)) {
+      context.addIssue({
+        code: 'custom',
+        path: ['to'],
+        message: 'The end date must be on or after the start date',
+      });
+    }
+  });
 
 export const merchantQrPreviewSchema = z.object({
   code: z.string().trim().min(20).max(256),
@@ -66,6 +94,7 @@ export type MerchantAccountStatusInput = z.infer<
 >;
 export type MerchantStaticQrInput = z.infer<typeof merchantStaticQrSchema>;
 export type MerchantFixedQrInput = z.infer<typeof merchantFixedQrSchema>;
+export type MerchantPortalQuery = z.infer<typeof merchantPortalQuerySchema>;
 export type MerchantQrPreviewInput = z.infer<typeof merchantQrPreviewSchema>;
 export type PayMerchantQrInput = z.infer<typeof payMerchantQrSchema>;
 
@@ -91,6 +120,68 @@ export type MerchantQrCode = {
   amount?: number;
   reusable: boolean;
   expiresAt?: string;
+};
+
+export type MerchantPortalTransaction = {
+  id: string;
+  reference: string;
+  status: string;
+  type: string;
+  category: string;
+  channel: string;
+  amount: number;
+  fee: number;
+  total: number;
+  merchantAmount: number;
+  currency: string;
+  createdAt: string;
+  settledAt?: string;
+};
+
+export type MerchantPortalTransactions = {
+  items: MerchantPortalTransaction[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type MerchantPortalQrCode = {
+  id: string;
+  kind: 'static' | 'fixed';
+  amount?: number;
+  reusable: boolean;
+  uses: number;
+  createdAt: string;
+  expiresAt?: string;
+  revokedAt?: string;
+};
+
+export type MerchantPortal = {
+  application: MerchantApplication | null;
+  merchant: null | {
+    id: string;
+    name: string;
+    identifier: string;
+    category: string;
+    phone?: string;
+    status: 'active' | 'suspended' | 'revoked';
+    approvedAt?: string;
+    currency: string;
+    ledgerBalance: number;
+  };
+  report: null | {
+    transactionCount: number;
+    completedCount: number;
+    pendingCount: number | null;
+    failedCount: number | null;
+    cancelledCount: number | null;
+    grossReceived: number;
+    customerFees: number;
+    merchantFees: null;
+    netReceived: number;
+  };
+  recentTransactions: MerchantPortalTransaction[];
 };
 
 export type MerchantQrPreview = {
