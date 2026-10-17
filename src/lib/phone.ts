@@ -8,7 +8,7 @@ export function normalizeTzPhone(raw: string): string | null {
   const digits = raw.replace(/\D/g, '');
   if (digits.length === 12 && digits.startsWith('255')) return digits;
   if (digits.length === 10 && digits.startsWith('0')) return `255${digits.slice(1)}`;
-  if (digits.length === 9 && /^[78]/.test(digits)) return `255${digits}`;
+  if (digits.length === 9 && /^[678]/.test(digits)) return `255${digits}`;
   return null;
 }
 

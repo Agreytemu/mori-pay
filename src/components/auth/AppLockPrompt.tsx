@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
   Keyboard,
@@ -30,6 +30,7 @@ function AppLockModal() {
   const [entry, setEntry] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const biometricAttempted = useRef(false);
 
   const authenticate = useCallback(async () => {
     setBusy(true);
@@ -59,6 +60,18 @@ function AppLockModal() {
       setBusy(false);
     }
   }, [unlockApp]);
+
+  useEffect(() => {
+    if (
+      !biometricUnlockReady ||
+      !biometricUnlockEnabled ||
+      biometricAttempted.current
+    ) {
+      return;
+    }
+    biometricAttempted.current = true;
+    void authenticate();
+  }, [authenticate, biometricUnlockEnabled, biometricUnlockReady]);
 
   const onPinChange = async (next: string) => {
     if (busy || !pin?.pinSet) return;
@@ -120,7 +133,9 @@ function AppLockModal() {
             Mori Pay is locked
           </AppText>
           <AppText variant="bodySmall" color={colors.textSecondary} align="center">
-            Enter your six-digit Mori Pay PIN to continue.
+            {biometricUnlockEnabled
+              ? 'Verify with biometrics or enter your six-digit Mori Pay PIN to continue.'
+              : 'Enter your six-digit Mori Pay PIN to continue.'}
           </AppText>
 
           {error ? (
@@ -131,7 +146,7 @@ function AppLockModal() {
             <PinBoxes
               value={entry}
               onChangeText={(value) => void onPinChange(value)}
-              autoFocus
+              autoFocus={biometricUnlockReady && !biometricUnlockEnabled}
               editable={!busy}
             />
           ) : (
@@ -143,7 +158,7 @@ function AppLockModal() {
           )}
           {biometricUnlockReady && biometricUnlockEnabled ? (
             <SecondaryButton
-              label="Use biometrics"
+              label="Try biometrics again"
               block
               disabled={busy}
               loading={busy}
