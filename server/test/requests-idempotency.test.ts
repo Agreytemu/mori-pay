@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 
 import { RequestsService } from '../src/requests/requests.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
@@ -87,6 +87,37 @@ function serviceWith(existing: unknown) {
   );
   return { service, wasUpdated: () => moneyRequestUpdated };
 }
+
+function serviceWithMissingPayer() {
+  const prisma = {
+    user: { findUnique: async () => null },
+    moneyRequest: {
+      create: async () => {
+        throw new Error('a request must not be created without a registered payer');
+      },
+    },
+  } as unknown as PrismaService;
+  const wallet = {
+    loadUserWithWallet: async () => ({
+      id: 'requester',
+      phone: '255700000001',
+      fullName: 'Alice Smith',
+      tier: 'Standard',
+    }),
+  } as unknown as WalletService;
+  return new RequestsService(prisma, wallet, {} as never, {} as never, {} as never, {} as never);
+}
+
+describe('RequestsService create', () => {
+  it('rejects a money request to a number without a Mori Pay account', async () => {
+    const service = serviceWithMissingPayer();
+
+    await assert.rejects(
+      () => service.create('requester', { payerPhone: '255700000099', amount: 1_000 }),
+      BadRequestException,
+    );
+  });
+});
 
 describe('RequestsService idempotency', () => {
   it('replays the original transfer for the same request instead of failing', async () => {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import type { KycDocumentType, KycSubmissionStatus } from './account';
 import type { TanzaniaMerchantBusinessType } from './merchant';
 
 export const adminStaffRoleSchema = z.enum([
@@ -104,6 +105,20 @@ export const adminUserTierUpdateSchema = z.object({
   reason: z.string().trim().min(3).max(200).optional(),
 });
 export type AdminUserTierUpdate = z.infer<typeof adminUserTierUpdateSchema>;
+
+export const adminKycListQuerySchema = z.object({
+  status: z.enum(['pending', 'approved', 'rejected', 'all']).default('pending'),
+  q: z.string().trim().min(1).max(80).optional(),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(50).default(20),
+});
+export type AdminKycListQuery = z.infer<typeof adminKycListQuerySchema>;
+
+export const adminKycDecisionSchema = z.object({
+  decision: z.enum(['approve', 'reject']),
+  reason: z.string().trim().min(3).max(300).optional(),
+});
+export type AdminKycDecision = z.infer<typeof adminKycDecisionSchema>;
 
 export function capabilitiesForAdminRole(role: AdminStaffRole): readonly AdminCapability[] {
   return ADMIN_ROLE_CAPABILITIES[role];
@@ -265,6 +280,40 @@ export type AdminUserSearchPage = {
   pageSize: number;
   total: number;
   totalPages: number;
+};
+
+export type AdminKycSubmissionSummary = {
+  id: string;
+  user: {
+    id: string;
+    name: string;
+    phone: string | null;
+    memberId: string;
+    tier: string;
+    kycLevel: number;
+  };
+  documentType: KycDocumentType;
+  documentNumberLast4: string;
+  status: KycSubmissionStatus;
+  rejectionReason: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+};
+
+export type AdminKycSubmissionPage = {
+  items: AdminKycSubmissionSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type AdminKycSubmissionDetail = AdminKycSubmissionSummary & {
+  /** Full decrypted ID number, shown only to authorised reviewers. */
+  documentNumber: string;
+  /** Data URL of the uploaded ID photo. */
+  documentImage: string;
+  reviewedBy: { id: string; name: string } | null;
 };
 
 export type AdminTransactionSearchResult = {

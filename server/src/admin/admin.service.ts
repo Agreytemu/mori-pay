@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -24,6 +25,13 @@ import type {
   AdminUserStatusUpdate,
   AdminUserKycUpdate,
   AdminUserTierUpdate,
+  AdminKycListQuery,
+  AdminKycDecision,
+  AdminKycSubmissionPage,
+  AdminKycSubmissionSummary,
+  AdminKycSubmissionDetail,
+  KycDocumentType,
+  KycSubmissionStatus,
   AdminSessionQuery,
   AdminSessionSearchPage,
   AdminWebhookQuery,
@@ -47,6 +55,7 @@ import type {
   Promotion as PromotionRow,
   FeeRule as FeeRuleRow,
 } from '../generated/prisma/client.js';
+import { decryptField } from '../common/field-encryption.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/app-config.service.js';
 import { ReconciliationSweeper } from '../webhooks/reconciliation.sweeper.js';
@@ -55,6 +64,12 @@ export type AdminAuditContext = { ip?: string; userAgent?: string };
 
 /** A user is shown as online when seen within this window. */
 const ONLINE_WINDOW_MS = 15 * 60 * 1000;
+
+/** KYC documents reuse the shared field-encryption key. */
+const KYC_ENCRYPTION_OPTIONS = {
+  envName: 'PAYMENT_METHOD_ENCRYPTION_KEY',
+  invalidMessage: 'Stored KYC data is invalid.',
+} as const;
 
 type UserActivity = {
   isOnline: boolean;
@@ -992,6 +1007,220 @@ export class AdminService {
     });
   }
 
+  async listKycSubmissions(
+    query: AdminKycListQuery,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<AdminKycSubmissionPage> {
+    await this.prisma.auditLog.create({
+      data: {
+        userId: actorId,
+        action: 'admin.kyc.list',
+        ip: context.ip ?? null,
+        userAgent: context.userAgent ?? null,
+        metadata: {
+          status: query.status,
+          page: query.page,
+          pageSize: query.pageSize,
+          hasQuery: Boolean(query.q),
+        },
+      },
+    });
+
+    const search = query.q;
+    const where = {
+      ...(query.status === 'all' ? {} : { status: query.status }),
+      ...(search
+        ? {
+            user: {
+              OR: [
+                { phone: { startsWith: search } },
+                { fullName: { contains: search, mode: 'insensitive' as const } },
+                { memberId: { startsWith: search, mode: 'insensitive' as const } },
+              ],
+            },
+          }
+        : {}),
+    };
+
+    const [rows, total] = await Promise.all([
+      this.prisma.kycSubmission.findMany({
+        where,
+        select: {
+          id: true,
+          documentType: true,
+          documentNumberLast4: true,
+          status: true,
+          rejectionReason: true,
+          createdAt: true,
+          reviewedAt: true,
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              phone: true,
+              memberId: true,
+              tier: true,
+              kycLevel: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (query.page - 1) * query.pageSize,
+        take: query.pageSize,
+      }),
+      this.prisma.kycSubmission.count({ where }),
+    ]);
+
+    return {
+      items: rows.map((row) => toKycSummary(row)),
+      page: query.page,
+      pageSize: query.pageSize,
+      total,
+      totalPages: Math.ceil(total / query.pageSize),
+    };
+  }
+
+  async kycSubmissionDetail(
+    submissionId: string,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<AdminKycSubmissionDetail> {
+    await this.recordDetailAccess('admin.kyc.view', submissionId, actorId, context);
+    const row = await this.prisma.kycSubmission.findUnique({
+      where: { id: submissionId },
+      select: {
+        id: true,
+        documentType: true,
+        documentNumber: true,
+        documentNumberLast4: true,
+        documentImage: true,
+        status: true,
+        rejectionReason: true,
+        createdAt: true,
+        reviewedAt: true,
+        reviewedById: true,
+        user: {
+          select: {
+            id: true,
+            fullName: true,
+            phone: true,
+            memberId: true,
+            tier: true,
+            kycLevel: true,
+          },
+        },
+      },
+    });
+    if (!row) throw new NotFoundException('KYC submission not found');
+
+    let documentNumber: string;
+    try {
+      documentNumber = decryptField(
+        row.documentNumber,
+        this.config.paymentMethodEncryptionKey,
+        KYC_ENCRYPTION_OPTIONS,
+      );
+    } catch {
+      documentNumber = `•••• ${row.documentNumberLast4}`;
+    }
+
+    const reviewer = row.reviewedById
+      ? await this.prisma.user.findUnique({
+          where: { id: row.reviewedById },
+          select: { id: true, fullName: true },
+        })
+      : null;
+
+    return {
+      ...toKycSummary(row),
+      documentNumber,
+      documentImage: row.documentImage,
+      reviewedBy: reviewer
+        ? { id: reviewer.id, name: reviewer.fullName }
+        : null,
+    };
+  }
+
+  async decideKycSubmission(
+    submissionId: string,
+    input: AdminKycDecision,
+    actorId: string,
+    context: AdminAuditContext,
+  ): Promise<{ id: string; status: KycSubmissionStatus }> {
+    if (input.decision === 'reject' && !input.reason) {
+      throw new BadRequestException(
+        'A reason is required when rejecting a verification submission.',
+      );
+    }
+    const reason = input.reason?.trim() ?? null;
+
+    return this.prisma.$transaction(async (tx) => {
+      const row = await tx.kycSubmission.findUnique({
+        where: { id: submissionId },
+        select: { id: true, userId: true, status: true },
+      });
+      if (!row) throw new NotFoundException('KYC submission not found');
+      if (row.status !== 'pending') {
+        throw new ConflictException('This submission has already been reviewed.');
+      }
+
+      const now = new Date();
+      if (input.decision === 'approve') {
+        await tx.kycSubmission.update({
+          where: { id: submissionId },
+          data: {
+            status: 'approved',
+            rejectionReason: null,
+            reviewedById: actorId,
+            reviewedAt: now,
+          },
+        });
+        const target = await tx.user.findUnique({
+          where: { id: row.userId },
+          select: { kycLevel: true },
+        });
+        await tx.user.update({
+          where: { id: row.userId },
+          data: {
+            tier: 'Verified',
+            kycLevel: Math.max(target?.kycLevel ?? 0, 1),
+          },
+        });
+      } else {
+        await tx.kycSubmission.update({
+          where: { id: submissionId },
+          data: {
+            status: 'rejected',
+            rejectionReason: reason,
+            reviewedById: actorId,
+            reviewedAt: now,
+          },
+        });
+      }
+
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.kyc.decision',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: {
+            submissionId,
+            targetId: row.userId,
+            decision: input.decision,
+            reason,
+          },
+        },
+      });
+
+      return {
+        id: submissionId,
+        status: input.decision === 'approve' ? 'approved' : 'rejected',
+      };
+    });
+  }
+
   async revokeUserSessions(
     userId: string,
     actorId: string,
@@ -1635,6 +1864,42 @@ function maskEmail(value: string | null): string | null {
   if (!domain) return maskIdentifier(value);
   const visible = local.slice(-1);
   return `${'*'.repeat(Math.max(1, local.length - visible.length))}${visible}@${domain}`;
+}
+
+function toKycSummary(row: {
+  id: string;
+  documentType: KycDocumentType;
+  documentNumberLast4: string;
+  status: KycSubmissionStatus;
+  rejectionReason: string | null;
+  createdAt: Date;
+  reviewedAt: Date | null;
+  user: {
+    id: string;
+    fullName: string;
+    phone: string | null;
+    memberId: string;
+    tier: string;
+    kycLevel: number;
+  };
+}): AdminKycSubmissionSummary {
+  return {
+    id: row.id,
+    user: {
+      id: row.user.id,
+      name: row.user.fullName,
+      phone: maskPhone(row.user.phone),
+      memberId: maskIdentifier(row.user.memberId),
+      tier: row.user.tier,
+      kycLevel: row.user.kycLevel,
+    },
+    documentType: row.documentType,
+    documentNumberLast4: row.documentNumberLast4,
+    status: row.status,
+    rejectionReason: row.rejectionReason,
+    submittedAt: row.createdAt.toISOString(),
+    reviewedAt: row.reviewedAt ? row.reviewedAt.toISOString() : null,
+  };
 }
 
 function toPromotion(row: PromotionRow): Promotion {

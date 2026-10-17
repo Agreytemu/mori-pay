@@ -28,7 +28,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#07162E",
-          "image": "./assets/images/splash-brand.png",
+          "image": "./assets/images/splash-brand-with-agreytemu.png",
           "imageWidth": 310
         }
       ],
@@ -43,6 +43,14 @@
         {
           "cameraPermission": "Allow Mori Pay to scan payment QR codes.",
           "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Mori Pay to access your photos so you can upload your ID for verification.",
+          "cameraPermission": "Allow Mori Pay to use the camera so you can photograph your ID for verification.",
+          "microphonePermission": false
         }
       ],
       "expo-secure-store",

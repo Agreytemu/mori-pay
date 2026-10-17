@@ -54,31 +54,43 @@ enum MerchantQrKind {
   fixed
 }
 
+enum KycDocumentType {
+  nida
+  passport
+  voters_card
+}
+
+enum KycSubmissionStatus {
+  pending
+  approved
+  rejected
+}
+
 model User {
-  id             String        @id @default(cuid())
-  phone          String?       @unique
+  id                  String          @id @default(cuid())
+  phone               String?         @unique
   // Case-insensitive uniqueness is enforced by a partial SQL index in migrations.
-  email          String?
-  emailVerifiedAt DateTime?
-  passwordHash   String?
-  passwordFailedCount Int       @default(0)
+  email               String?
+  emailVerifiedAt     DateTime?
+  passwordHash        String?
+  passwordFailedCount Int             @default(0)
   passwordLockedUntil DateTime?
-  fullName       String
-  firstName      String
-  dateOfBirth    DateTime?
-  memberId       String        @unique
-  status         UserStatus    @default(active)
-  tier           AccountTier   @default(Standard)
-  role           UserRole      @default(user)
-  adminStaffRole AdminStaffRole?
-  kycLevel       Int           @default(0)
-  nationalId     String?
-  pinHash        String?
-  pinUpdatedAt   DateTime?
-  pinFailedCount Int           @default(0)
-  pinLockedUntil DateTime?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  fullName            String
+  firstName           String
+  dateOfBirth         DateTime?
+  memberId            String          @unique
+  status              UserStatus      @default(active)
+  tier                AccountTier     @default(Standard)
+  role                UserRole        @default(user)
+  adminStaffRole      AdminStaffRole?
+  kycLevel            Int             @default(0)
+  nationalId          String?
+  pinHash             String?
+  pinUpdatedAt        DateTime?
+  pinFailedCount      Int             @default(0)
+  pinLockedUntil      DateTime?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
 
   wallet                 Wallet?
   devices                Device[]
@@ -92,9 +104,10 @@ model User {
   limitUsages            LimitUsage[]
   otpChallenges          OtpChallenge[]
   emailChallenges        EmailChallenge[]
-  merchantApplications  MerchantApplication[]
+  merchantApplications   MerchantApplication[]
   merchantAccounts       MerchantAccount[]
-  reviewedApplications   MerchantApplication[] @relation("MerchantApplicationReviewer")
+  reviewedApplications   MerchantApplication[]   @relation("MerchantApplicationReviewer")
+  kycSubmissions         KycSubmission[]
 
   @@index([phone])
   @@index([role, adminStaffRole, status])
@@ -131,21 +144,21 @@ model EmailChallenge {
 }
 
 model Device {
-  id            String         @id @default(cuid())
-  userId        String
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name          String
-  platform      String
+  id             String         @id @default(cuid())
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  platform       String
   installationId String?
-  pushToken     String?
-  location      String?
-  lastActiveAt  DateTime       @default(now())
-  isCurrent     Boolean        @default(false)
-  createdAt     DateTime       @default(now())
-  refreshTokens RefreshToken[]
+  pushToken      String?
+  location       String?
+  lastActiveAt   DateTime       @default(now())
+  isCurrent      Boolean        @default(false)
+  createdAt      DateTime       @default(now())
+  refreshTokens  RefreshToken[]
 
-  @@index([userId])
   @@unique([userId, installationId])
+  @@index([userId])
 }
 
 model RefreshToken {
@@ -175,15 +188,15 @@ model Wallet {
 }
 
 model LedgerAccount {
-  id        String        @id @default(cuid())
-  walletId  String?
-  wallet    Wallet?       @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  kind      String
-  currency  String        @default("TZS")
-  balance   BigInt        @default(0)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  entries   LedgerEntry[]
+  id              String           @id @default(cuid())
+  walletId        String?
+  wallet          Wallet?          @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  kind            String
+  currency        String           @default("TZS")
+  balance         BigInt           @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  entries         LedgerEntry[]
   merchantAccount MerchantAccount?
 
   @@unique([walletId, kind])
@@ -206,41 +219,41 @@ model LedgerEntry {
 }
 
 model Transaction {
-  id                 String         @id @default(cuid())
-  userId             String
-  user               User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reference          String         @unique
-  type               String
-  status             String         @default("pending")
-  category           String
-  channel            String
-  direction          String
-  amount             BigInt
-  fee                BigInt         @default(0)
+  id                   String         @id @default(cuid())
+  userId               String
+  user                 User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reference            String         @unique
+  type                 String
+  status               String         @default("pending")
+  category             String
+  channel              String
+  direction            String
+  amount               BigInt
+  fee                  BigInt         @default(0)
   // Applied fee breakdown, captured at creation so a transaction's fee is
   // self-describing even after the underlying FeeRule changes.
-  feeFlat            BigInt         @default(0)
-  feePercentage      Float          @default(0)
-  total              BigInt
-  currency           String         @default("TZS")
-  counterparty       String
-  counterpartyDetail String?
-  note               String?
-  internalReference  String?        @unique
-  provider           String?
-  providerRef        String?
-  providerStatus     String?
+  feeFlat              BigInt         @default(0)
+  feePercentage        Float          @default(0)
+  total                BigInt
+  currency             String         @default("TZS")
+  counterparty         String
+  counterpartyDetail   String?
+  note                 String?
+  internalReference    String?        @unique
+  provider             String?
+  providerRef          String?
+  providerStatus       String?
   // When the payout was last handed to the provider, so a crashed or timed-out
   // submission can be retried once the stale window passes without overlapping
   // another attempt.
   providerSubmissionAt DateTime?
-  metadata           Json?
-  idempotencyKey     String?
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
-  settledAt          DateTime?
-  ledgerEntries      LedgerEntry[]
-  notifications      Notification[]
+  metadata             Json?
+  idempotencyKey       String?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
+  settledAt            DateTime?
+  ledgerEntries        LedgerEntry[]
+  notifications        Notification[]
 
   @@unique([userId, idempotencyKey])
   @@index([userId, createdAt])
@@ -248,16 +261,16 @@ model Transaction {
 }
 
 model MoneyRequest {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   requesterId String
-  requester   User     @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  requester   User      @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
   payerPhone  String
   amount      BigInt
   note        String?
-  status      String   @default("pending")
-  reference   String   @unique
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      String    @default("pending")
+  reference   String    @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   expiresAt   DateTime?
 
   @@index([requesterId])
@@ -275,91 +288,91 @@ model Merchant {
 }
 
 model MerchantApplication {
-  id                       String                    @id @default(cuid())
-  userId                   String
-  user                     User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  businessName             String
-  businessType             String?
-  category                 String
-  tin                      String?
-  businessLicenceNumber    String?
-  region                   String?
-  district                 String?
-  physicalAddress          String?
-  phone                    String?
-  status                   MerchantApplicationStatus @default(pending_payment)
-  registrationFeeAmount    BigInt?
-  registrationPaymentId    String?                   @unique
-  paidAt                   DateTime?
-  reviewedById             String?
-  reviewedBy               User?                     @relation("MerchantApplicationReviewer", fields: [reviewedById], references: [id])
-  reviewedAt               DateTime?
-  reviewNote               String?
-  createdAt                DateTime                  @default(now())
-  updatedAt                DateTime                  @updatedAt
-  merchantAccount          MerchantAccount?
+  id                    String                    @id @default(cuid())
+  userId                String
+  user                  User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName          String
+  businessType          String?
+  category              String
+  tin                   String?
+  businessLicenceNumber String?
+  region                String?
+  district              String?
+  physicalAddress       String?
+  phone                 String?
+  status                MerchantApplicationStatus @default(pending_payment)
+  registrationFeeAmount BigInt?
+  registrationPaymentId String?                   @unique
+  paidAt                DateTime?
+  reviewedById          String?
+  reviewedBy            User?                     @relation("MerchantApplicationReviewer", fields: [reviewedById], references: [id])
+  reviewedAt            DateTime?
+  reviewNote            String?
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  merchantAccount       MerchantAccount?
 
   @@index([userId, status])
   @@index([status, createdAt])
 }
 
 model MerchantAccount {
-  id                String               @id @default(cuid())
-  applicationId     String               @unique
-  application       MerchantApplication  @relation(fields: [applicationId], references: [id], onDelete: Restrict)
-  ownerId           String
-  owner             User                 @relation(fields: [ownerId], references: [id], onDelete: Restrict)
-  name              String
-  identifier        String               @unique
-  category          String
-  phone             String?
-  status            MerchantAccountStatus @default(active)
-  ledgerAccountId   String               @unique
-  ledgerAccount     LedgerAccount        @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
-  qrCodes           MerchantQrCode[]
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  id              String                @id @default(cuid())
+  applicationId   String                @unique
+  application     MerchantApplication   @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  ownerId         String
+  owner           User                  @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  name            String
+  identifier      String                @unique
+  category        String
+  phone           String?
+  status          MerchantAccountStatus @default(active)
+  ledgerAccountId String                @unique
+  ledgerAccount   LedgerAccount         @relation(fields: [ledgerAccountId], references: [id], onDelete: Restrict)
+  qrCodes         MerchantQrCode[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   @@index([ownerId, status])
 }
 
 model MerchantQrCode {
-  id               String          @id @default(cuid())
+  id                String          @id @default(cuid())
   merchantAccountId String
   merchantAccount   MerchantAccount @relation(fields: [merchantAccountId], references: [id], onDelete: Cascade)
-  codeHash         String          @unique
-  kind             MerchantQrKind
-  fixedAmount      BigInt?
-  reusable         Boolean         @default(false)
-  uses             Int             @default(0)
-  expiresAt        DateTime?
-  revokedAt        DateTime?
-  createdAt        DateTime        @default(now())
+  codeHash          String          @unique
+  kind              MerchantQrKind
+  fixedAmount       BigInt?
+  reusable          Boolean         @default(false)
+  uses              Int             @default(0)
+  expiresAt         DateTime?
+  revokedAt         DateTime?
+  createdAt         DateTime        @default(now())
 
   @@index([merchantAccountId, revokedAt])
   @@index([expiresAt])
 }
 
 model MerchantConfiguration {
-  id                       String   @id @default("merchant-registration")
-  registrationFeeAmount    BigInt?
-  updatedAt                DateTime @updatedAt
+  id                    String   @id @default("merchant-registration")
+  registrationFeeAmount BigInt?
+  updatedAt             DateTime @updatedAt
 }
 
 model SavedPaymentMethod {
-  id               String   @id @default(cuid())
-  userId           String
-  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  kind             String
-  provider         String
-  identifier       String
+  id                   String   @id @default(cuid())
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind                 String
+  provider             String
+  identifier           String
   encryptedPhoneNumber String?
-  network          String?
-  isDefault        Boolean  @default(false)
-  status           String   @default("Active")
-  providerMethodId String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  network              String?
+  isDefault            Boolean  @default(false)
+  status               String   @default("Active")
+  providerMethodId     String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@index([userId])
 }
@@ -380,13 +393,13 @@ model Notification {
 }
 
 model NotificationPreference {
-  id           String  @id @default(cuid())
-  userId       String  @unique
-  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  transactions Boolean @default(true)
-  moneyIn      Boolean @default(true)
-  moneyOut     Boolean @default(true)
-  marketing    Boolean @default(false)
+  id             String  @id @default(cuid())
+  userId         String  @unique
+  user           User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions   Boolean @default(true)
+  moneyIn        Boolean @default(true)
+  moneyOut       Boolean @default(true)
+  marketing      Boolean @default(false)
   securityAlerts Boolean @default(true)
 }
 
@@ -433,7 +446,9 @@ model LimitUsage {
 
 model AblinerWebhookEvent {
   id                   String    @id @default(cuid())
-  /** Abliner event id (also `x-webhook-id`); unique per delivery/retry. */
+  /**
+   * Abliner event id (also `x-webhook-id`); unique per delivery/retry.
+   */
   eventId              String    @unique
   event                String
   transactionReference String
@@ -456,4 +471,26 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+model KycSubmission {
+  id                  String              @id @default(cuid())
+  userId              String
+  user                User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documentType        KycDocumentType
+  /// AES-256-GCM encrypted ID number (v1 payload), never returned raw to the client.
+  documentNumber      String
+  /// Last four characters of the ID number, kept in clear for masked display.
+  documentNumberLast4 String
+  /// Base64 data URL of the uploaded ID photo.
+  documentImage       String
+  status              KycSubmissionStatus @default(pending)
+  rejectionReason     String?
+  reviewedById        String?
+  reviewedAt          DateTime?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  @@index([userId, status])
+  @@index([status, createdAt])
 }

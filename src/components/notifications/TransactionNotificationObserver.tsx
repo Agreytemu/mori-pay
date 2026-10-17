@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import * as Notifications from 'expo-notifications';
+import type * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 
+import { getNotifications } from '@/lib/notifications';
 import { useSession } from '@/lib/session';
 
 export function TransactionNotificationObserver() {
@@ -15,8 +16,11 @@ export function TransactionNotificationObserver() {
   const routedSequence = useRef(0);
 
   useEffect(() => {
+    const notifications = getNotifications();
+    if (!notifications) return undefined;
+
     const clearLastResponse = () => {
-      void Notifications.clearLastNotificationResponseAsync().catch((error: unknown) => {
+      void notifications.clearLastNotificationResponseAsync().catch((error: unknown) => {
         console.warn('Could not clear the last notification response.', error);
       });
     };
@@ -33,13 +37,13 @@ export function TransactionNotificationObserver() {
       }
     };
 
-    const lastResponse = Notifications.getLastNotificationResponse();
+    const lastResponse = notifications.getLastNotificationResponse();
     const initialResponseTimer = lastResponse
       ? setTimeout(() => handleResponse(lastResponse), 0)
       : undefined;
 
     const subscription =
-      Notifications.addNotificationResponseReceivedListener(handleResponse);
+      notifications.addNotificationResponseReceivedListener(handleResponse);
     return () => {
       if (initialResponseTimer) clearTimeout(initialResponseTimer);
       subscription.remove();

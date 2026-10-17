@@ -299,9 +299,15 @@ export function WalletActivityItem({ item }: { item: WalletActivity }) {
           {item.date} · {item.status}
         </AppText>
       </View>
-      <AppText variant="bodySmallStrong" color={credit ? colors.success : colors.text} numeric>
-        {credit ? '+' : '−'}{formatMoney(item.amount, 'TZS')}
-      </AppText>
+      <View style={styles.activityAmount}>
+        <AppText
+          variant="bodySmallStrong"
+          color={credit ? colors.success : colors.text}
+          numeric
+          numberOfLines={1}>
+          {credit ? '+' : '−'}{formatMoney(item.amount, 'TZS')}
+        </AppText>
+      </View>
     </View>
   );
 }
@@ -527,5 +533,9 @@ const styles = StyleSheet.create({
   activityText: {
     flex: 1,
     gap: 2,
+  },
+  activityAmount: {
+    width: '32%',
+    alignItems: 'flex-start',
   },
 });

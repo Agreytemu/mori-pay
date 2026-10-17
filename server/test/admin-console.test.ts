@@ -715,3 +715,44 @@ test('transaction detail exposes read-only ledger and reconciliation summaries w
     },
   });
 });
+
+test('approving a KYC submission verifies the user and records the decision atomically', async () => {
+  const calls: string[] = [];
+  const service = new AdminService({
+    $transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
+      callback({
+        kycSubmission: {
+          findUnique: async () => ({ id: 'kyc-1', userId: 'user-1', status: 'pending' }),
+          update: async (input: unknown) => { calls.push(`submission:${JSON.stringify(input)}`); },
+        },
+        user: {
+          findUnique: async () => ({ kycLevel: 0 }),
+          update: async (input: unknown) => { calls.push(`user:${JSON.stringify(input)}`); },
+        },
+        auditLog: {
+          create: async (input: unknown) => { calls.push(`audit:${JSON.stringify(input)}`); },
+        },
+      }),
+  } as never, {} as never, {} as never);
+
+  const result = await service.decideKycSubmission('kyc-1', { decision: 'approve' }, 'staff-id', {});
+
+  assert.deepEqual(result, { id: 'kyc-1', status: 'approved' });
+  assert.match(calls[0] ?? '', /"status":"approved"/);
+  assert.match(calls[1] ?? '', /"tier":"Verified"/);
+  assert.match(calls[1] ?? '', /"kycLevel":1/);
+  assert.match(calls[2] ?? '', /admin\.kyc\.decision/);
+});
+
+test('rejecting a KYC submission requires a reason', async () => {
+  const service = new AdminService({
+    $transaction: async () => {
+      throw new Error('transaction must not start without a rejection reason');
+    },
+  } as never, {} as never, {} as never);
+
+  await assert.rejects(
+    () => service.decideKycSubmission('kyc-1', { decision: 'reject' }, 'staff-id', {}),
+    /reason is required/,
+  );
+});

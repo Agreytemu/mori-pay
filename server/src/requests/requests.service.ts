@@ -50,6 +50,12 @@ export class RequestsService {
       select: { id: true, fullName: true },
     });
 
+    if (!payer) {
+      throw new BadRequestException(
+        'No Mori Pay account found for that number. Money can only be requested from registered Mori Pay users.',
+      );
+    }
+
     const amount = BigInt(input.amount);
     const request = await this.prisma.$transaction(async (tx) => {
       const created = await tx.moneyRequest.create({
@@ -64,28 +70,26 @@ export class RequestsService {
         },
       });
 
-      if (payer) {
-        const preferences = await tx.notificationPreference.findUnique({
-          where: { userId: payer.id },
-          select: { transactions: true },
+      const preferences = await tx.notificationPreference.findUnique({
+        where: { userId: payer.id },
+        select: { transactions: true },
+      });
+      if (preferences?.transactions ?? true) {
+        await tx.notification.create({
+          data: {
+            userId: payer.id,
+            kind: 'request',
+            title: 'Money requested',
+            body: `${requester.fullName} requested ${amount.toString()} TZS${input.note ? `: ${input.note}` : '.'}`,
+          },
         });
-        if (preferences?.transactions ?? true) {
-          await tx.notification.create({
-            data: {
-              userId: payer.id,
-              kind: 'request',
-              title: 'Money requested',
-              body: `${requester.fullName} requested ${amount.toString()} TZS${input.note ? `: ${input.note}` : '.'}`,
-            },
-          });
-        }
       }
 
       return created;
     });
 
     return {
-      request: this.toDto(request, 'outgoing', requester.fullName, payer?.fullName),
+      request: this.toDto(request, 'outgoing', requester.fullName, payer.fullName),
     };
   }
 

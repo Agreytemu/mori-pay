@@ -23,6 +23,8 @@ import {
   adminUserStatusUpdateSchema,
   adminUserKycUpdateSchema,
   adminUserTierUpdateSchema,
+  adminKycListQuerySchema,
+  adminKycDecisionSchema,
   adminSessionQuerySchema,
   adminWebhookQuerySchema,
   adminReconciliationQuerySchema,
@@ -41,6 +43,8 @@ import {
   type AdminUserStatusUpdate,
   type AdminUserKycUpdate,
   type AdminUserTierUpdate,
+  type AdminKycListQuery,
+  type AdminKycDecision,
   type AdminSessionQuery,
   type AdminWebhookQuery,
   type AdminReconciliationQuery,
@@ -258,6 +262,53 @@ export class AdminController {
     input: AdminUserTierUpdate,
   ) {
     return this.admin.updateUserTier(userId, input, user.userId, {
+      ip: request.ip,
+      userAgent: request.get('user-agent'),
+    });
+  }
+
+  @Get('kyc')
+  @UseGuards(AdminRoleGuard)
+  @RequireAdminCapabilities('admin:user:read')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  kycSubmissions(
+    @Query(new ZodValidationPipe(adminKycListQuerySchema))
+    query: AdminKycListQuery,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.admin.listKycSubmissions(query, user.userId, {
+      ip: request.ip,
+      userAgent: request.get('user-agent'),
+    });
+  }
+
+  @Get('kyc/:submissionId')
+  @UseGuards(AdminRoleGuard)
+  @RequireAdminCapabilities('admin:user:read')
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  kycSubmission(
+    @Param('submissionId') submissionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+  ) {
+    return this.admin.kycSubmissionDetail(submissionId, user.userId, {
+      ip: request.ip,
+      userAgent: request.get('user-agent'),
+    });
+  }
+
+  @Post('kyc/:submissionId/decision')
+  @UseGuards(AdminRoleGuard)
+  @RequireAdminCapabilities('admin:user:write')
+  decideKycSubmission(
+    @Param('submissionId') submissionId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+    @Body(new ZodValidationPipe(adminKycDecisionSchema))
+    input: AdminKycDecision,
+  ) {
+    return this.admin.decideKycSubmission(submissionId, input, user.userId, {
       ip: request.ip,
       userAgent: request.get('user-agent'),
     });

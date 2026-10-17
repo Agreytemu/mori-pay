@@ -212,9 +212,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   trailing: {
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
     gap: 4,
-    maxWidth: '43%',
+    width: '38%',
   },
   openIndicator: {
     width: 26,

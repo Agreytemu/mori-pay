@@ -13,6 +13,7 @@ import { AdminShell } from './components/AdminShell';
 import type { AdminTab } from './components/AdminShell';
 import { AuditPage } from './components/AuditPage';
 import { HealthPage } from './components/HealthPage';
+import { KycReviewPage } from './components/KycReviewPage';
 import { LoginPage } from './components/LoginPage';
 import { MerchantOperationsPage } from './components/MerchantOperationsPage';
 import { OverviewPage } from './components/OverviewPage';
@@ -132,6 +133,7 @@ export function AdminApp() {
       {activeTab === 'overview' ? <OverviewPage /> : null}
       {activeTab === 'reports' && can('admin:report:read') ? <ReportsPage /> : null}
       {activeTab === 'users' && can('admin:user:read') ? <UserSearchPage canManage={can('admin:user:write')} canManageSessions={can('admin:session:write')} /> : null}
+      {activeTab === 'verification' && can('admin:user:read') ? <KycReviewPage canReview={can('admin:user:write')} /> : null}
       {activeTab === 'transactions' && can('admin:transaction:read') ? <TransactionSearchPage /> : null}
       {activeTab === 'reconciliation' && can('admin:reconciliation:read') ? <ReconciliationPage canRun={can('admin:reconciliation:write')} /> : null}
       {activeTab === 'webhooks' && can('admin:webhook:read') ? <WebhooksPage /> : null}

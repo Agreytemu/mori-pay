@@ -124,6 +124,16 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       ),
     [savedPaymentMethods],
   );
+  const savedMobileMethodsNeedingUpdate = useMemo(
+    () =>
+      savedPaymentMethods.filter(
+        (savedMethod) =>
+          savedMethod.kind === 'mobile-money' &&
+          savedMethod.status === 'Active' &&
+          !savedMethod.usableForDeposit,
+      ),
+    [savedPaymentMethods],
+  );
 
   const isDeposit = operation === 'deposit';
   const title = isDeposit ? 'Deposit' : 'Withdraw';
@@ -170,7 +180,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
 
   useFocusEffect(
     useCallback(() => {
-      void loadPaymentMethods();
+      void loadPaymentMethods(undefined, { force: true });
     }, [])
   );
 
@@ -1038,7 +1048,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                       <SecondaryButton
                         label="Try again"
                         size="sm"
-                        onPress={() => void loadPaymentMethods()}
+                        onPress={() => void loadPaymentMethods(undefined, { force: true })}
                       />
                     </View>
                   ) : savedMobileMethods.length ? (
@@ -1074,14 +1084,26 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                     ) : null
                   ) : (
                     <View style={[styles.noSavedMethods, { backgroundColor: colors.surfaceMuted, borderRadius: radius.md }]}>
-                      <AppText variant="bodySmallStrong">No usable saved mobile-money methods</AppText>
+                      <AppText variant="bodySmallStrong">
+                        {savedMobileMethodsNeedingUpdate.length
+                          ? 'Saved mobile-money numbers need re-adding'
+                          : 'No usable saved mobile-money methods'}
+                      </AppText>
                       <AppText variant="caption" color={colors.textSecondary}>
-                        Add a mobile-money number to use it for future deposits, or enter a different number below.
+                        {savedMobileMethodsNeedingUpdate.length
+                          ? 'These numbers were saved without their full phone number, so they cannot be used for deposits yet. Remove the saved method and add it again with the full number.'
+                          : 'Add a mobile-money number to use it for future deposits, or enter a different number below.'}
                       </AppText>
                       <SecondaryButton
-                        label="Add payment method"
+                        label={savedMobileMethodsNeedingUpdate.length ? 'Manage saved methods' : 'Add payment method'}
                         size="sm"
-                        onPress={() => router.push('/payment-methods/add')}
+                        onPress={() =>
+                          router.push(
+                            savedMobileMethodsNeedingUpdate.length
+                              ? '/payment-methods'
+                              : '/payment-methods/add',
+                          )
+                        }
                       />
                     </View>
                   )}

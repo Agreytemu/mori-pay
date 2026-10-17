@@ -9,12 +9,11 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import * as LocalAuthentication from 'expo-local-authentication';
-
 import { PinBoxes, StatusBanner } from '@/components/profile/profile-components';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
 import { SecondaryButton } from '@/components/ui/button';
+import { authenticateWithBiometrics, getBiometricCapability } from '@/lib/biometrics';
 import { verifyPin } from '@/lib/mori-api';
 import { useSession } from '@/lib/session';
 import { radius, spacing, useAppTheme } from '@/theme';
@@ -36,33 +35,26 @@ function AppLockModal() {
     setBusy(true);
     setError(null);
     try {
-      const isBiometricEnrolled = await LocalAuthentication.isEnrolledAsync();
-      if (!isBiometricEnrolled) {
-        setError('No biometrics are enrolled on this device. Unlock with your Mori Pay PIN.');
+      const capability = await getBiometricCapability();
+      if (!capability.canAuthenticate) {
+        setError(
+          capability.unavailableReason ??
+            'Biometric authentication is not available. Unlock with your Mori Pay PIN.',
+        );
         return;
       }
 
-      const result = await LocalAuthentication.authenticateAsync({
+      const outcome = await authenticateWithBiometrics({
         promptMessage: 'Unlock Mori Pay',
         promptDescription: 'Confirm it is you to continue.',
         cancelLabel: 'Cancel',
-        disableDeviceFallback: true,
       });
-      if (result.success) {
+      if (outcome.ok) {
         setEntry('');
         unlockApp();
         return;
       }
-
-      if (!['user_cancel', 'user_fallback', 'system_cancel'].includes(result.error ?? '')) {
-        setError('Device authentication did not succeed. Unlock with your Mori Pay PIN.');
-      }
-    } catch (authError) {
-      setError(
-        authError instanceof Error
-          ? authError.message
-          : 'Could not start biometric authentication. Unlock with your Mori Pay PIN.',
-      );
+      if (outcome.message) setError(outcome.message);
     } finally {
       setBusy(false);
     }

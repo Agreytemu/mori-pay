@@ -6,6 +6,7 @@ export type AdminTab =
   | 'overview'
   | 'reports'
   | 'users'
+  | 'verification'
   | 'merchants'
   | 'transactions'
   | 'reconciliation'
@@ -31,6 +32,7 @@ const groups: Array<{ label: string; items: NavItem[] }> = [
     label: 'Accounts',
     items: [
       { icon: '♙', name: 'Users', tab: 'users', capability: 'admin:user:read' },
+      { icon: '⚿', name: 'Identity verification', tab: 'verification', capability: 'admin:user:read' },
       { icon: '▤', name: 'Merchants', tab: 'merchants', capability: 'admin:merchant:read' },
     ],
   },

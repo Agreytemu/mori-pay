@@ -22,6 +22,8 @@ import type {
   MerchantQrPreview,
   MerchantRegistrationFee,
   MoneyRequest,
+  KycOverview,
+  SubmitKycInput,
   OtpChallengeResult,
   Paginated,
   PayMerchantInput,
@@ -223,6 +225,14 @@ export function updateSavedPaymentMethod(
 
 export function removeSavedPaymentMethod(id: string): Promise<void> {
   return request<void>(`/account/payment-methods/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+export function getKycOverview(): Promise<KycOverview> {
+  return request<KycOverview>('/account/kyc');
+}
+
+export function submitKyc(input: SubmitKycInput): Promise<KycOverview> {
+  return request<KycOverview>('/account/kyc/submissions', { method: 'POST', body: input });
 }
 
 export function listNotifications(): Promise<AppNotification[]> {

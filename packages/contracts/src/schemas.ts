@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { MOBILE_NETWORKS } from './abliner';
+import { KYC_DOCUMENT_TYPES } from './account';
 
 /** Canonical route/phone/amount validators shared by the API and the app. */
 
@@ -182,6 +183,29 @@ export const requestMoneySchema = z.object({
   amount: amountSchema,
   note: z.string().max(140).optional(),
 });
+
+const KYC_IMAGE_DATA_URL_RE =
+  /^data:image\/(?:png|jpe?g|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+/** ~5 MB of binary data once base64-decoded, with a little headroom. */
+const KYC_MAX_IMAGE_CHARS = 7_000_000;
+
+export const kycDocumentTypeSchema = z.enum(KYC_DOCUMENT_TYPES);
+
+export const submitKycSchema = z.object({
+  documentType: kycDocumentTypeSchema,
+  documentNumber: z
+    .string()
+    .trim()
+    .min(4, 'Enter your ID number')
+    .max(40, 'ID number is too long')
+    .regex(/^[A-Za-z0-9-]+$/, 'ID number may only contain letters, numbers and dashes'),
+  documentImage: z
+    .string()
+    .max(KYC_MAX_IMAGE_CHARS, 'The ID photo is too large. Use an image under 5 MB.')
+    .regex(KYC_IMAGE_DATA_URL_RE, 'Upload a PNG, JPEG or WebP image of your ID.'),
+});
+
+export type SubmitKycInput = z.infer<typeof submitKycSchema>;
 
 export const payRequestSchema = z.object({
   pin: pinSchema,

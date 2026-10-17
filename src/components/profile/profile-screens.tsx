@@ -1,7 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import {
   Alert,
-  Linking,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -15,7 +14,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { DateOfBirthField } from '@/components/auth/DateOfBirthField';
-import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
 import { SegmentedControl } from '@/components/ui/segmented-control';
@@ -35,7 +33,6 @@ import {
   StatusBanner,
 } from '@/components/profile/profile-components';
 import { AccountInfoRow } from '@/components/wallet/wallet-components';
-import * as LocalAuthentication from 'expo-local-authentication';
 import { ABOUT_COPY, APP } from '@/constants/app';
 import {
   APP_LANGUAGES,
@@ -48,6 +45,7 @@ import {
 } from '@/data/profile';
 import { useProfileState, type EditableProfileFields } from '@/data/profile-store';
 import { useSession, type AppLockDelay } from '@/lib/session';
+import { authenticateWithBiometrics, getBiometricCapability } from '@/lib/biometrics';
 import { changePin, fetchPinStatus, verifyPin } from '@/lib/mori-api';
 import { prettyTzPhone } from '@/lib/phone';
 import { radius, spacing, useAppTheme, type ThemePreference } from '@/theme';
@@ -107,20 +105,8 @@ export function ProfileScreen() {
   const { preference } = useAppTheme();
   const [confirmLogout, setConfirmLogout] = useState(false);
   const [signedOut, setSignedOut] = useState(false);
-  const [verificationError, setVerificationError] = useState(false);
 
   const otherDevices = devices.filter((device) => !device.isCurrent).length;
-  const requestVerification = async () => {
-    const subject = encodeURIComponent('Request account verification');
-    const body = encodeURIComponent(
-      `Hello Mori Pay Support,\n\nI would like to request account verification.\n\nMember ID: ${profile.memberId}`,
-    );
-    try {
-      await Linking.openURL(`mailto:${APP.supportEmail}?subject=${subject}&body=${body}`);
-    } catch {
-      setVerificationError(true);
-    }
-  };
 
   return (
     <Screen
@@ -177,12 +163,12 @@ export function ProfileScreen() {
           onPress={() => router.push('/wallet')}
           showDivider
         />
-        {profile.status === 'standard' ? (
+        {profile.status !== 'verified' ? (
           <ProfileMenuItem
             icon="id"
-            label="Request account verification"
-            description="Contact support to start a verification review"
-            onPress={() => void requestVerification()}
+            label="Verify identity"
+            description="Submit an ID to raise your account limits"
+            onPress={() => router.push('/account/verify-identity')}
             showDivider
           />
         ) : null}
@@ -307,12 +293,6 @@ export function ProfileScreen() {
         </AppText>
       </View>
 
-      <AppDialog
-        visible={verificationError}
-        title="Contact support"
-        message={`Email ${APP.supportEmail} to request account verification.`}
-        onClose={() => setVerificationError(false)}
-      />
       <ConfirmationDialog
         visible={confirmLogout}
         title="Log out?"
@@ -883,19 +863,21 @@ function AppLockSettingsToggle() {
               setBusy(true);
               try {
                 if (enabled) {
-                  const enrolled = await LocalAuthentication.isEnrolledAsync();
-                  if (!enrolled) {
-                    setError('Enroll Face ID or a fingerprint in your device settings before enabling biometric unlock.');
+                  const capability = await getBiometricCapability();
+                  if (!capability.canAuthenticate) {
+                    setError(
+                      capability.unavailableReason ??
+                        'Biometric unlock is not available on this device.',
+                    );
                     return;
                   }
-                  const result = await LocalAuthentication.authenticateAsync({
+                  const outcome = await authenticateWithBiometrics({
                     promptMessage: 'Enable biometric unlock for Mori Pay',
-                    promptDescription: 'Your biometric is checked on this device and is never sent to Mori Pay.',
-                    cancelLabel: 'Cancel',
-                    disableDeviceFallback: true,
+                    promptDescription:
+                      'Your biometric is checked on this device and is never sent to Mori Pay.',
                   });
-                  if (!result.success) {
-                    setError('Biometric unlock was not enabled because verification did not succeed.');
+                  if (!outcome.ok) {
+                    if (outcome.message) setError(outcome.message);
                     return;
                   }
                 }

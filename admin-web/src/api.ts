@@ -11,6 +11,9 @@ import type {
   AdminStaffSearchPage,
   AdminMerchantAccountPage,
   AdminMerchantApplicationPage,
+  AdminKycSubmissionDetail,
+  AdminKycSubmissionPage,
+  AdminKycSubmissionStatus,
   AdminOverview,
   AdminSession,
   AdminSystemSettings,
@@ -450,6 +453,34 @@ export function getAdminReport(from?: string, to?: string): Promise<AdminReport>
 
 export function getAdminHealth(): Promise<AdminHealth> {
   return fetchJson<AdminHealth>('/admin/health');
+}
+
+export function listAdminKycSubmissions(
+  status: 'pending' | 'approved' | 'rejected' | 'all' = 'pending',
+  q = '',
+  page = 1,
+  pageSize = 20,
+): Promise<AdminKycSubmissionPage> {
+  return fetchJson<AdminKycSubmissionPage>('/admin/kyc', {
+    query: { status, page, pageSize, ...(q ? { q } : {}) },
+  });
+}
+
+export function getAdminKycSubmission(submissionId: string): Promise<AdminKycSubmissionDetail> {
+  return fetchJson<AdminKycSubmissionDetail>(
+    `/admin/kyc/${encodeURIComponent(submissionId)}`,
+  );
+}
+
+export function decideAdminKycSubmission(
+  submissionId: string,
+  decision: 'approve' | 'reject',
+  reason?: string,
+): Promise<{ id: string; status: AdminKycSubmissionStatus }> {
+  return fetchJson(`/admin/kyc/${encodeURIComponent(submissionId)}/decision`, {
+    method: 'POST',
+    body: { decision, ...(reason ? { reason } : {}) },
+  });
 }
 
 export function listAdminPromotions(page = 1, pageSize = 20): Promise<PromotionPage> {

@@ -14,6 +14,7 @@ import { serializeRequest } from './common/redact.js';
 import { AblinerModule } from './abliner/abliner.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { HealthModule } from './health/health.module.js';
+import { KycModule } from './kyc/kyc.module.js';
 import { LedgerModule } from './ledger/ledger.module.js';
 import { LimitsModule } from './limits/limits.module.js';
 import { MerchantsModule } from './merchants/merchants.module.js';
@@ -83,6 +84,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     ReceiveCodeModule,
     PaymentsModule,
     PromotionsModule,
+    KycModule,
     SettlementModule,
     AblinerModule,
     AuthModule,

@@ -69,6 +69,8 @@ export const ICONS = {
   biometrics: { ios: 'touchid', android: 'fingerprint' },
   devices: { ios: 'laptopcomputer.and.iphone', android: 'devices' },
   trash: { ios: 'trash', android: 'delete' },
+  camera: { ios: 'camera.fill', android: 'photo_camera' },
+  gallery: { ios: 'photo.on.rectangle', android: 'photo_library' },
 
   // States
   success: { ios: 'checkmark.circle.fill', android: 'check_circle' },

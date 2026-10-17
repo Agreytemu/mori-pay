@@ -2,6 +2,38 @@ import type { Amount, Currency } from './money';
 
 export type AccountTier = 'Standard' | 'Verified';
 
+export const KYC_DOCUMENT_TYPES = ['nida', 'passport', 'voters_card'] as const;
+
+export type KycDocumentType = (typeof KYC_DOCUMENT_TYPES)[number];
+
+export const KYC_DOCUMENT_TYPE_LABELS: Record<KycDocumentType, string> = {
+  nida: 'National ID (NIDA)',
+  passport: 'Passport',
+  voters_card: "Voter's card",
+};
+
+export type KycSubmissionStatus = 'pending' | 'approved' | 'rejected';
+
+export type KycSubmission = {
+  id: string;
+  documentType: KycDocumentType;
+  /** Only the last four characters of the submitted ID number are exposed. */
+  documentNumberLast4: string;
+  status: KycSubmissionStatus;
+  rejectionReason: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+  hasDocumentImage: boolean;
+};
+
+export type KycOverview = {
+  tier: AccountTier;
+  kycLevel: number;
+  /** Status of the latest submission, or null when none exists yet. */
+  status: KycSubmissionStatus | null;
+  latest: KycSubmission | null;
+};
+
 export type WalletBalance = {
   available: Amount;
   pending: Amount;

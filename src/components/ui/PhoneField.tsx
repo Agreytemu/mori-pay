@@ -27,7 +27,13 @@ export function PhoneField({
   placeholder?: string;
 } & Omit<
   ProfileFieldProps,
-  'value' | 'onChangeText' | 'label' | 'placeholder' | 'leadingContent' | 'keyboardType'
+  | 'value'
+  | 'onChangeText'
+  | 'label'
+  | 'placeholder'
+  | 'leadingContent'
+  | 'keyboardType'
+  | 'floatingLabel'
 >) {
   const { colors } = useAppTheme();
 
@@ -40,6 +46,7 @@ export function PhoneField({
       autoComplete="tel"
       maxLength={maxLength}
       placeholder={placeholder}
+      floatingLabel={false}
       leadingContent={
         <View
           style={styles.prefix}

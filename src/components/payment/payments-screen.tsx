@@ -158,6 +158,9 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   /* Request money */
   const [requestPhone, setRequestPhone] = useState('');
   const [requestPhoneNorm, setRequestPhoneNorm] = useState<string | null>(null);
+  const [requestLookup, setRequestLookup] = useState<
+    (RecipientLookup & { phone: string }) | null
+  >(null);
   const [requestAmount, setRequestAmount] = useState('');
   const [requestNote, setRequestNote] = useState('');
   const [requestResult, setRequestResult] = useState<RequestMoneyResult | null>(null);
@@ -189,6 +192,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
 
   const merchants = useAsync(() => listMerchants(), []);
   const sendTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const idempotencyKeys = useRef(new IdempotencyKeyCache());
   const submissionLock = useRef(false);
 
@@ -251,6 +255,36 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
     (() => {
       const current = normalizeTzPhone(sendPhone);
       return current && recipientLookup.phone === current ? recipientLookup : null;
+    })();
+
+  /* ---------------------------------------------- recipient lookup (request) */
+
+  useEffect(() => {
+    const normalized = normalizeTzPhone(requestPhone);
+    if (!normalized) {
+      return;
+    }
+    if (requestTimer.current) clearTimeout(requestTimer.current);
+    requestTimer.current = setTimeout(() => {
+      void (async () => {
+        try {
+          const lookup = await lookupRecipient(normalized);
+          setRequestLookup({ phone: normalized, ...lookup });
+        } catch {
+          setRequestLookup({ phone: normalized, found: false, phoneNumber: normalized });
+        }
+      })();
+    }, 400);
+    return () => {
+      if (requestTimer.current) clearTimeout(requestTimer.current);
+    };
+  }, [requestPhone]);
+
+  const requestActiveLookup =
+    requestLookup &&
+    (() => {
+      const current = normalizeTzPhone(requestPhone);
+      return current && requestLookup.phone === current ? requestLookup : null;
     })();
 
   /* ---------------------------------------------------------------- helpers */
@@ -459,15 +493,31 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
     }
   };
 
-  const continueRequestRecipient = () => {
+  const continueRequestRecipient = async () => {
     setError(null);
     const normalized = normalizeTzPhone(requestPhone);
     if (!normalized) {
       setError('Enter a valid Tanzanian phone number.');
       return;
     }
-    setRequestPhoneNorm(normalized);
-    setScreen('request-amount');
+    setBusy(true);
+    try {
+      const lookup = await lookupRecipient(normalized);
+      setRequestLookup({ phone: normalized, ...lookup });
+      if (!lookup.found) {
+        setError(
+          'No Mori Pay account found for that number. You can only request money from registered Mori Pay users.',
+        );
+        setRequestPhoneNorm(null);
+        return;
+      }
+      setRequestPhoneNorm(normalized);
+      setScreen('request-amount');
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Could not look up that number.');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const continueRequestAmount = () => {
@@ -1061,11 +1111,13 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
 
   const renderRequestRecipient = () =>
     renderRecipientStep({
-      title: 'The payer will get a request notification once you confirm.',
+      title:
+        'The payer will get a request notification once you confirm. Money requests are only sent to registered Mori Pay users.',
       value: requestPhone,
       onChange: setRequestPhone,
-      hint: 'You can request from anyone with a Tanzanian phone number.',
+      hint: 'We will confirm the person has a Mori Pay account before you continue.',
       illustration: 'transferMoney',
+      lookup: requestActiveLookup,
       onContinue: continueRequestRecipient,
     });
 

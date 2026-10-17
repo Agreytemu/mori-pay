@@ -272,6 +272,45 @@ export type AdminSystemSettings = {
 export type RegistrationFee = { amount: number | null };
 
 /* ------------------------------------------------------------------ */
+/* Identity verification (KYC)                                        */
+/* ------------------------------------------------------------------ */
+
+export type AdminKycDocumentType = 'nida' | 'passport' | 'voters_card';
+export type AdminKycSubmissionStatus = 'pending' | 'approved' | 'rejected';
+
+export type AdminKycSubmissionSummary = {
+  id: string;
+  user: {
+    id: string;
+    name: string;
+    phone: string | null;
+    memberId: string;
+    tier: string;
+    kycLevel: number;
+  };
+  documentType: AdminKycDocumentType;
+  documentNumberLast4: string;
+  status: AdminKycSubmissionStatus;
+  rejectionReason: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
+};
+
+export type AdminKycSubmissionPage = {
+  items: AdminKycSubmissionSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+export type AdminKycSubmissionDetail = AdminKycSubmissionSummary & {
+  documentNumber: string;
+  documentImage: string;
+  reviewedBy: { id: string; name: string } | null;
+};
+
+/* ------------------------------------------------------------------ */
 /* Sessions & devices                                                 */
 /* ------------------------------------------------------------------ */
 

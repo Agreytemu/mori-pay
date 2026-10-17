@@ -46,12 +46,8 @@ export function usePaymentMethods() {
 
   useEffect(() => {
     if (!userId) {
-      setState({ userId: null, methods: [], loading: false, error: null });
-      return;
-    }
-    if (state.userId === userId && (state.loading || !state.error && state.methods.length >= 0)) {
-      if (!state.error && state.loading === false && state.methods.length >= 0) {
-        void loadPaymentMethods(userId);
+      if (state.userId !== null || state.methods.length || state.loading || state.error) {
+        setState({ userId: null, methods: [], loading: false, error: null });
       }
       return;
     }
@@ -63,9 +59,18 @@ export function usePaymentMethods() {
     : { userId, methods: [], loading: Boolean(userId), error: null };
 }
 
-export async function loadPaymentMethods(userId = state.userId): Promise<void> {
-  if (!userId || state.loading) return;
-  setState({ userId, methods: state.userId === userId ? state.methods : [], loading: true, error: null });
+export async function loadPaymentMethods(
+  userId = state.userId,
+  options?: { force?: boolean },
+): Promise<void> {
+  if (!userId) return;
+  if (state.loading && !options?.force) return;
+  setState({
+    userId,
+    methods: state.userId === userId ? state.methods : [],
+    loading: true,
+    error: null,
+  });
   try {
     const result = await fetchMethods();
     if (state.userId === userId) {

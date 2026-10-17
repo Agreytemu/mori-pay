@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
 
+import { getNotifications } from '@/lib/notifications';
 import { storage } from '@/lib/storage';
 import { feedback } from '@/theme/palette';
 
@@ -11,8 +11,10 @@ const DELIVERED_KEY_PREFIX = 'mori.transactionCompletionNotification.';
 let notificationQueue: Promise<void> = Promise.resolve();
 const deliveredThisSession = new Set<string>();
 
-if (Platform.OS !== 'web') {
-  Notifications.setNotificationHandler({
+const notifications = Platform.OS === 'web' ? null : getNotifications();
+
+if (notifications) {
+  notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldPlaySound: false,
       shouldSetBadge: false,
@@ -23,26 +25,26 @@ if (Platform.OS !== 'web') {
 }
 
 async function canPresentTransactionNotification(): Promise<boolean> {
-  if (Platform.OS === 'web') return false;
+  if (!notifications) return false;
 
   if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync(
+    await notifications.setNotificationChannelAsync(
       TRANSACTION_NOTIFICATION_CHANNEL_ID,
       {
         name: 'Transaction updates',
-        importance: Notifications.AndroidImportance.DEFAULT,
+        importance: notifications.AndroidImportance.DEFAULT,
         vibrationPattern: [0, 150, 100, 150],
         lightColor: feedback.cyan,
       },
     );
   }
 
-  let permission = await Notifications.getPermissionsAsync();
+  let permission = await notifications.getPermissionsAsync();
   if (permission.status === 'granted') return true;
 
   if (await storage.get(PERMISSION_REQUESTED_KEY)) return false;
   await storage.set(PERMISSION_REQUESTED_KEY, '1');
-  permission = await Notifications.requestPermissionsAsync();
+  permission = await notifications.requestPermissionsAsync();
   return permission.status === 'granted';
 }
 
@@ -74,8 +76,10 @@ export function notifyTransactionCompletedLocally(transactionId: string): Promis
       console.warn('Could not save local transaction notification history.', error);
     }
 
+    if (!notifications) return;
+
     try {
-      await Notifications.scheduleNotificationAsync({
+      await notifications.scheduleNotificationAsync({
         content: {
           title: 'Transaction completed',
           body: 'Transaction completed — open MORI PAY to view details.',
