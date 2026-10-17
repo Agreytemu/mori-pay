@@ -12,6 +12,25 @@ export function normalizeTzPhone(raw: string): string | null {
   return null;
 }
 
+/**
+ * Reduces a raw phone input to the nine local digits shown after the static
+ * `+255` prefix: strips non-digits, drops a leading country code or `0`, and
+ * caps the result at nine digits.
+ */
+export function getTzPhoneInputDigits(value: string): string {
+  let digits = value.replace(/\D/g, '');
+  if (digits.startsWith('255')) digits = digits.slice(3);
+  if (digits.startsWith('0')) digits = digits.slice(1);
+  return digits.slice(0, 9);
+}
+
+/** Formats a `255XXXXXXXXX` (or local) number for display, e.g. `+255 712 345 678`. */
+export function prettyTzPhone(raw: string): string {
+  const normalized = normalizeTzPhone(raw) ?? raw.replace(/\D/g, '');
+  if (normalized.length !== 12) return normalized;
+  return `+${normalized.slice(0, 3)} ${normalized.slice(3, 6)} ${normalized.slice(6, 9)} ${normalized.slice(9)}`;
+}
+
 type PlatformName = 'android' | 'ios' | 'web';
 
 const INSTALLATION_ID_KEY = 'mori-pay-installation-id';

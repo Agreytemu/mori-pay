@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { TanzaniaMerchantBusinessType } from './merchant';
+
 export const adminStaffRoleSchema = z.enum([
   'super_admin',
   'merchant_operations',
@@ -195,7 +197,13 @@ export type AdminAuditPage = {
 export type AdminMerchantApplication = {
   id: string;
   businessName: string;
+  businessType?: TanzaniaMerchantBusinessType;
   category: string;
+  tin?: string;
+  businessLicenceNumber?: string;
+  region?: string;
+  district?: string;
+  physicalAddress?: string;
   phone?: string;
   status: 'pending_payment' | 'awaiting_review' | 'approved' | 'rejected';
   registrationFeeAmount?: number;

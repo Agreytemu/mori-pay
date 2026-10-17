@@ -20,7 +20,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/button';
 import { PaymentMethodSelector } from '@/components/payment/payment-components';
 import { PAYMENT_METHOD_TYPES, type SavedPaymentMethod } from '@/data/mock-payment-methods';
-import { normalizeTzPhone } from '@/lib/phone';
+import { getTzPhoneInputDigits, normalizeTzPhone } from '@/lib/phone';
 import {
   removePaymentMethod,
   savePaymentMethod,
@@ -338,7 +338,20 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
                     <ChoiceChip key={provider} label={provider} selected={fields.provider === provider} onPress={() => setField('provider', provider)} />
                   ))}
                 </View>
-                <FormField label="Phone number" placeholder="+255 7XX XXX XXX" value={fields.identifier} onChangeText={updateField('identifier')} keyboardType="phone-pad" maxLength={16} />
+                <FormField
+                  label="Phone number"
+                  placeholder="712 345 678"
+                  value={fields.identifier}
+                  onChangeText={(value) => setField('identifier', getTzPhoneInputDigits(value))}
+                  keyboardType="phone-pad"
+                  maxLength={9}
+                  leadingContent={
+                    <View style={styles.phonePrefix} accessible accessibilityLabel="Tanzania, country code plus 255">
+                      <AppText variant="bodySmall">🇹🇿</AppText>
+                      <AppText variant="bodySmallStrong" color={colors.textSecondary}>+255</AppText>
+                    </View>
+                  }
+                />
               </>
             ) : currentKind === 'bank' ? (
               <>
@@ -469,19 +482,37 @@ export function PaymentMethodDetailsScreen() {
 
 function FormField({
   label,
+  leadingContent,
   ...props
-}: { label: string } & ComponentProps<typeof TextInput>) {
+}: { label: string; leadingContent?: ReactNode } & ComponentProps<typeof TextInput>) {
   const { colors, radius } = useAppTheme();
   return (
     <View style={styles.field}>
       <AppText variant="bodySmallStrong">{label}</AppText>
-      <TextInput
-        accessibilityLabel={label}
-        placeholderTextColor={colors.textTertiary}
-        autoCapitalize="words"
-        style={[styles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md }]}
-        {...props}
-      />
+      {leadingContent ? (
+        <View
+          style={[
+            styles.input,
+            styles.inputWithPrefix,
+            { backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md },
+          ]}>
+          {leadingContent}
+          <TextInput
+            accessibilityLabel={label}
+            placeholderTextColor={colors.textTertiary}
+            style={[styles.inputWithPrefixText, { color: colors.text }]}
+            {...props}
+          />
+        </View>
+      ) : (
+        <TextInput
+          accessibilityLabel={label}
+          placeholderTextColor={colors.textTertiary}
+          autoCapitalize="words"
+          style={[styles.input, { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderRadius: radius.md }]}
+          {...props}
+        />
+      )}
     </View>
   );
 }
@@ -535,6 +566,9 @@ const styles = StyleSheet.create({
   form: { gap: 14 },
   field: { gap: 7, flex: 1 },
   input: { minHeight: 50, borderWidth: 1, paddingHorizontal: 14, ...typography.input },
+  inputWithPrefix: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  inputWithPrefixText: { flex: 1, minWidth: 0, paddingVertical: 0, ...typography.input },
+  phonePrefix: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   providerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   choiceChip: { minHeight: 38, paddingHorizontal: 12, borderWidth: 1, justifyContent: 'center' },
   inlineFields: { flexDirection: 'row', gap: 12 },

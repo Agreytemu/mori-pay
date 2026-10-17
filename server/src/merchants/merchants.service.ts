@@ -215,7 +215,13 @@ export class MerchantsService {
           select: {
             id: true,
             businessName: true,
+            businessType: true,
             category: true,
+            tin: true,
+            businessLicenceNumber: true,
+            region: true,
+            district: true,
+            physicalAddress: true,
             phone: true,
             status: true,
             registrationFeeAmount: true,
@@ -532,8 +538,14 @@ export class MerchantsService {
           data: {
             userId,
             businessName: input.businessName,
+            businessType: input.businessType,
             category: input.category,
-            phone: input.phone ?? null,
+            tin: input.tin,
+            businessLicenceNumber: input.businessLicenceNumber,
+            region: input.region,
+            district: input.district,
+            physicalAddress: input.physicalAddress,
+            phone: input.phone,
             status: 'pending_payment',
             registrationFeeAmount: configuration?.registrationFeeAmount ?? null,
           },
@@ -1147,7 +1159,13 @@ export class MerchantsService {
   private toApplicationDto(application: {
     id: string;
     businessName: string;
+    businessType: string | null;
     category: string;
+    tin: string | null;
+    businessLicenceNumber: string | null;
+    region: string | null;
+    district: string | null;
+    physicalAddress: string | null;
     phone: string | null;
     status: string;
     registrationFeeAmount: bigint | null;
@@ -1159,7 +1177,15 @@ export class MerchantsService {
     return {
       id: application.id,
       businessName: application.businessName,
+      businessType:
+        (application.businessType as MerchantApplicationDto['businessType']) ??
+        undefined,
       category: application.category,
+      tin: application.tin ?? undefined,
+      businessLicenceNumber: application.businessLicenceNumber ?? undefined,
+      region: application.region ?? undefined,
+      district: application.district ?? undefined,
+      physicalAddress: application.physicalAddress ?? undefined,
       phone: application.phone ?? undefined,
       status: application.status as MerchantApplicationDto['status'],
       registrationFeeAmount:

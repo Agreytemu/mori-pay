@@ -6,6 +6,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/button';
 import type { IconName } from '@/constants/icons';
 import type { PaymentMethod, PaymentRecipient } from '@/data/payment-data';
+import { getTzPhoneInputDigits } from '@/lib/phone';
 import { useAppTheme } from '@/theme';
 import { typography } from '@/theme/typography';
 import { formatMoney } from '@/utils/format-money';
@@ -184,13 +185,15 @@ export function RecipientSelector({
           },
         ]}>
         <AppIcon name="phone" size={17} color={colors.textSecondary} />
+        <AppText variant="bodySmall" color={colors.textSecondary}>+255</AppText>
         <TextInput
-          accessibilityLabel="Phone number"
+          accessibilityLabel="Phone number, Tanzania country code plus 255"
           value={value}
-          onChangeText={onPhoneChange}
-          placeholder="Phone number"
+          onChangeText={(next) => onPhoneChange(getTzPhoneInputDigits(next))}
+          placeholder="712 345 678"
           placeholderTextColor={colors.textTertiary}
           keyboardType="phone-pad"
+          maxLength={9}
           style={[styles.textInput, typography.input, { minHeight: 48, color: colors.text }]}
         />
       </View>

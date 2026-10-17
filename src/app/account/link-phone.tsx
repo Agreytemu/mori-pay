@@ -3,7 +3,8 @@ import { useRouter } from 'expo-router';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { PinBoxes, StatusBanner, ProfileField } from '@/components/profile/profile-components';
+import { PinBoxes, StatusBanner } from '@/components/profile/profile-components';
+import { PhoneField } from '@/components/ui/PhoneField';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
 import { requestPhoneLink, verifyPhoneLink } from '@/lib/mori-api';
@@ -96,16 +97,13 @@ export default function LinkPhoneScreen() {
           showsVerticalScrollIndicator={false}>
           {!normalizedPhone ? (
             <>
-              <ProfileField
+              <PhoneField
                 label="Mobile number"
                 value={phone}
                 onChangeText={(value) => {
                   setPhone(value);
                   if (error) setError(null);
                 }}
-                keyboardType="phone-pad"
-                autoComplete="tel"
-                placeholder="0712 345 678"
                 hint="Use a number that you can receive SMS on."
               />
               {error ? <StatusBanner tone="error" title="Could not send code" message={error} /> : null}
@@ -113,7 +111,7 @@ export default function LinkPhoneScreen() {
                 label="Send verification code"
                 block
                 loading={busy}
-                disabled={busy || phone.trim().length < 9}
+                disabled={busy || normalizeTzPhone(phone) === null}
                 onPress={() => void sendCode()}
               />
             </>

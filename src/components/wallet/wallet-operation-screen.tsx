@@ -51,7 +51,7 @@ import {
   withdrawalLookup,
   withdrawalPreview,
 } from '@/lib/mori-api';
-import { normalizeTzPhone } from '@/lib/phone';
+import { getTzPhoneInputDigits, normalizeTzPhone } from '@/lib/phone';
 import { notifyTransactionCompleted } from '@/lib/transaction-feedback';
 import { useSession } from '@/lib/session';
 import { useAppTheme } from '@/theme';
@@ -88,13 +88,6 @@ function getUserFacingError(error: unknown, fallback: string): string {
     default:
       return fallback;
   }
-}
-
-function getTzPhoneInputDigits(value: string): string {
-  let digits = value.replace(/\D/g, '');
-  if (digits.startsWith('255')) digits = digits.slice(3);
-  if (digits.startsWith('0')) digits = digits.slice(1);
-  return digits.slice(0, 9);
 }
 
 const MIN_AMOUNT = 500;

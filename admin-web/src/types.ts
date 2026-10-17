@@ -99,7 +99,13 @@ export type AdminAuditPage = {
 export type AdminMerchantApplication = {
   id: string;
   businessName: string;
+  businessType?: string;
   category: string;
+  tin?: string;
+  businessLicenceNumber?: string;
+  region?: string;
+  district?: string;
+  physicalAddress?: string;
   phone?: string;
   status: 'pending_payment' | 'awaiting_review' | 'approved' | 'rejected';
   registrationFeeAmount?: number;

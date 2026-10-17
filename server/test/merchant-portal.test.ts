@@ -140,7 +140,13 @@ describe('merchant portal API data access', () => {
     const application = {
       id: 'application-1',
       businessName: 'Kijani Store',
+      businessType: 'sole_proprietor',
       category: 'Retail',
+      tin: '123456789',
+      businessLicenceNumber: 'LIC-00123',
+      region: 'Dar es Salaam',
+      district: 'Kinondoni',
+      physicalAddress: '12 Samora Avenue, Upanga',
       phone: null,
       status: 'approved',
       registrationFeeAmount: null,

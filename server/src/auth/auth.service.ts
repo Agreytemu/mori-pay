@@ -156,12 +156,21 @@ export class AuthService {
       throw new ConflictException('An account already exists for this email');
     }
 
+    const phoneOwner = await this.prisma.user.findUnique({
+      where: { phone: input.phone },
+    });
+    if (phoneOwner) {
+      throw new ConflictException(
+        'An account already exists for this phone number',
+      );
+    }
+
     let userId: string;
     try {
       userId = await this.prisma.$transaction(async (tx) => {
         const user = await tx.user.create({
           data: {
-            phone: null,
+            phone: input.phone,
             email: input.email,
             fullName: input.fullName,
             firstName: input.firstName,
@@ -196,7 +205,7 @@ export class AuthService {
     } catch (error) {
       if (this.isUniqueConstraintError(error)) {
         throw new ConflictException(
-          'An account already exists for this email',
+          'An account already exists for this email or phone number',
         );
       }
       throw error;

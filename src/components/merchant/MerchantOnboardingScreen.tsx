@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { PinBoxes, ProfileField, StatusBanner } from '@/components/profile/profile-components';
+import { PhoneField } from '@/components/ui/PhoneField';
 import { AppText } from '@/components/ui/AppText';
 import { ScreenContainer } from '@/components/ui/ScreenContainer';
 import { ScreenHeader } from '@/components/ui/ScreenHeader';
@@ -20,7 +21,18 @@ import {
   payMerchantRegistrationFee,
   revokeMerchantQr,
 } from '@/lib/mori-api';
-import type { MerchantApplication, MerchantQrCode, MerchantRegistrationFee } from '@mori-pay/contracts';
+import { getTzPhoneInputDigits, normalizeTzPhone, prettyTzPhone } from '@/lib/phone';
+import type {
+  MerchantApplication,
+  MerchantQrCode,
+  MerchantRegistrationFee,
+  TanzaniaMerchantBusinessType,
+} from '@mori-pay/contracts';
+import {
+  TANZANIA_MERCHANT_BUSINESS_TYPES,
+  TANZANIA_MERCHANT_BUSINESS_TYPE_LABELS,
+  TANZANIA_REGIONS,
+} from '@mori-pay/contracts';
 import { ApiError } from '@/lib/api';
 import { useAppTheme } from '@/theme';
 import { formatMoney } from '@/utils/format-money';
@@ -68,7 +80,13 @@ export function MerchantOnboardingScreen() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [businessName, setBusinessName] = useState('');
+  const [businessType, setBusinessType] = useState<TanzaniaMerchantBusinessType | ''>('');
   const [category, setCategory] = useState('');
+  const [tin, setTin] = useState('');
+  const [businessLicenceNumber, setBusinessLicenceNumber] = useState('');
+  const [region, setRegion] = useState('');
+  const [district, setDistrict] = useState('');
+  const [physicalAddress, setPhysicalAddress] = useState('');
   const [phone, setPhone] = useState('');
   const [pin, setPin] = useState('');
   const [fixedAmount, setFixedAmount] = useState('');
@@ -91,8 +109,14 @@ export function MerchantOnboardingScreen() {
       setLoaded(true);
       if (nextApplication) {
         setBusinessName(nextApplication.businessName);
+        setBusinessType(nextApplication.businessType ?? '');
         setCategory(nextApplication.category);
-        setPhone(nextApplication.phone ?? '');
+        setTin(nextApplication.tin ?? '');
+        setBusinessLicenceNumber(nextApplication.businessLicenceNumber ?? '');
+        setRegion(nextApplication.region ?? '');
+        setDistrict(nextApplication.district ?? '');
+        setPhysicalAddress(nextApplication.physicalAddress ?? '');
+        setPhone(nextApplication.phone ? getTzPhoneInputDigits(nextApplication.phone) : '');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load merchant details.');
@@ -118,11 +142,30 @@ export function MerchantOnboardingScreen() {
     }
   };
 
+  const normalizedPhone = normalizeTzPhone(phone);
+  const formReady =
+    businessName.trim().length >= 2 &&
+    businessType !== '' &&
+    category.trim().length >= 2 &&
+    /^\d{9}$/.test(tin.trim()) &&
+    businessLicenceNumber.trim().length >= 2 &&
+    region.trim().length >= 2 &&
+    district.trim().length >= 2 &&
+    physicalAddress.trim().length >= 4 &&
+    normalizedPhone !== null;
+
   const submitApplication = () => run(async () => {
+    if (!formReady || !normalizedPhone || !businessType) return;
     const created = await applyForMerchant({
       businessName: businessName.trim(),
+      businessType,
       category: category.trim(),
-      phone: phone.trim() || undefined,
+      tin: tin.trim(),
+      businessLicenceNumber: businessLicenceNumber.trim(),
+      region: region.trim(),
+      district: district.trim(),
+      physicalAddress: physicalAddress.trim(),
+      phone: normalizedPhone,
     });
     setApplication(created);
   });
@@ -226,6 +269,34 @@ export function MerchantOnboardingScreen() {
             maxLength={120}
             accessibilityLabel="Business name"
           />
+          <View style={styles.field}>
+            <AppText variant="bodySmallStrong">Business type</AppText>
+            <View style={styles.chipGrid}>
+              {TANZANIA_MERCHANT_BUSINESS_TYPES.map((type) => {
+                const selected = businessType === type;
+                return (
+                  <Pressable
+                    key={type}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={TANZANIA_MERCHANT_BUSINESS_TYPE_LABELS[type]}
+                    onPress={() => setBusinessType(type)}
+                    style={[
+                      styles.chip,
+                      {
+                        backgroundColor: selected ? colors.primarySoft : colors.surface,
+                        borderColor: selected ? colors.primary : colors.border,
+                        borderRadius: radius.md,
+                      },
+                    ]}>
+                    <AppText variant="caption" color={selected ? colors.primary : colors.textSecondary}>
+                      {TANZANIA_MERCHANT_BUSINESS_TYPE_LABELS[type]}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
           <ProfileField
             label="Business category"
             value={category}
@@ -235,18 +306,80 @@ export function MerchantOnboardingScreen() {
             accessibilityLabel="Business category"
           />
           <ProfileField
-            label="Business phone (optional)"
+            label="TIN (Taxpayer Identification Number)"
+            value={tin}
+            onChangeText={(value) => setTin(value.replace(/\D/g, '').slice(0, 9))}
+            keyboardType="number-pad"
+            maxLength={9}
+            placeholder="123456789"
+            hint="Your 9-digit TIN from TRA."
+            error={tin !== '' && !/^\d{9}$/.test(tin) ? 'TIN must be exactly 9 digits.' : undefined}
+            accessibilityLabel="Taxpayer identification number"
+          />
+          <ProfileField
+            label="Business licence number"
+            value={businessLicenceNumber}
+            onChangeText={setBusinessLicenceNumber}
+            autoCapitalize="characters"
+            maxLength={60}
+            accessibilityLabel="Business licence number"
+          />
+          <View style={styles.field}>
+            <AppText variant="bodySmallStrong">Region</AppText>
+            <View style={styles.chipGrid}>
+              {TANZANIA_REGIONS.map((name) => {
+                const selected = region === name;
+                return (
+                  <Pressable
+                    key={name}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={name}
+                    onPress={() => setRegion(name)}
+                    style={[
+                      styles.chip,
+                      {
+                        backgroundColor: selected ? colors.primarySoft : colors.surface,
+                        borderColor: selected ? colors.primary : colors.border,
+                        borderRadius: radius.md,
+                      },
+                    ]}>
+                    <AppText variant="caption" color={selected ? colors.primary : colors.textSecondary}>
+                      {name}
+                    </AppText>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+          <ProfileField
+            label="District"
+            value={district}
+            onChangeText={setDistrict}
+            autoCapitalize="words"
+            maxLength={80}
+            placeholder="e.g. Kinondoni"
+            accessibilityLabel="District"
+          />
+          <ProfileField
+            label="Physical address"
+            value={physicalAddress}
+            onChangeText={setPhysicalAddress}
+            autoCapitalize="sentences"
+            maxLength={200}
+            placeholder="Street, ward, building"
+            accessibilityLabel="Physical business address"
+          />
+          <PhoneField
+            label="Business phone number"
             value={phone}
             onChangeText={setPhone}
-            keyboardType="phone-pad"
-            autoComplete="tel"
-            maxLength={30}
-            accessibilityLabel="Business phone number"
+            error={phone !== '' && !normalizedPhone ? 'Enter a valid Tanzanian phone number.' : undefined}
           />
           <Button
             label="Submit application"
             loading={busy}
-            disabled={businessName.trim().length < 2 || category.trim().length < 2}
+            disabled={!formReady}
             onPress={() => void submitApplication()}
           />
           {fee?.amount == null ? (
@@ -274,8 +407,22 @@ export function MerchantOnboardingScreen() {
           />
           <AppText variant="title2">{application.businessName}</AppText>
           <AppText variant="bodySmall" color={colors.textSecondary}>
-            {application.category}{application.phone ? ` · ${application.phone}` : ''}
+            {application.businessType ? `${TANZANIA_MERCHANT_BUSINESS_TYPE_LABELS[application.businessType]} · ` : ''}
+            {application.category}{application.phone ? ` · ${prettyTzPhone(application.phone)}` : ''}
           </AppText>
+          {application.tin || application.businessLicenceNumber || application.region || application.district || application.physicalAddress ? (
+            <View style={[styles.reviewNote, { borderColor: colors.border, backgroundColor: colors.surface, borderRadius: radius.md, padding: space.base }]}>
+              <AppText variant="bodySmallStrong">Business details</AppText>
+              {application.tin ? <AppText variant="bodySmall" color={colors.textSecondary}>TIN: {application.tin}</AppText> : null}
+              {application.businessLicenceNumber ? <AppText variant="bodySmall" color={colors.textSecondary}>Licence: {application.businessLicenceNumber}</AppText> : null}
+              {application.region || application.district ? (
+                <AppText variant="bodySmall" color={colors.textSecondary}>
+                  {[application.region, application.district].filter(Boolean).join(' · ')}
+                </AppText>
+              ) : null}
+              {application.physicalAddress ? <AppText variant="bodySmall" color={colors.textSecondary}>{application.physicalAddress}</AppText> : null}
+            </View>
+          ) : null}
           <StatusBanner
             tone={application.status === 'approved' ? 'success' : application.status === 'rejected' ? 'error' : 'info'}
             title={applicationStatus(application.status).title}
@@ -436,6 +583,9 @@ export function MerchantOnboardingScreen() {
 const styles = StyleSheet.create({
   content: { gap: 20, paddingTop: 12, paddingBottom: 32 },
   section: { gap: 14 },
+  field: { gap: 8 },
+  chipGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { minHeight: 40, paddingHorizontal: 12, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   reviewNote: { borderWidth: StyleSheet.hairlineWidth, gap: 6 },
   choices: { flexDirection: 'row', gap: 8 },
   choice: { minHeight: 44, flex: 1, alignItems: 'center', justifyContent: 'center', borderWidth: 1, paddingHorizontal: 8 },

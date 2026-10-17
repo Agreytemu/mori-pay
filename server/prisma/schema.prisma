@@ -279,7 +279,13 @@ model MerchantApplication {
   userId                   String
   user                     User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
   businessName             String
+  businessType             String?
   category                 String
+  tin                      String?
+  businessLicenceNumber    String?
+  region                   String?
+  district                 String?
+  physicalAddress          String?
   phone                    String?
   status                   MerchantApplicationStatus @default(pending_payment)
   registrationFeeAmount    BigInt?

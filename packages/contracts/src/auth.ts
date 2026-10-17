@@ -66,6 +66,7 @@ export type EmailRegisterInput = {
   firstName: string;
   email: string;
   password: string;
+  phone: string;
   dateOfBirth?: string;
 };
 

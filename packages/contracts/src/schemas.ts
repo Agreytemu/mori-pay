@@ -102,6 +102,7 @@ export const emailRegisterSchema = z.object({
   firstName: z.string().trim().min(1).max(60),
   email: emailSchema,
   password: passwordSchema,
+  phone: tzPhoneSchema,
   dateOfBirth: dateOnlySchema.optional(),
 });
 

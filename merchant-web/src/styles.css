@@ -345,6 +345,9 @@ td strong { color: #262c36; }
 .application-status.status-approved { border-color: #d6eee4; background: #f1faf6; color: #258064; }
 .application-status.status-rejected { border-color: #f0d8da; background: #fff6f6; color: #a03d48; }
 .application-description { max-width: 600px !important; }
+.application-details { display: grid; grid-template-columns: auto 1fr; gap: 5px 14px; width: 100%; margin: 10px 0; padding: 12px 14px; border: 1px solid #edf1f6; border-radius: 10px; background: #fbfcfe; font-size: 10px; }
+.application-details dt { color: #8794a5; font-weight: 600; }
+.application-details dd { margin: 0; color: #40536c; }
 .application-steps { display: grid; width: 100%; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 12px 0; }
 .application-steps > span { display: grid; align-content: start; gap: 6px; border: 1px solid #edf1f6; border-radius: 9px; padding: 13px; }
 .application-steps i { display: grid; width: 24px; height: 24px; place-items: center; border-radius: 50%; background: #eaf7f5; color: #0e7367; font-size: 11px; font-style: normal; font-weight: 600; }

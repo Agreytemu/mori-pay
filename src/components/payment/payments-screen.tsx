@@ -22,6 +22,7 @@ import {
   ProfileField,
   StatusBanner,
 } from '@/components/profile/profile-components';
+import { PhoneField } from '@/components/ui/PhoneField';
 import { QRCodeScanner } from '@/components/payment/QRCodeScanner';
 import { AppDialog } from '@/components/ui/app-dialog';
 import { AppIcon } from '@/components/ui/AppIcon';
@@ -61,7 +62,7 @@ import {
   sendMoney,
   verifyReceiveCode,
 } from '@/lib/mori-api';
-import { normalizeTzPhone } from '@/lib/phone';
+import { getTzPhoneInputDigits, normalizeTzPhone, prettyTzPhone } from '@/lib/phone';
 import { useSession } from '@/lib/session';
 import { notifyTransactionCompleted } from '@/lib/transaction-feedback';
 import { useAsync } from '@/lib/use-async';
@@ -96,7 +97,7 @@ type PinReason = 'send' | 'pay' | 'qr';
 export const MIN_AMOUNT = 500;
 
 function prettyPhone(phone: string): string {
-  return `+${phone.slice(0, 3)} ${phone.slice(3, 6)} ${phone.slice(6, 9)} ${phone.slice(9)}`;
+  return prettyTzPhone(phone);
 }
 
 function transactionErrorMessage(error: unknown, fallback: string): string {
@@ -378,7 +379,7 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
         return;
       }
 
-      setSendPhone(lookup.phoneNumber);
+      setSendPhone(getTzPhoneInputDigits(normalized));
       setSendPhoneNorm(normalized);
       setRecipientLookup({ ...lookup, phone: normalized, phoneNumber: normalized });
       setTransferPreview(null);
@@ -789,13 +790,10 @@ export function PaymentsScreen({ initialFlow }: { initialFlow?: PaymentFlow }) {
   }) => (
     <View style={styles.stack}>
       <AppIllustration name={illustration} width={220} height={132} />
-      <ProfileField
+      <PhoneField
         label="Phone number"
         value={value}
         onChangeText={onChange}
-        keyboardType="phone-pad"
-        autoComplete="tel"
-        placeholder="0712 345 678"
         hint={hint}
       />
       {lookup && lookup.found ? (

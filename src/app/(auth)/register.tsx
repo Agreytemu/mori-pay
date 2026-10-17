@@ -7,8 +7,10 @@ import { DateOfBirthField } from '@/components/auth/DateOfBirthField';
 import { ProfileField, StatusBanner } from '@/components/profile/profile-components';
 import { AppIcon } from '@/components/ui/AppIcon';
 import { AppText } from '@/components/ui/AppText';
+import { PhoneField } from '@/components/ui/PhoneField';
 import { PrimaryButton } from '@/components/ui/button';
 import { registerEmail } from '@/lib/mori-api';
+import { normalizeTzPhone } from '@/lib/phone';
 import { useAppTheme } from '@/theme';
 
 function splitName(full: string): { fullName: string; firstName: string } {
@@ -23,6 +25,7 @@ export default function RegisterScreen() {
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [dateOfBirth, setDateOfBirth] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -32,18 +35,21 @@ export default function RegisterScreen() {
   const [busy, setBusy] = useState(false);
 
   const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const validPhone = normalizeTzPhone(phone) !== null;
   const validDob = dateOfBirth.trim() === '' || /^\d{4}-\d{2}-\d{2}$/.test(dateOfBirth.trim());
   const validPassword = password.length >= 10 && password.length <= 128;
   const ready =
     fullName.trim().length >= 2 &&
     validEmail &&
+    validPhone &&
     validDob &&
     validPassword &&
     confirmPassword === password &&
     acceptedPolicy;
 
   const submit = async () => {
-    if (!ready) {
+    const normalizedPhone = normalizeTzPhone(phone);
+    if (!ready || !normalizedPhone) {
       setError('Check your details. Your password must be at least 10 characters.');
       return;
     }
@@ -57,6 +63,7 @@ export default function RegisterScreen() {
         firstName,
         email: email.trim().toLowerCase(),
         password,
+        phone: normalizedPhone,
         ...(dateOfBirth.trim() ? { dateOfBirth: dateOfBirth.trim() } : {}),
       });
       router.push({
@@ -79,7 +86,7 @@ export default function RegisterScreen() {
           <View style={styles.heading}>
             <AppText variant="title2">Create your account</AppText>
             <AppText variant="bodySmall" color={colors.textSecondary}>
-              No phone number needed to get started. We&apos;ll verify your email.
+              We&apos;ll verify your email. Your phone number stays unverified until you choose to verify it.
             </AppText>
           </View>
 
@@ -102,6 +109,13 @@ export default function RegisterScreen() {
             autoCorrect={false}
             placeholder="you@example.com"
             error={email !== '' && !validEmail ? 'Enter a valid email address.' : undefined}
+          />
+          <PhoneField
+            label="Phone number"
+            value={phone}
+            onChangeText={setPhone}
+            hint="Used for your account. You can verify it later."
+            error={phone !== '' && !validPhone ? 'Enter a valid Tanzanian phone number.' : undefined}
           />
           <ProfileField
             label="Password"

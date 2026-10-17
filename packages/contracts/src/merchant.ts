@@ -1,12 +1,77 @@
 import { z } from 'zod';
 
 import type { Transaction } from './transaction';
-import { amountSchema, pinSchema } from './schemas';
+import { amountSchema, pinSchema, tzPhoneSchema } from './schemas';
+
+/** Legal structures recognised for Tanzanian business registration. */
+export const TANZANIA_MERCHANT_BUSINESS_TYPES = [
+  'sole_proprietor',
+  'partnership',
+  'limited_company',
+  'cooperative',
+  'other',
+] as const;
+
+export const tanzaniaMerchantBusinessTypeSchema = z.enum(
+  TANZANIA_MERCHANT_BUSINESS_TYPES,
+);
+
+export const TANZANIA_MERCHANT_BUSINESS_TYPE_LABELS: Record<
+  TanzaniaMerchantBusinessType,
+  string
+> = {
+  sole_proprietor: 'Sole proprietor',
+  partnership: 'Partnership',
+  limited_company: 'Limited company',
+  cooperative: 'Cooperative',
+  other: 'Other',
+};
+
+/** Tanzania's regions and regional-level authorities (mainland + Zanzibar). */
+export const TANZANIA_REGIONS = [
+  'Arusha',
+  'Dar es Salaam',
+  'Dodoma',
+  'Geita',
+  'Iringa',
+  'Kagera',
+  'Katavi',
+  'Kigoma',
+  'Kilimanjaro',
+  'Lindi',
+  'Manyara',
+  'Mara',
+  'Mbeya',
+  'Morogoro',
+  'Mtwara',
+  'Mwanza',
+  'Njombe',
+  'Pwani',
+  'Rukwa',
+  'Ruvuma',
+  'Shinyanga',
+  'Simiyu',
+  'Singida',
+  'Songwe',
+  'Tabora',
+  'Tanga',
+  'Kaskazini Pemba',
+  'Kusini Pemba',
+  'Kaskazini Unguja',
+  'Kusini Unguja',
+  'Mjini Magharibi',
+] as const;
 
 export const merchantApplicationSchema = z.object({
   businessName: z.string().trim().min(2).max(120),
+  businessType: tanzaniaMerchantBusinessTypeSchema,
   category: z.string().trim().min(2).max(80),
-  phone: z.string().trim().max(30).optional(),
+  tin: z.string().trim().regex(/^\d{9}$/, 'TIN must be exactly 9 digits'),
+  businessLicenceNumber: z.string().trim().min(2).max(60),
+  region: z.string().trim().min(2).max(80),
+  district: z.string().trim().min(2).max(80),
+  physicalAddress: z.string().trim().min(4).max(200),
+  phone: tzPhoneSchema,
 });
 
 export const merchantRegistrationPaymentSchema = z.object({
@@ -79,6 +144,9 @@ export const payMerchantQrSchema = merchantQrPreviewSchema.extend({
   idempotencyKey: z.string().min(1).max(120),
 });
 
+export type TanzaniaMerchantBusinessType =
+  (typeof TANZANIA_MERCHANT_BUSINESS_TYPES)[number];
+export type TanzaniaRegion = (typeof TANZANIA_REGIONS)[number];
 export type MerchantApplicationInput = z.infer<typeof merchantApplicationSchema>;
 export type MerchantRegistrationPaymentInput = z.infer<
   typeof merchantRegistrationPaymentSchema
@@ -101,7 +169,13 @@ export type PayMerchantQrInput = z.infer<typeof payMerchantQrSchema>;
 export type MerchantApplication = {
   id: string;
   businessName: string;
+  businessType?: TanzaniaMerchantBusinessType;
   category: string;
+  tin?: string;
+  businessLicenceNumber?: string;
+  region?: string;
+  district?: string;
+  physicalAddress?: string;
   phone?: string;
   status: 'pending_payment' | 'awaiting_review' | 'approved' | 'rejected';
   registrationFeeAmount?: number;

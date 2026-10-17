@@ -32,6 +32,19 @@ function labelStatus(status: string): string {
   return status.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+const BUSINESS_TYPE_LABELS: Record<string, string> = {
+  sole_proprietor: 'Sole proprietor',
+  partnership: 'Partnership',
+  limited_company: 'Limited company',
+  cooperative: 'Cooperative',
+  other: 'Other',
+};
+
+function businessTypeLabel(type?: string): string | null {
+  if (!type) return null;
+  return BUSINESS_TYPE_LABELS[type] ?? labelStatus(type);
+}
+
 export function MerchantOperationsPage({ canEditFee }: { canEditFee: boolean }) {
   const [view, setView] = useState<View>('applications');
   const [applications, setApplications] = useState<AdminMerchantApplicationPage | null>(null);
@@ -198,7 +211,18 @@ function ApplicationTable({
   return (
     <div className="table-scroll"><table><thead><tr><th>BUSINESS</th><th>APPLICANT</th><th>STATUS</th><th>FEE</th><th>SUBMITTED</th><th>ACTIONS</th></tr></thead>
       <tbody>{page.items.map((application) => <tr key={application.id}>
-        <td><strong>{application.businessName}</strong><small>{application.category}</small></td>
+        <td>
+          <strong>{application.businessName}</strong>
+          <small>{[application.category, businessTypeLabel(application.businessType)].filter(Boolean).join(' · ')}</small>
+          {application.region || application.district ? <small>{[application.region, application.district].filter(Boolean).join(' · ')}</small> : null}
+          {application.tin || application.businessLicenceNumber ? (
+            <small>
+              {application.tin ? `TIN: ${application.tin}` : ''}
+              {application.tin && application.businessLicenceNumber ? ' · ' : ''}
+              {application.businessLicenceNumber ? `Licence: ${application.businessLicenceNumber}` : ''}
+            </small>
+          ) : null}
+        </td>
         <td>{application.applicantName}<small>{application.applicantPhone ?? application.phone ?? 'Phone not provided'}</small></td>
         <td><span className={`record-status status-${application.status}`}>{labelStatus(application.status)}</span></td>
         <td>{application.registrationFeeAmount == null ? '—' : `TZS ${application.registrationFeeAmount.toLocaleString()}`}</td>

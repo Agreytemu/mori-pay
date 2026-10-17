@@ -9,19 +9,31 @@ import {
 } from '@mori-pay/contracts';
 
 describe('email auth contracts', () => {
-  it('normalizes email and accepts signup without a phone number', () => {
+  it('normalizes email and requires a Tanzanian phone number', () => {
     const result = emailRegisterSchema.safeParse({
       fullName: 'Amina Juma',
       firstName: 'Amina',
       email: 'AMINA@example.com ',
       password: 'strong-password-123',
+      phone: '255712345678',
     });
 
     assert.equal(result.success, true);
     if (result.success) {
       assert.equal(result.data.email, 'amina@example.com');
-      assert.equal('phone' in result.data, false);
+      assert.equal(result.data.phone, '255712345678');
     }
+
+    assert.equal(
+      emailRegisterSchema.safeParse({
+        fullName: 'Amina Juma',
+        firstName: 'Amina',
+        email: 'amina@example.com',
+        password: 'strong-password-123',
+        phone: '0712345678',
+      }).success,
+      false,
+    );
   });
 
   it('rejects short passwords and malformed email addresses', () => {
@@ -31,6 +43,7 @@ describe('email auth contracts', () => {
         firstName: 'Amina',
         email: 'not-an-email',
         password: 'short',
+        phone: '255712345678',
       }).success,
       false,
     );

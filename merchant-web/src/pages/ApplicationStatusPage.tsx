@@ -66,6 +66,15 @@ export function ApplicationStatusPage({
           <p className="muted">{application.category} · Submitted {formatDate(application.createdAt)}</p>
         </div>
       </div>
+      {application.tin || application.businessLicenceNumber || application.region || application.district || application.physicalAddress || application.phone ? (
+        <dl className="application-details">
+          {application.tin ? (<><dt>TIN</dt><dd>{application.tin}</dd></>) : null}
+          {application.businessLicenceNumber ? (<><dt>Business licence</dt><dd>{application.businessLicenceNumber}</dd></>) : null}
+          {application.region || application.district ? (<><dt>Location</dt><dd>{[application.region, application.district].filter(Boolean).join(' · ')}</dd></>) : null}
+          {application.physicalAddress ? (<><dt>Physical address</dt><dd>{application.physicalAddress}</dd></>) : null}
+          {application.phone ? (<><dt>Business phone</dt><dd>{application.phone}</dd></>) : null}
+        </dl>
+      ) : null}
       <span className={`application-status status-${application.status}`}>
         {detail.title}
       </span>

@@ -49,6 +49,7 @@ import {
 import { useProfileState, type EditableProfileFields } from '@/data/profile-store';
 import { useSession, type AppLockDelay } from '@/lib/session';
 import { changePin, fetchPinStatus, verifyPin } from '@/lib/mori-api';
+import { prettyTzPhone } from '@/lib/phone';
 import { radius, spacing, useAppTheme, type ThemePreference } from '@/theme';
 import { formatDate, formatRelativeTime, initialsOf } from '@/utils/format';
 
@@ -518,7 +519,7 @@ export function PersonalInformationScreen() {
           ) : null}
 
           <AppText variant="caption" color={colors.textTertiary}>
-            Phone numbers are optional for account creation. A verified number may be needed for some payment features.
+            Your phone number is saved at sign-up but stays unverified until you verify it. A verified number may be needed for some payment features.
           </AppText>
         </>
       ) : (
@@ -535,7 +536,7 @@ export function PersonalInformationScreen() {
             />
             <ProfileField
               label="Phone number (optional)"
-              value={currentDraft.phone}
+              value={currentDraft.phone ? prettyTzPhone(currentDraft.phone) : ''}
               onChangeText={update('phone')}
               editable={false}
               keyboardType="phone-pad"
