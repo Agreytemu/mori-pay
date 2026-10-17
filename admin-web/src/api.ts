@@ -125,7 +125,7 @@ async function refreshSession(): Promise<boolean> {
 async function fetchJson<T>(
   path: string,
   options: {
-    method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+    method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
     body?: unknown;
     accessToken?: string;
     retry?: boolean;
@@ -521,6 +521,14 @@ export async function signOut(): Promise<void> {
   const current = getStoredSession();
   try {
     if (current) {
+      const installationId = window.localStorage.getItem('mori.admin.push-installation-id');
+      if (installationId) {
+        try {
+          await unregisterPushDevice(installationId);
+        } catch (error) {
+          console.warn('Could not unregister browser push before admin logout.', error);
+        }
+      }
       const response = await fetch(apiUrl('/auth/logout'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -535,4 +543,20 @@ export async function signOut(): Promise<void> {
   } finally {
     clearSession();
   }
+}
+
+export function registerPushDevice(input: {
+  name: string;
+  platform: 'web';
+  clientApp: 'admin-web';
+  installationId: string;
+  token: string;
+}): Promise<{ registered: true }> {
+  return fetchJson('/account/push-devices', { method: 'PUT', body: input });
+}
+
+export function unregisterPushDevice(installationId: string): Promise<void> {
+  return fetchJson(`/account/push-devices/${encodeURIComponent(installationId)}`, {
+    method: 'DELETE',
+  });
 }

@@ -58,8 +58,32 @@ export const deviceInfoSchema = z.object({
   name: z.string().min(1).max(120),
   platform: z.enum(['android', 'ios', 'web']),
   installationId: z.string().min(16).max(128).optional(),
-  pushToken: z.string().min(1).optional(),
 });
+
+export const pushDeviceRegistrationSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  platform: z.enum(['android', 'ios', 'web']),
+  clientApp: z.enum(['mobile', 'admin-web', 'merchant-web']),
+  installationId: z.string().min(16).max(128),
+  token: z.string().min(1).max(4096),
+}).strict().superRefine((registration, context) => {
+  const isMobilePlatform = registration.platform === 'android' ||
+    registration.platform === 'ios';
+  if (
+    (registration.clientApp === 'mobile' && !isMobilePlatform) ||
+    (registration.clientApp !== 'mobile' && registration.platform !== 'web')
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'The platform must match the registering Mori Pay client.',
+      path: ['platform'],
+    });
+  }
+});
+
+export type PushDeviceRegistration = z.infer<
+  typeof pushDeviceRegistrationSchema
+>;
 
 export const requestOtpSchema = z.object({
   phone: tzPhoneSchema,

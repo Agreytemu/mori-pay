@@ -27,6 +27,7 @@ function notificationTransaction(
     amount: 5_000n,
     counterparty: '255700000001',
   },
+  onTransactionUpdate?: () => void,
 ) {
   return {
     notificationPreference: {
@@ -34,9 +35,21 @@ function notificationTransaction(
     },
     notification: {
       create: async () => undefined,
+      findMany: async () => [],
+      findFirst: async () => null,
+    },
+    notificationDelivery: {
+      createMany: async () => ({ count: 0 }),
+    },
+    device: {
+      findMany: async () => [],
     },
     transaction: {
       create: async () => createdTransaction,
+      update: async () => {
+        onTransactionUpdate?.();
+        return createdTransaction;
+      },
     },
   };
 }
@@ -362,11 +375,11 @@ describe('provider request outcomes', () => {
     let transactionUpdated = false;
     const prisma = {
       $transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
-        callback(notificationTransaction()),
-      transaction: {
-        update: async () => {
+        callback(notificationTransaction(undefined, () => {
           transactionUpdated = true;
-        },
+        })),
+      transaction: {
+        update: async () => undefined,
       },
     };
     const service = new TopUpsService(
@@ -689,4 +702,3 @@ describe('provider request outcomes', () => {
     assert.equal(failed, false);
   });
 });
-

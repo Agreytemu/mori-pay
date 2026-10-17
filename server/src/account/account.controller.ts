@@ -6,13 +6,17 @@ import {
   Param,
   Patch,
   Post,
+  Put,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import {
+  pushDeviceRegistrationSchema,
   savePaymentMethodSchema,
   updateAccountProfileSchema,
   updateNotificationPreferencesSchema,
+  type PushDeviceRegistration,
   type SavePaymentMethodInput,
   type UpdateAccountProfileInput,
   type UpdateNotificationPreferencesInput,
@@ -54,6 +58,24 @@ export class AccountController {
     @Param('id') id: string,
   ) {
     return this.account.removeDevice(user.userId, id);
+  }
+
+  @Put('push-devices')
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  registerPushDevice(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(pushDeviceRegistrationSchema))
+    input: PushDeviceRegistration,
+  ) {
+    return this.account.registerPushDevice(user.userId, input);
+  }
+
+  @Delete('push-devices/:installationId')
+  unregisterPushDevice(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('installationId') installationId: string,
+  ) {
+    return this.account.unregisterPushDevice(user.userId, installationId);
   }
 
   @Get('payment-methods')

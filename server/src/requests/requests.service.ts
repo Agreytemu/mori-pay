@@ -23,6 +23,7 @@ import { FeesService } from '../payments/fees.service.js';
 import { PaymentsService } from '../payments/payments.service.js';
 import { LimitsService } from '../limits/limits.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { queueNotificationForPush } from '../account/notification-writer.js';
 import { WalletService } from '../wallet/wallet.service.js';
 import { toTransaction } from '../wallet/wallet.mapper.js';
 
@@ -75,7 +76,7 @@ export class RequestsService {
         select: { transactions: true },
       });
       if (preferences?.transactions ?? true) {
-        await tx.notification.create({
+        const notification = await tx.notification.create({
           data: {
             userId: payer.id,
             kind: 'request',
@@ -83,6 +84,7 @@ export class RequestsService {
             body: `${requester.fullName} requested ${amount.toString()} TZS${input.note ? `: ${input.note}` : '.'}`,
           },
         });
+        await queueNotificationForPush(tx, payer.id, notification.id);
       }
 
       return created;

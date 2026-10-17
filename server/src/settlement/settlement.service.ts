@@ -12,6 +12,7 @@ import {
 } from '../payments/transaction-status.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { LEDGER_ACCOUNT_AVAILABLE } from '../wallet/wallet.mapper.js';
+import { queueTransactionNotificationForPush } from '../account/notification-writer.js';
 
 type Client = Prisma.TransactionClient;
 
@@ -114,6 +115,7 @@ export class SettlementService {
         },
         client,
       );
+      await queueTransactionNotificationForPush(client, transaction.id);
     });
   }
 
@@ -131,12 +133,17 @@ export class SettlementService {
   ): Promise<void> {
     if (!canTransition(transaction.type, transaction.status, status)) return;
 
-    await this.prisma.transaction.updateMany({
-      where: { id: transaction.id, status: TRANSACTION_STATUS.pending },
-      data: {
-        status,
-        providerStatus: status,
-      },
+    await this.prisma.$transaction(async (client) => {
+      const claimed = await client.transaction.updateMany({
+        where: { id: transaction.id, status: TRANSACTION_STATUS.pending },
+        data: {
+          status,
+          providerStatus: status,
+        },
+      });
+      if (claimed.count > 0) {
+        await queueTransactionNotificationForPush(client, transaction.id);
+      }
     });
   }
 
@@ -179,6 +186,7 @@ export class SettlementService {
         },
         client,
       );
+      await queueTransactionNotificationForPush(client, transaction.id);
     });
   }
 
@@ -230,6 +238,7 @@ export class SettlementService {
         { reference: `${transaction.reference}-release`, legs },
         client,
       );
+      await queueTransactionNotificationForPush(client, transaction.id);
     });
   }
 

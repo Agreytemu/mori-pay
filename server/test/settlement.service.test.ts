@@ -29,6 +29,18 @@ describe('SettlementService', () => {
               ledgerAccounts: [{ id: 'wallet-available', kind: 'available' }],
             }),
           },
+          notification: {
+            findMany: async () => [],
+          },
+          notificationDelivery: {
+            createMany: async () => ({ count: 0 }),
+          },
+          notificationPreference: {
+            findUnique: async () => null,
+          },
+          device: {
+            findMany: async () => [],
+          },
         }),
     };
     const ledger = {

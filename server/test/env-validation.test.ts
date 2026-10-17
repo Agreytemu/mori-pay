@@ -72,6 +72,41 @@ describe('environment validation', () => {
     );
   });
 
+  it('requires complete server and portal configuration when FCM is enabled', () => {
+    assert.throws(
+      () => validateEnv({ ...productionConfig, FCM_ENABLED: 'true' }),
+      /FIREBASE_PROJECT_ID is required when FCM_ENABLED=true/,
+    );
+
+    const env = validateEnv({
+      ...productionConfig,
+      FCM_ENABLED: 'true',
+      FIREBASE_PROJECT_ID: 'mori-pay-test',
+      FIREBASE_CLIENT_EMAIL: 'fcm@mori-pay-test.iam.gserviceaccount.com',
+      FIREBASE_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\\nvalue\\n-----END PRIVATE KEY-----',
+      ADMIN_WEB_URL: 'https://admin.mori-pay.example',
+      MERCHANT_WEB_URL: 'https://merchant.mori-pay.example',
+    });
+    assert.equal(env.FCM_ENABLED, true);
+    assert.equal(env.FIREBASE_PROJECT_ID, 'mori-pay-test');
+  });
+
+  it('rejects insecure production web origins when FCM is enabled', () => {
+    assert.throws(
+      () =>
+        validateEnv({
+          ...productionConfig,
+          FCM_ENABLED: 'true',
+          FIREBASE_PROJECT_ID: 'mori-pay-test',
+          FIREBASE_CLIENT_EMAIL: 'fcm@mori-pay-test.iam.gserviceaccount.com',
+          FIREBASE_PRIVATE_KEY: 'private-key',
+          ADMIN_WEB_URL: 'http://admin.mori-pay.example',
+          MERCHANT_WEB_URL: 'https://merchant.mori-pay.example',
+        }),
+      /ADMIN_WEB_URL must use HTTPS/,
+    );
+  });
+
   it('rejects development-default JWT secrets in production', () => {
     assert.throws(
       () =>

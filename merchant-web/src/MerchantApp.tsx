@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import QRCode from 'qrcode';
 import type { AuthSession, MerchantPortal, MerchantPortalQrCode, MerchantPortalTransaction, MerchantQrCode } from './types';
@@ -21,6 +21,7 @@ import {
 import { Alert } from './components/Feedback';
 import { DateRange } from './components/DateRange';
 import { TransactionModal } from './components/TransactionModal';
+import { PushNotificationsPrompt } from './components/PushNotificationsPrompt';
 import { WorkspaceLayout, type WorkspaceTab } from './components/WorkspaceLayout';
 import { ApplicationStatusPage } from './pages/ApplicationStatusPage';
 import { BusinessPage } from './pages/BusinessPage';
@@ -92,6 +93,7 @@ export function MerchantApp() {
   const [newQr, setNewQr] = useState<MerchantQrCode | null>(null);
   const [newQrImage, setNewQrImage] = useState('');
   const [revokeConfirm, setRevokeConfirm] = useState('');
+  const openedPushTransaction = useRef<string | null>(null);
 
   const merchant = portal?.merchant ?? null;
   const datesValid = Boolean(from && to && from <= to);
@@ -143,6 +145,29 @@ export function MerchantApp() {
     const timer = window.setTimeout(() => void loadDashboard(), 150);
     return () => window.clearTimeout(timer);
   }, [authenticated, datesValid, loadDashboard]);
+
+  useEffect(() => {
+    if (!authenticated) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('tab') === 'transactions') setTab('transactions');
+
+    const transactionId = params.get('transactionId');
+    if (!transactionId || openedPushTransaction.current === transactionId) return;
+    openedPushTransaction.current = transactionId;
+
+    void getTransaction(transactionId)
+      .then(setSelected)
+      .catch((reason: unknown) => setError(friendlyError(reason)));
+
+    params.delete('notificationId');
+    params.delete('transactionId');
+    const query = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`,
+    );
+  }, [authenticated]);
 
   useEffect(() => {
     if (!authenticated || tab !== 'transactions' || !merchant || !datesValid) return;
@@ -430,6 +455,7 @@ export function MerchantApp() {
         onRefresh={() => void loadDashboard()}
         onSignOut={() => void onSignOut()}
       >
+        <PushNotificationsPrompt />
         <DateRange
           from={from}
           to={to}

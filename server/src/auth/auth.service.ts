@@ -716,9 +716,33 @@ export class AuthService {
 
   async logout(refreshToken: string): Promise<void> {
     const tokenHash = this.tokens.hashRefreshToken(refreshToken);
-    await this.prisma.refreshToken.updateMany({
-      where: { tokenHash, revokedAt: null },
-      data: { revokedAt: new Date() },
+    const record = await this.prisma.refreshToken.findUnique({
+      where: { tokenHash },
+      select: { id: true, userId: true, deviceId: true, revokedAt: true },
+    });
+    if (!record || record.revokedAt) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      const revoked = await tx.refreshToken.updateMany({
+        where: { id: record.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      if (revoked.count === 0 || !record.deviceId) return;
+
+      const activeSessions = await tx.refreshToken.count({
+        where: {
+          deviceId: record.deviceId,
+          userId: record.userId,
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+      });
+      if (activeSessions === 0) {
+        await tx.device.updateMany({
+          where: { id: record.deviceId, userId: record.userId },
+          data: { pushToken: null, isCurrent: false },
+        });
+      }
     });
   }
 
@@ -830,7 +854,6 @@ export class AuthService {
       const deviceData = {
         name: device.name,
         platform: device.platform,
-        ...(device.pushToken === undefined ? {} : { pushToken: device.pushToken }),
         isCurrent: true,
         lastActiveAt: new Date(),
       };
@@ -846,7 +869,6 @@ export class AuthService {
             data: {
               userId,
               ...deviceData,
-              pushToken: device.pushToken ?? null,
             },
           });
       deviceId = registered.id;

@@ -12,7 +12,10 @@ import {
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -27,6 +30,7 @@ import { AppText } from '@/components/ui/AppText';
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
 import { APP } from '@/constants/app';
 import { SessionProvider, useSession } from '@/lib/session';
+import '@/lib/transaction-notifications';
 import { ThemeProvider, useAppTheme } from '@/theme';
 
 const appLogo = require('../../assets/images/brand-mark.png');

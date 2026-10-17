@@ -9,6 +9,7 @@ import type {
   AppNotification,
   NotificationKind,
   NotificationPreference,
+  PushDeviceRegistration,
   SavedPaymentMethod,
   SavePaymentMethodInput,
   TrustedDevice,
@@ -91,6 +92,58 @@ export class AccountService {
     await this.prisma.$transaction(async (tx) => {
       await tx.refreshToken.deleteMany({ where: { deviceId: id, userId } });
       await tx.device.delete({ where: { id } });
+    });
+  }
+
+  async registerPushDevice(
+    userId: string,
+    input: PushDeviceRegistration,
+  ): Promise<{ registered: true }> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.device.updateMany({
+        where: {
+          pushToken: input.token,
+          NOT: { userId, installationId: input.installationId },
+        },
+        data: { pushToken: null },
+      });
+
+      await tx.device.upsert({
+        where: {
+          userId_installationId: {
+            userId,
+            installationId: input.installationId,
+          },
+        },
+        create: {
+          userId,
+          name: input.name,
+          platform: input.platform,
+          clientApp: input.clientApp,
+          installationId: input.installationId,
+          pushToken: input.token,
+          isCurrent: true,
+        },
+        update: {
+          name: input.name,
+          platform: input.platform,
+          clientApp: input.clientApp,
+          pushToken: input.token,
+          isCurrent: true,
+          lastActiveAt: new Date(),
+        },
+      });
+    });
+    return { registered: true };
+  }
+
+  async unregisterPushDevice(
+    userId: string,
+    installationId: string,
+  ): Promise<void> {
+    await this.prisma.device.updateMany({
+      where: { userId, installationId },
+      data: { pushToken: null, isCurrent: false },
     });
   }
 
@@ -207,7 +260,10 @@ export class AccountService {
   async listNotifications(userId: string): Promise<AppNotification[]> {
     const notifications = await this.prisma.notification.findMany({
       where: { userId },
-      include: { transaction: true },
+      include: {
+        transaction: true,
+        deliveries: { select: { status: true } },
+      },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
@@ -232,6 +288,9 @@ export class AccountService {
         body: transactionCopy?.body ?? notification.body,
         createdAt: (transaction?.settledAt ?? notification.createdAt).toISOString(),
         read: notification.read,
+        deliveryStatus: this.toDeliveryStatus(
+          notification.deliveries.map((delivery) => delivery.status),
+        ),
         ...(notification.transactionId
           ? { transactionId: notification.transactionId }
           : {}),
@@ -344,6 +403,19 @@ export class AccountService {
   private toDevicePlatform(value: string): TrustedDevice['platform'] {
     if (value === 'android' || value === 'ios' || value === 'web') return value;
     throw new BadRequestException(`Unsupported device platform: ${value}`);
+  }
+
+  private toDeliveryStatus(
+    statuses: string[],
+  ): NonNullable<AppNotification['deliveryStatus']> {
+    if (statuses.length === 0) return 'not_queued';
+    if (statuses.some((status) => status === 'pending' || status === 'processing')) {
+      return 'queued';
+    }
+    const accepted = statuses.filter((status) => status === 'accepted').length;
+    const failed = statuses.filter((status) => status === 'failed').length;
+    if (accepted > 0 && failed > 0) return 'partially_sent';
+    return accepted > 0 ? 'sent_to_fcm' : 'failed';
   }
 
   private toPaymentMethod(

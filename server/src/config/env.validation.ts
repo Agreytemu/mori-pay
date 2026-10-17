@@ -20,6 +20,30 @@ export const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
   REDIS_URL: z.string().url().optional(),
   CORS_ORIGINS: z.string().default('*'),
+  FCM_ENABLED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
+  FIREBASE_PROJECT_ID: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().min(1).optional(),
+  ),
+  FIREBASE_CLIENT_EMAIL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().trim().email().optional(),
+  ),
+  FIREBASE_PRIVATE_KEY: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(1).optional(),
+  ),
+  ADMIN_WEB_URL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().url().optional(),
+  ),
+  MERCHANT_WEB_URL: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().url().optional(),
+  ),
 
   JWT_ACCESS_SECRET: z.string().default('dev-access-secret-change-me-32chars'),
   JWT_REFRESH_SECRET: z.string().default('dev-refresh-secret-change-me-32chars'),
@@ -118,6 +142,35 @@ export const envSchema = z.object({
       message: 'INITIAL_SUPER_ADMIN_NAME can only be set with the initial super-admin credentials',
       path: ['INITIAL_SUPER_ADMIN_NAME'],
     });
+  }
+  if (env.FCM_ENABLED) {
+    for (const key of [
+      'FIREBASE_PROJECT_ID',
+      'FIREBASE_CLIENT_EMAIL',
+      'FIREBASE_PRIVATE_KEY',
+      'ADMIN_WEB_URL',
+      'MERCHANT_WEB_URL',
+    ] as const) {
+      if (!env[key]) {
+        context.addIssue({
+          code: 'custom',
+          message: `${key} is required when FCM_ENABLED=true`,
+          path: [key],
+        });
+      }
+    }
+    if (env.NODE_ENV === 'production') {
+      for (const key of ['ADMIN_WEB_URL', 'MERCHANT_WEB_URL'] as const) {
+        const value = env[key];
+        if (value && !value.startsWith('https://')) {
+          context.addIssue({
+            code: 'custom',
+            message: `${key} must use HTTPS when FCM_ENABLED=true in production`,
+            path: [key],
+          });
+        }
+      }
+    }
   }
 });
 

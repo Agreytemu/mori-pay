@@ -29,6 +29,9 @@ export class HealthController {
       status: 'ok',
       service: this.config.appName,
       env: this.config.nodeEnv,
+      notifications: {
+        fcm: this.config.fcm.enabled ? 'enabled' : 'disabled',
+      },
       uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
     };

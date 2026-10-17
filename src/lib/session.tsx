@@ -25,6 +25,10 @@ import type {
 
 import { callLogout, hydrateTokens, persistTokens } from './api';
 import * as api from './mori-api';
+import {
+  registerCurrentInstallationForPush,
+  unregisterCurrentInstallationFromPush,
+} from './push-registration';
 
 export type SessionStatus = 'loading' | 'authenticated' | 'unauthenticated';
 export type AppLockDelay = 'immediate' | 'one-minute';
@@ -346,6 +350,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setWalletState(session.wallet);
     setStatus('authenticated');
     setIsAppLocked(false);
+    void registerCurrentInstallationForPush().catch((error: unknown) => {
+      console.warn('Could not register this Android installation for push notifications.', error);
+    });
     try {
       await reloadAccountData();
     } catch {
@@ -418,6 +425,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const unlockApp = useCallback(() => setIsAppLocked(false), []);
 
   const signOut = useCallback(async () => {
+    if (Platform.OS === 'android') {
+      try {
+        await unregisterCurrentInstallationFromPush();
+      } catch (error) {
+        console.warn('Could not unregister Android push notifications during logout.', error);
+      }
+    }
     await callLogout();
     await persistTokens(null);
     clear();

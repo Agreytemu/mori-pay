@@ -1,7 +1,6 @@
 import * as Haptics from 'expo-haptics';
 
 import { storage } from '@/lib/storage';
-import { notifyTransactionCompletedLocally } from '@/lib/transaction-notifications';
 
 const FEEDBACK_KEY_PREFIX = 'mori.transactionSuccessHaptic.';
 
@@ -45,6 +44,5 @@ export function triggerTransactionSuccessHaptic(transactionId: string): Promise<
 }
 
 export function notifyTransactionCompleted(transactionId: string): Promise<void> {
-  void notifyTransactionCompletedLocally(transactionId);
   return triggerTransactionSuccessHaptic(transactionId);
 }

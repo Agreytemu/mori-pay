@@ -18,6 +18,7 @@ import { KycModule } from './kyc/kyc.module.js';
 import { LedgerModule } from './ledger/ledger.module.js';
 import { LimitsModule } from './limits/limits.module.js';
 import { MerchantsModule } from './merchants/merchants.module.js';
+import { NotificationsModule } from './notifications/notifications.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { PromotionsModule } from './promotions/promotions.module.js';
@@ -92,6 +93,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     TransfersModule,
     RequestsModule,
     MerchantsModule,
+    NotificationsModule,
     TopUpsModule,
     WithdrawalsModule,
     WebhooksModule,

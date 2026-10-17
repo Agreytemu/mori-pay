@@ -18,6 +18,7 @@ import { LoginPage } from './components/LoginPage';
 import { MerchantOperationsPage } from './components/MerchantOperationsPage';
 import { OverviewPage } from './components/OverviewPage';
 import { PromotionsPage } from './components/PromotionsPage';
+import { PushNotificationsPrompt } from './components/PushNotificationsPrompt';
 import { ReconciliationPage } from './components/ReconciliationPage';
 import { ReportsPage } from './components/ReportsPage';
 import { SessionsPage } from './components/SessionsPage';
@@ -73,6 +74,17 @@ export function AdminApp() {
   useEffect(() => {
     if (view === 'checking') void verify();
   }, [view, verify]);
+
+  useEffect(() => {
+    if (
+      session &&
+      new URLSearchParams(window.location.search).get('tab') === 'transactions' &&
+      (session.staffRole === 'super_admin' ||
+        session.capabilities.includes('admin:transaction:read'))
+    ) {
+      setActiveTab('transactions');
+    }
+  }, [session]);
 
   async function handleSignIn(email: string, password: string) {
     if (busy) return;
@@ -130,11 +142,18 @@ export function AdminApp() {
       onTab={setActiveTab}
       onSignOut={() => void handleSignOut()}
     >
+      <PushNotificationsPrompt />
       {activeTab === 'overview' ? <OverviewPage /> : null}
       {activeTab === 'reports' && can('admin:report:read') ? <ReportsPage /> : null}
       {activeTab === 'users' && can('admin:user:read') ? <UserSearchPage canManage={can('admin:user:write')} canManageSessions={can('admin:session:write')} /> : null}
       {activeTab === 'verification' && can('admin:user:read') ? <KycReviewPage canReview={can('admin:user:write')} /> : null}
-      {activeTab === 'transactions' && can('admin:transaction:read') ? <TransactionSearchPage /> : null}
+      {activeTab === 'transactions' && can('admin:transaction:read') ? (
+        <TransactionSearchPage
+          initialTransactionId={
+            new URLSearchParams(window.location.search).get('transactionId') ?? undefined
+          }
+        />
+      ) : null}
       {activeTab === 'reconciliation' && can('admin:reconciliation:read') ? <ReconciliationPage canRun={can('admin:reconciliation:write')} /> : null}
       {activeTab === 'webhooks' && can('admin:webhook:read') ? <WebhooksPage /> : null}
       {activeTab === 'merchants' && can('admin:merchant:read') ? <MerchantOperationsPage canEditFee={can('admin:settings:write')} /> : null}

@@ -66,6 +66,13 @@ enum KycSubmissionStatus {
   rejected
 }
 
+enum NotificationDeliveryStatus {
+  pending
+  processing
+  accepted
+  failed
+}
+
 model User {
   id                  String          @id @default(cuid())
   phone               String?         @unique
@@ -149,13 +156,15 @@ model Device {
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   name           String
   platform       String
+  clientApp      String         @default("mobile")
   installationId String?
-  pushToken      String?
+  pushToken      String?        @unique
   location       String?
   lastActiveAt   DateTime       @default(now())
   isCurrent      Boolean        @default(false)
   createdAt      DateTime       @default(now())
   refreshTokens  RefreshToken[]
+  notificationDeliveries NotificationDelivery[]
 
   @@unique([userId, installationId])
   @@index([userId])
@@ -388,8 +397,29 @@ model Notification {
   transactionId String?
   transaction   Transaction? @relation(fields: [transactionId], references: [id])
   createdAt     DateTime     @default(now())
+  deliveries    NotificationDelivery[]
 
   @@index([userId, createdAt])
+}
+
+model NotificationDelivery {
+  id             String                    @id @default(cuid())
+  notificationId String
+  notification   Notification              @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  deviceId       String
+  device         Device                    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  status         NotificationDeliveryStatus @default(pending)
+  attempts       Int                       @default(0)
+  nextAttemptAt  DateTime                  @default(now())
+  lockedAt       DateTime?
+  acceptedAt     DateTime?
+  lastError      String?
+  createdAt      DateTime                  @default(now())
+  updatedAt      DateTime                  @updatedAt
+
+  @@unique([notificationId, deviceId])
+  @@index([status, nextAttemptAt])
+  @@index([deviceId])
 }
 
 model NotificationPreference {

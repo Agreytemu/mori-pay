@@ -205,6 +205,23 @@ export function removeTrustedDevice(id: string): Promise<void> {
   return request<void>(`/account/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 
+export function registerPushDevice(input: {
+  name: string;
+  platform: 'android';
+  clientApp: 'mobile';
+  installationId: string;
+  token: string;
+}): Promise<{ registered: true }> {
+  return request('/account/push-devices', { method: 'PUT', body: input });
+}
+
+export function unregisterPushDevice(installationId: string): Promise<void> {
+  return request<void>(
+    `/account/push-devices/${encodeURIComponent(installationId)}`,
+    { method: 'DELETE' },
+  );
+}
+
 export function listSavedPaymentMethods(): Promise<SavedPaymentMethod[]> {
   return request<SavedPaymentMethod[]>('/account/payment-methods');
 }

@@ -26,9 +26,13 @@ export function TransactionNotificationObserver() {
     };
     const handleResponse = (response: Notifications.NotificationResponse) => {
       clearLastResponse();
-      const transactionId =
-        response.notification.request.content.data?.transactionId;
-      if (typeof transactionId === 'string' && transactionId.length > 0) {
+      const data = response.notification.request.content.data;
+      const transactionId = data?.transactionId;
+      if (
+        data?.kind === 'transaction' &&
+        typeof transactionId === 'string' &&
+        transactionId.length > 0
+      ) {
         sequence.current += 1;
         setPendingNotification({
           transactionId,

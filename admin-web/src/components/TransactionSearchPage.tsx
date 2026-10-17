@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { AdminApiError, getAdminTransaction, searchAdminTransactions } from '../api';
 import { useAutoRefresh } from '../use-auto-refresh';
@@ -10,7 +10,11 @@ function money(amount: string, currency: string): string {
   return `${currency} ${BigInt(amount).toLocaleString()}`;
 }
 
-export function TransactionSearchPage() {
+export function TransactionSearchPage({
+  initialTransactionId,
+}: {
+  initialTransactionId?: string;
+}) {
   const [input, setInput] = useState('');
   const [term, setTerm] = useState('');
   const [page, setPage] = useState(1);
@@ -24,6 +28,7 @@ export function TransactionSearchPage() {
   const [selectedTransaction, setSelectedTransaction] = useState<AdminTransactionDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState('');
+  const openedPushTransaction = useRef<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true);
@@ -68,7 +73,7 @@ export function TransactionSearchPage() {
     }
   }
 
-  async function openDetails(transactionId: string) {
+  const openDetails = useCallback(async (transactionId: string) => {
     setDetailLoading(true);
     setDetailError('');
     try {
@@ -78,7 +83,28 @@ export function TransactionSearchPage() {
     } finally {
       setDetailLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    if (
+      !initialTransactionId ||
+      openedPushTransaction.current === initialTransactionId
+    ) {
+      return;
+    }
+    openedPushTransaction.current = initialTransactionId;
+    void openDetails(initialTransactionId);
+
+    const params = new URLSearchParams(window.location.search);
+    params.delete('notificationId');
+    params.delete('transactionId');
+    const query = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      '',
+      `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`,
+    );
+  }, [initialTransactionId, openDetails]);
 
   return (
     <>

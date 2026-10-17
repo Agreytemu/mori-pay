@@ -1,5 +1,5 @@
 import { useCallback, useState, type ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
@@ -20,6 +20,7 @@ import { useAppTheme } from '@/theme';
 import { formatMoney } from '@/utils/format-money';
 import { PromotionBanner } from '@/components/promotions/promotion-banner';
 import { NotificationEmptyState, NotificationIcon } from '@/components/notifications/notification-components';
+import { requestAndroidPushPermission } from '@/lib/push-registration';
 
 function Header({ title, subtitle, onBack, right }: {
   title: string;
@@ -55,6 +56,8 @@ export function NotificationsScreen() {
   const { colors, space } = useAppTheme();
   const [confirmClear, setConfirmClear] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -111,6 +114,29 @@ export function NotificationsScreen() {
         />
 
         <PromotionBanner placement="notification" />
+
+        {Platform.OS === 'android' ? (
+          <Button
+            label={pushEnabled ? 'Push notifications enabled' : 'Enable Android push notifications'}
+            icon="notification"
+            variant="secondary"
+            disabled={pushEnabled || pushBusy}
+            onPress={() => {
+              setPushBusy(true);
+              setActionError(null);
+              void requestAndroidPushPermission()
+                .then(() => setPushEnabled(true))
+                .catch((error: unknown) => {
+                  setActionError(
+                    error instanceof Error
+                      ? error.message
+                      : 'Could not enable push notifications.',
+                  );
+                })
+                .finally(() => setPushBusy(false));
+            }}
+          />
+        ) : null}
 
         {error || actionError ? (
           <Pressable onPress={() => {

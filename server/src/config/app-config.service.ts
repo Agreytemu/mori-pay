@@ -41,6 +41,18 @@ export class AppConfigService {
     return this.get('REDIS_URL');
   }
 
+  get fcm() {
+    const privateKey = this.get('FIREBASE_PRIVATE_KEY');
+    return {
+      enabled: this.get('FCM_ENABLED'),
+      projectId: this.get('FIREBASE_PROJECT_ID'),
+      clientEmail: this.get('FIREBASE_CLIENT_EMAIL'),
+      privateKey: privateKey?.replace(/\\n/g, '\n'),
+      adminWebUrl: this.get('ADMIN_WEB_URL'),
+      merchantWebUrl: this.get('MERCHANT_WEB_URL'),
+    };
+  }
+
   get corsOrigins(): string[] {
     const raw = this.get('CORS_ORIGINS');
     if (raw === '*') return ['*'];

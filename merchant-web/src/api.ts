@@ -105,7 +105,7 @@ async function refreshSession(): Promise<boolean> {
 async function request<T>(
   path: string,
   options: {
-    method?: 'GET' | 'POST';
+    method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
     body?: unknown;
     query?: Record<string, string | number | undefined>;
     blob?: boolean;
@@ -173,6 +173,14 @@ export async function signOut(): Promise<void> {
   const current = session();
   try {
     if (current) {
+      const installationId = window.localStorage.getItem('mori.merchant.push-installation-id');
+      if (installationId) {
+        try {
+          await unregisterPushDevice(installationId);
+        } catch (error) {
+          console.warn('Could not unregister browser push before merchant logout.', error);
+        }
+      }
       await fetch(url('/auth/logout'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -182,6 +190,22 @@ export async function signOut(): Promise<void> {
   } finally {
     saveSession(null);
   }
+}
+
+export function registerPushDevice(input: {
+  name: string;
+  platform: 'web';
+  clientApp: 'merchant-web';
+  installationId: string;
+  token: string;
+}): Promise<{ registered: true }> {
+  return request('/account/push-devices', { method: 'PUT', body: input });
+}
+
+export function unregisterPushDevice(installationId: string): Promise<void> {
+  return request(`/account/push-devices/${encodeURIComponent(installationId)}`, {
+    method: 'DELETE',
+  });
 }
 
 export function hasSession(): boolean {

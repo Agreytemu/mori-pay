@@ -22,7 +22,10 @@ import {
 import { generateReference } from '../common/crypto.js';
 import { ProviderError } from '../common/errors.js';
 import { decryptPaymentMethodPhone } from '../common/payment-method-crypto.js';
-import { createTransactionNotification } from '../account/notification-writer.js';
+import {
+  createTransactionNotification,
+  queueTransactionNotificationForPush,
+} from '../account/notification-writer.js';
 import { AppConfigService } from '../config/app-config.service.js';
 import { Prisma, type Transaction } from '../generated/prisma/client.js';
 import { FeesService, type FeeDetail } from '../payments/fees.service.js';
@@ -274,9 +277,12 @@ export class TopUpsService {
           `Abliner outcome is unknown for deposit ${transaction.reference}; leaving it pending for reconciliation`,
         );
       } else {
-        await this.prisma.transaction.update({
-          where: { id: transaction.id },
-          data: { status: 'failed', providerStatus: 'failed' },
+        await this.prisma.$transaction(async (tx) => {
+          await tx.transaction.update({
+            where: { id: transaction.id },
+            data: { status: 'failed', providerStatus: 'failed' },
+          });
+          await queueTransactionNotificationForPush(tx, transaction.id);
         });
       }
       throw error;
@@ -473,9 +479,12 @@ export class TopUpsService {
           `Abliner outcome is unknown for card deposit ${transaction.reference}; leaving it pending for reconciliation`,
         );
       } else {
-        await this.prisma.transaction.update({
-          where: { id: transaction.id },
-          data: { status: 'failed', providerStatus: 'failed' },
+        await this.prisma.$transaction(async (tx) => {
+          await tx.transaction.update({
+            where: { id: transaction.id },
+            data: { status: 'failed', providerStatus: 'failed' },
+          });
+          await queueTransactionNotificationForPush(tx, transaction.id);
         });
       }
       throw error;

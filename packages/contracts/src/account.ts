@@ -109,6 +109,12 @@ export type NotificationPreference = {
 };
 
 export type NotificationKind = 'transaction' | 'request' | 'security' | 'promotion';
+export type NotificationDeliveryStatus =
+  | 'not_queued'
+  | 'queued'
+  | 'sent_to_fcm'
+  | 'partially_sent'
+  | 'failed';
 
 export type AppNotification = {
   id: string;
@@ -117,6 +123,8 @@ export type AppNotification = {
   body: string;
   createdAt: string;
   read: boolean;
+  /** FCM acceptance is not proof the device displayed or read the notification. */
+  deliveryStatus?: NotificationDeliveryStatus;
   /** Transaction this notification relates to, when applicable. */
   transactionId?: string;
   transaction?: {
