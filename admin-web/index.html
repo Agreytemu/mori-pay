@@ -2,16 +2,82 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f5f7f8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+
+    <title>Mori Pay Admin Console</title>
     <meta
       name="description"
-      content="Mori Pay staff operations console."
+      content="Mori Pay staff operations console for managing customers, merchants, payments, reconciliation, promotions and platform settings. Authorised staff access only."
     />
-    <title>Mori Pay Admin</title>
+    <meta name="author" content="Mori Pay" />
+    <meta name="robots" content="%ROBOTS%" />
+    <meta name="googlebot" content="%ROBOTS%" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta name="format-detection" content="telephone=no" />
+    %GOOGLE_VERIFICATION%
+    <link rel="canonical" href="%SITE_URL%/" />
+
+    <meta name="theme-color" content="#f5f7f8" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#07162E" media="(prefers-color-scheme: dark)" />
+    <meta name="application-name" content="Mori Pay Admin" />
+
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Mori Pay Admin" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="msapplication-config" content="/browserconfig.xml" />
+    <meta name="msapplication-TileColor" content="#07162E" />
+    <meta name="msapplication-tooltip" content="Mori Pay Admin Console" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Mori Pay Admin" />
+    <meta property="og:title" content="Mori Pay Admin Console" />
+    <meta property="og:description" content="Authorised staff operations console for Mori Pay." />
+    <meta property="og:url" content="%SITE_URL%/" />
+    <meta property="og:image" content="%SITE_URL%/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Mori Pay" />
+    <meta property="og:locale" content="en_TZ" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Mori Pay Admin Console" />
+    <meta name="twitter:description" content="Authorised staff operations console for Mori Pay." />
+    <meta name="twitter:image" content="%SITE_URL%/og-image.png" />
+    <meta name="twitter:image:alt" content="Mori Pay" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "Mori Pay Admin Console",
+        "url": "%SITE_URL%/",
+        "inLanguage": "en",
+        "publisher": {
+          "@type": "Organization",
+          "name": "Mori Pay",
+          "url": "%SITE_URL%/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "%SITE_URL%/icon-512.png",
+            "width": 512,
+            "height": 512
+          }
+        }
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <noscript>Mori Pay Admin Console requires JavaScript. Please enable JavaScript to sign in.</noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
