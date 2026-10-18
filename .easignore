@@ -29,6 +29,18 @@ yarn-error.*
 # macOS
 .DS_Store
 *.pem
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Firebase and service account credentials
+google-services.json
+**/google-services.json
+**/*service-account*.json
+**/*firebase-adminsdk*.json
+!server/google-services.json
 
 # local env files
 .env*.local
@@ -56,6 +68,7 @@ server/src/generated/
 .env
 .env.*
 !.env.example
+server/.env
 
 # logs
 *.log

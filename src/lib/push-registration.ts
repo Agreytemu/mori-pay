@@ -21,6 +21,22 @@ export function requestAndroidPushPermission(): Promise<void> {
   return beginRegistration(true);
 }
 
+export async function requestAndroidPushPermissionAtStartup(): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+
+  const notifications = getNotifications();
+  if (!notifications) {
+    throw new Error('Native notifications require an installed development or production build.');
+  }
+
+  await configureAndroidNotificationChannel(notifications);
+  let permission = await notifications.getPermissionsAsync();
+  if (permission.status === 'undetermined') {
+    permission = await notifications.requestPermissionsAsync();
+  }
+  return permission.status === 'granted';
+}
+
 function beginRegistration(requestPermission: boolean): Promise<void> {
   if (registrationInFlight) return registrationInFlight;
   const generation = authGeneration;
@@ -49,12 +65,7 @@ async function register(
     throw new Error('Native notifications require an installed development or production build.');
   }
 
-  await notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
-    name: 'Transaction updates',
-    importance: notifications.AndroidImportance.DEFAULT,
-    vibrationPattern: [0, 150, 100, 150],
-    lightColor: '#00CDEF',
-  });
+  await configureAndroidNotificationChannel(notifications);
 
   let permission = await notifications.getPermissionsAsync();
   if (permission.status !== 'granted') {
@@ -83,6 +94,17 @@ async function register(
     void registerToken(updatedToken.data, generation).catch((error: unknown) => {
       console.warn('Could not update the Mori Pay push token.', error);
     });
+  });
+}
+
+async function configureAndroidNotificationChannel(
+  notifications: NonNullable<ReturnType<typeof getNotifications>>,
+): Promise<void> {
+  await notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+    name: 'Transaction updates',
+    importance: notifications.AndroidImportance.DEFAULT,
+    vibrationPattern: [0, 150, 100, 150],
+    lightColor: '#00CDEF',
   });
 }
 

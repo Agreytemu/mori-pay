@@ -179,3 +179,10 @@ export async function authenticateWithBiometrics(options: {
     };
   }
 }
+
+/** Cancels an in-progress Android biometric prompt when the app backgrounds. */
+export async function cancelBiometricAuthentication(): Promise<void> {
+  if (Platform.OS === 'android') {
+    await LocalAuthentication.cancelAuthenticate();
+  }
+}

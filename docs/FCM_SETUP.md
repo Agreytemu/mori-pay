@@ -61,9 +61,9 @@ Both production origins must use HTTPS and be included in API `CORS_ORIGINS`. Co
 
 ## Android app
 
-The app is Expo SDK 57, uses `expo-notifications`, and already declares an Android notification channel named `transaction-updates`. Android push requires a development or production build; remote notifications do not work in Expo Go on Android. Grant notification permission from the **Enable Android push notifications** control on the in-app Notifications screen.
+The app is Expo SDK 57, uses `expo-notifications`, and declares an Android notification channel named `transaction-updates`. Android push requires a development or production build; remote notifications do not work in Expo Go on Android. The app creates the channel and requests notification permission the first time its main interface opens. If permission was previously denied, the user can retry from the **Enable Android push notifications** control on the in-app Notifications screen.
 
-Set the EAS build environment variable `GOOGLE_SERVICES_JSON` to the path of the Android Firebase app's `google-services.json`. For CI/EAS, use a protected file-valued environment variable supported by the build service; do not commit the downloaded file. Set `EXPO_PUBLIC_FCM_ENABLED=true` for builds intended to use FCM; `app.config.js` then fails the config step if the Android Firebase configuration path is absent. Keep the Android package ID equal to `com.mori_dev.lipanaagreytemu` in Firebase. The client obtains a native Android device token (not an Expo push token), registers token refreshes while authenticated, and unregisters on logout.
+All EAS build profiles enable FCM and validate the Android Firebase file before building. The app config uses `server/google-services.json` by default, and `.easignore` explicitly includes this client Firebase app configuration in the EAS archive while continuing to exclude service-account credentials. It must contain the Android package `com.mori_dev.lipanaagreytemu`; builds fail early if it is missing, invalid, or mismatched. `GOOGLE_SERVICES_JSON` may override the path when building with a different Firebase app config. The client obtains a native Android device token (not an Expo push token), registers it while authenticated, and unregisters on logout.
 
 Build through EAS after setting the Android file and signing credentials:
 

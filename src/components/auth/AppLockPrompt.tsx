@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
+  AppState,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -15,7 +16,11 @@ import Svg, { Circle, Defs, RadialGradient, Stop } from 'react-native-svg';
 import { PinBoxes, StatusBanner } from '@/components/profile/profile-components';
 import { AppText } from '@/components/ui/AppText';
 import { APP } from '@/constants/app';
-import { authenticateWithBiometrics, getBiometricCapability } from '@/lib/biometrics';
+import {
+  authenticateWithBiometrics,
+  cancelBiometricAuthentication,
+  getBiometricCapability,
+} from '@/lib/biometrics';
 import { verifyPin } from '@/lib/mori-api';
 import { useSession } from '@/lib/session';
 import { useAppTheme } from '@/theme';
@@ -40,8 +45,33 @@ function AppLockModal() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const biometricAttempted = useRef(false);
+  const biometricInFlight = useRef(false);
+  const appIsActiveRef = useRef(AppState.currentState === 'active');
+  const [appIsActive, setAppIsActive] = useState(AppState.currentState === 'active');
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const active = nextState === 'active';
+      appIsActiveRef.current = active;
+      setAppIsActive(active);
+
+      if (nextState === 'background') {
+        biometricAttempted.current = false;
+        if (biometricInFlight.current && Platform.OS === 'android') {
+          void cancelBiometricAuthentication().catch((cancelError: unknown) => {
+            console.warn('Could not cancel the Android biometric prompt.', cancelError);
+          });
+        }
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   const authenticate = useCallback(async () => {
+    if (!appIsActiveRef.current || biometricInFlight.current) return;
+    biometricAttempted.current = true;
+    biometricInFlight.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -66,6 +96,7 @@ function AppLockModal() {
       }
       if (outcome.message) setError(outcome.message);
     } finally {
+      biometricInFlight.current = false;
       setBusy(false);
     }
   }, [unlockApp]);
@@ -74,13 +105,26 @@ function AppLockModal() {
     if (
       !biometricUnlockReady ||
       !biometricUnlockEnabled ||
+      !appIsActive ||
       biometricAttempted.current
     ) {
       return;
     }
-    biometricAttempted.current = true;
-    void authenticate();
-  }, [authenticate, biometricUnlockEnabled, biometricUnlockReady]);
+
+    const timeout = setTimeout(() => {
+      if (
+        !appIsActiveRef.current ||
+        biometricAttempted.current ||
+        biometricInFlight.current
+      ) {
+        return;
+      }
+      biometricAttempted.current = true;
+      void authenticate();
+    }, 300);
+
+    return () => clearTimeout(timeout);
+  }, [appIsActive, authenticate, biometricUnlockEnabled, biometricUnlockReady, busy]);
 
   const onPinChange = async (next: string) => {
     if (busy || !pin?.pinSet) return;

@@ -34,6 +34,10 @@ import { NetworkBanner } from '@/components/ui/NetworkBanner';
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
 import { APP } from '@/constants/app';
 import { SessionProvider, useSession } from '@/lib/session';
+import {
+  registerCurrentInstallationForPush,
+  requestAndroidPushPermissionAtStartup,
+} from '@/lib/push-registration';
 import '@/lib/transaction-notifications';
 import { ThemeProvider, useAppTheme } from '@/theme';
 
@@ -160,10 +164,41 @@ function ThemedStack() {
         <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
       </Stack>
         <AppLockPrompt />
-        <TransactionNotificationObserver />
+      <StartupPushPermission />
+      <TransactionNotificationObserver />
       </ErrorBoundary>
     </View>
   );
+}
+
+function StartupPushPermission() {
+  const { isAppLocked, status } = useSession();
+  const [permissionGranted, setPermissionGranted] = useState(false);
+
+  useEffect(() => {
+    if (isAppLocked) return undefined;
+    let active = true;
+    void requestAndroidPushPermissionAtStartup()
+      .then((granted) => {
+        if (active) setPermissionGranted(granted);
+      })
+      .catch((error: unknown) => {
+        console.warn('Could not request Android notification permission at startup.', error);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [isAppLocked]);
+
+  useEffect(() => {
+    if (status !== 'authenticated' || !permissionGranted) return;
+    void registerCurrentInstallationForPush().catch((error: unknown) => {
+      console.warn('Could not register this Android installation for push notifications.', error);
+    });
+  }, [permissionGranted, status]);
+
+  return null;
 }
 
 /** Redirects between the auth flow and the app based on session state. */
