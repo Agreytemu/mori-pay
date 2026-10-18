@@ -38,6 +38,7 @@ import '@/lib/transaction-notifications';
 import { ThemeProvider, useAppTheme } from '@/theme';
 
 const appLogo = require('../../assets/images/brand-mark.png');
+const agreytemuLogo = require('../../assets/images/splashagreytemuname.png');
 const interFonts = {
   Inter_400Regular,
   Inter_500Medium,
@@ -367,13 +368,17 @@ function SplashScreen() {
           Getting things ready
         </AppText>
       </View>
-      <AppText
-        variant="caption"
-        color="rgba(255,255,255,0.48)"
-        align="center"
-        style={[styles.splashCredit, { bottom: Math.max(insets.bottom, 8) + 10 }]}>
-        by agreytemu
-      </AppText>
+      <View style={[styles.splashCredit, { bottom: Math.max(insets.bottom, 8) + 10 }]}>
+        <AppText variant="caption" color="rgba(7,22,46,0.62)" style={styles.splashCreditLabel}>
+          by
+        </AppText>
+        <Image
+          source={agreytemuLogo}
+          resizeMode="cover"
+          accessibilityLabel="Agreytemu"
+          style={styles.splashCreditLogo}
+        />
+      </View>
     </View>
   );
 }
@@ -453,6 +458,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  splashCredit: { position: 'absolute', alignSelf: 'center' },
+  splashCredit: {
+    position: 'absolute',
+    alignSelf: 'center',
+    width: 156,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    borderRadius: 11,
+    backgroundColor: '#FFFFFF',
+  },
+  splashCreditLabel: { position: 'absolute', top: 1, zIndex: 1, fontSize: 8, lineHeight: 10 },
+  splashCreditLogo: { width: 142, height: 38, marginTop: 5 },
   storageError: { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 16 },
 });
