@@ -24,7 +24,7 @@ export function AppLockPrompt() {
   return isAppLocked ? <AppLockModal /> : null;
 }
 
-const appLogo = require('../../assets/images/mori pay official logo.png');
+const appLogo = require('../../../assets/images/mori pay official logo.png');
 
 function AppLockModal() {
   const { colors } = useAppTheme();
