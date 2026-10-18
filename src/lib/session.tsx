@@ -70,7 +70,7 @@ const SessionContext = createContext<SessionValue | null>(null);
 const APP_LOCK_KEY = 'mori-pay-app-lock-enabled';
 const APP_LOCK_DELAY_KEY = 'mori-pay-app-lock-delay';
 const APP_LOCK_DELAY_MS = 60_000;
-const biometricUnlockKey = (userId: string) => `mori-pay-biometric-unlock:${userId}`;
+const biometricUnlockKey = (userId: string) => `mori-pay-biometric-unlock.${userId}`;
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>('loading');

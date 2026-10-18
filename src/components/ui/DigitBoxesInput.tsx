@@ -17,6 +17,9 @@ type DigitBoxesInputProps = Omit<TextInputProps, 'style'> & {
   boxCount?: number;
   containerStyle?: StyleProp<ViewStyle>;
   cellFontSize?: number;
+  cellHeight?: number;
+  maxCellWidth?: number;
+  cellStyle?: StyleProp<ViewStyle>;
 };
 
 export function DigitBoxesInput({
@@ -26,6 +29,9 @@ export function DigitBoxesInput({
   boxCount,
   containerStyle,
   cellFontSize = 16,
+  cellHeight = 46,
+  maxCellWidth = 46,
+  cellStyle,
   secureTextEntry,
   onChangeText,
   onFocus,
@@ -48,7 +54,7 @@ export function DigitBoxesInput({
   );
   const gap = space.xxs;
   const contentWidth = Math.max(0, width - 4);
-  const cellWidth = Math.max(14, Math.min(46, (contentWidth - gap * (count - 1)) / count));
+  const cellWidth = Math.max(14, Math.min(maxCellWidth, (contentWidth - gap * (count - 1)) / count));
   const cellTextSize = Math.min(cellFontSize, Math.max(11, cellWidth - 4));
 
   useEffect(() => {
@@ -88,11 +94,15 @@ export function DigitBoxesInput({
                 styles.cell,
                 {
                   width: cellWidth,
-                  height: 46,
+                  height: cellHeight,
                   borderRadius: radius.sm,
                   borderColor: focused && index === characters.length ? colors.primary : colors.border,
                   backgroundColor: colors.background,
                 },
+                cellStyle,
+                focused && index === characters.length
+                  ? { borderColor: colors.primary }
+                  : null,
                 !editable && { backgroundColor: colors.surfaceMuted },
               ]}>
               <AppText

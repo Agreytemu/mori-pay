@@ -808,6 +808,10 @@ export function PinBoxes({
   onChangeText,
   autoFocus = false,
   editable = true,
+  cellHeight = 46,
+  maxCellWidth = 46,
+  cellStyle,
+  containerStyle,
 }: {
   value: string;
   secure?: boolean;
@@ -815,6 +819,10 @@ export function PinBoxes({
   onChangeText?: (value: string) => void;
   autoFocus?: boolean;
   editable?: boolean;
+  cellHeight?: number;
+  maxCellWidth?: number;
+  cellStyle?: StyleProp<ViewStyle>;
+  containerStyle?: StyleProp<ViewStyle>;
 }) {
   const { colors, radius } = useAppTheme();
 
@@ -827,6 +835,10 @@ export function PinBoxes({
         keyboardType="number-pad"
         maxLength={length}
         boxCount={length}
+        cellHeight={cellHeight}
+        maxCellWidth={maxCellWidth}
+        cellStyle={cellStyle}
+        containerStyle={containerStyle}
         autoFocus={autoFocus}
         editable={editable}
         autoComplete="off"

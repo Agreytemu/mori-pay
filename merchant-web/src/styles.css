@@ -509,7 +509,7 @@ td strong { color: #262c36; }
 }
 
 /* Global text safety */
-body { overflow-wrap: anywhere; word-break: break-word; }
+body { overflow-wrap: break-word; }
 .table-scroll td, .table-scroll th, .detail-grid strong, .detail-list span { overflow-wrap: anywhere; word-break: break-word; }
 .page-error, .alert { overflow-wrap: anywhere; }
 
