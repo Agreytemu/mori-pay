@@ -131,7 +131,7 @@ async function request<T>(
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     });
   } catch {
-    throw new MerchantApiError(0, 'Could not connect to Mori Pay. Check your connection.');
+    throw new MerchantApiError(0, 'You are not connected to internet.');
   }
 
   if (response.status === 401 && authenticated && current?.refreshToken && options.retry !== false) {

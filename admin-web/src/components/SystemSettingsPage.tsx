@@ -71,7 +71,7 @@ function draftFrom(rule: AdminFeeRule): FeeRuleDraft {
 function settingsError(failure: unknown, action: string): string {
   if (failure instanceof AdminApiError && failure.status === 403) return 'Your account is not authorized to change system settings.';
   if (failure instanceof AdminApiError && failure.status === 409) return 'That change conflicts with the current configuration. Refresh and try again.';
-  if (failure instanceof AdminApiError && failure.status === 0) return 'Could not connect to Mori Pay. Check your connection.';
+  if (failure instanceof AdminApiError && failure.status === 0) return 'You are not connected to internet.';
   return `Mori Pay could not ${action}. Try again shortly.`;
 }
 

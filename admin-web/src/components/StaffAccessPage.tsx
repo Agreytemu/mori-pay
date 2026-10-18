@@ -25,7 +25,7 @@ function requestError(error: unknown): string {
     return 'That account is no longer active. Refresh the search results.';
   }
   if (error instanceof AdminApiError && error.status === 0) {
-    return 'Could not connect to Mori Pay. Check your connection.';
+    return 'You are not connected to internet.';
   }
   return 'Mori Pay could not update staff access. Try again shortly.';
 }

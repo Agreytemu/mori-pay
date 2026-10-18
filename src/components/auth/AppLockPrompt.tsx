@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'expo-router';
 import {
+  Image,
   Keyboard,
   KeyboardAvoidingView,
   Modal,
@@ -22,6 +23,8 @@ export function AppLockPrompt() {
   const { isAppLocked } = useSession();
   return isAppLocked ? <AppLockModal /> : null;
 }
+
+const appLogo = require('../../assets/images/mori pay official logo.png');
 
 function AppLockModal() {
   const { colors } = useAppTheme();
@@ -126,6 +129,7 @@ function AppLockModal() {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
           bounces={false}>
+          <Image source={appLogo} resizeMode="contain" style={styles.logo} />
           <View style={[styles.lockIcon, { backgroundColor: colors.primarySoft, borderRadius: radius.xl }]}>
             <AppIcon name="security" size={30} color={colors.primary} weight="semibold" />
           </View>
@@ -179,6 +183,7 @@ function AppLockModal() {
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
+  logo: { width: 72, height: 72, borderRadius: 20, marginBottom: 8 },
   screen: {
     flexGrow: 1,
     alignItems: 'center',

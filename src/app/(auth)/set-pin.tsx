@@ -29,7 +29,7 @@ const COPY: Record<Exclude<Step, 'success'>, { title: string; hint: string }> = 
 export default function SetPinScreen() {
   const router = useRouter();
   const { colors, radius } = useAppTheme();
-  const { setPin: setPinState } = useSession();
+  const { setPin: setPinState, setAppLockEnabled } = useSession();
 
   const [step, setStep] = useState<Step>('new');
   const [entry, setEntry] = useState('');
@@ -68,6 +68,11 @@ export default function SetPinScreen() {
     try {
       const status = await setPin({ pin: next });
       setPinState(status);
+      try {
+        await setAppLockEnabled(true);
+      } catch {
+        // PIN creation still succeeds even if app lock cannot be enabled.
+      }
       setStep('success');
       setError(null);
     } catch (err) {

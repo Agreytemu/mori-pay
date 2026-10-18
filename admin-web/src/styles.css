@@ -633,3 +633,9 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
 }
+
+/* Global text safety */
+body { overflow-wrap: anywhere; word-break: break-word; }
+.table-scroll td, .table-scroll th, .detail-grid strong, .detail-list span { overflow-wrap: anywhere; word-break: break-word; }
+.page-error, .alert { overflow-wrap: anywhere; }
+

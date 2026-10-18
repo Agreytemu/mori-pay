@@ -35,7 +35,7 @@ import { formatDate, formatMoney, shiftDate, todayInTanzania, toBoundary } from 
 
 function friendlyError(error: unknown): string {
   if (!(error instanceof MerchantApiError)) return 'Mori Pay could not complete the request. Try again.';
-  if (error.status === 0) return 'Could not connect to Mori Pay. Check your connection and try again.';
+  if (error.status === 0) return 'You are not connected to internet.';
   if (error.status === 401) return 'Your session has expired. Sign in again.';
   if (error.status === 403) return 'This account is not allowed to access that information.';
   if (error.status === 404) return 'The requested merchant record could not be found.';

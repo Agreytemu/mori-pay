@@ -507,3 +507,9 @@ td strong { color: #262c36; }
   .created-qr { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; border: 0; box-shadow: none; }
   .created-qr .dismiss-button, .created-qr .qr-actions { display: none; }
 }
+
+/* Global text safety */
+body { overflow-wrap: anywhere; word-break: break-word; }
+.table-scroll td, .table-scroll th, .detail-grid strong, .detail-list span { overflow-wrap: anywhere; word-break: break-word; }
+.page-error, .alert { overflow-wrap: anywhere; }
+

@@ -204,12 +204,20 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   if (body !== undefined) headers['Content-Type'] = 'application/json';
   if (auth && stored?.accessToken) headers.Authorization = `Bearer ${stored.accessToken}`;
 
-  const response = await fetch(buildUrl(path, query), {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-    signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path, query), {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
+    });
+  } catch {
+    throw new ApiError(0, {
+      error: 'APP_ERROR',
+      message: 'You are not connected to internet',
+    });
+  }
 
   if (response.status === 401 && auth && stored?.refreshToken && retry) {
     const refreshed = await refreshTokens();
@@ -225,6 +233,12 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   const payload = parseJson(text);
 
   if (!response.ok) {
+    if (response.status >= 500) {
+      throw new ApiError(response.status, {
+        error: 'APP_ERROR',
+        message: 'Internal server error',
+      });
+    }
     throw toApiError(response.status, payload);
   }
 

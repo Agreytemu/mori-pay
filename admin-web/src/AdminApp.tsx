@@ -36,7 +36,7 @@ function errorMessage(error: unknown): string {
     return 'Mori Pay could not complete the request. Please try again.';
   }
   if (error.status === 0) {
-    return 'Could not connect to Mori Pay. Check the API configuration and connection.';
+    return 'You are not connected to internet';
   }
   if (error.status === 401) return 'Email or password is incorrect, or your session expired.';
   if (error.status === 403) return 'This account is not authorized to access the admin console.';

@@ -27,6 +27,8 @@ import { AppLockPrompt } from '@/components/auth/AppLockPrompt';
 import { TransactionNotificationObserver } from '@/components/notifications/TransactionNotificationObserver';
 import { OnboardingScreen } from '@/components/onboarding/OnboardingScreen';
 import { AppText } from '@/components/ui/AppText';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
+import { NetworkBanner } from '@/components/ui/NetworkBanner';
 import { PrimaryButton, SecondaryButton } from '@/components/ui/button';
 import { APP } from '@/constants/app';
 import { SessionProvider, useSession } from '@/lib/session';
@@ -143,7 +145,9 @@ function ThemedStack() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <Stack
+      <NetworkBanner />
+      <ErrorBoundary>
+        <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: colors.background },
@@ -152,8 +156,9 @@ function ThemedStack() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="(auth)" options={{ animation: 'fade' }} />
       </Stack>
-      <AppLockPrompt />
-      <TransactionNotificationObserver />
+        <AppLockPrompt />
+        <TransactionNotificationObserver />
+      </ErrorBoundary>
     </View>
   );
 }

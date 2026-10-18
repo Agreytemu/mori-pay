@@ -24,7 +24,7 @@ type View = 'applications' | 'accounts';
 function requestError(error: unknown): string {
   if (error instanceof AdminApiError && error.status === 403) return 'Your account is not authorized for this merchant operation.';
   if (error instanceof AdminApiError && error.status === 409) return 'The merchant record changed. Refresh and review its current status.';
-  if (error instanceof AdminApiError && error.status === 0) return 'Could not connect to Mori Pay. Check your connection.';
+  if (error instanceof AdminApiError && error.status === 0) return 'You are not connected to internet.';
   return 'Mori Pay could not complete the request. Try again shortly.';
 }
 
