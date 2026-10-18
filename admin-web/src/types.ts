@@ -266,7 +266,45 @@ export type AdminSystemSettings = {
     verified: { dailyOutflow: string; perTransaction: string };
   };
   reconciliation: { enabled: boolean; intervalSeconds: number; staleSeconds: number };
+  paymentProviders: {
+    primaryProvider: 'abliner' | 'clickpesa';
+    paymentMethods: {
+      mobileMoneyEnabled: boolean;
+      bankEnabled: boolean;
+      cardEnabled: boolean;
+    };
+    providers: Array<{
+      id: 'abliner' | 'clickpesa';
+      name: string;
+      configured: boolean;
+      enabled: boolean;
+      primary: boolean;
+      services: Array<{
+        id: string;
+        name: string;
+        status: 'active' | 'inactive' | 'not_implemented';
+        networks?: Array<{
+          id: string;
+          name: string;
+          image: 'mpesa' | 'airtel' | 'mixx' | 'halopesa';
+          status: 'active' | 'inactive';
+        }>;
+      }>;
+    }>;
+  };
   integrations: Array<{ name: string; configuration: 'configured' | 'incomplete' }>;
+};
+
+export type AdminPaymentProviderUpdate = {
+  ablinerEnabled: boolean;
+  clickpesaEnabled: boolean;
+  primaryProvider: 'abliner' | 'clickpesa';
+};
+
+export type AdminPaymentMethodVisibility = {
+  mobileMoneyEnabled: boolean;
+  bankEnabled: boolean;
+  cardEnabled: boolean;
 };
 
 export type RegistrationFee = { amount: number | null };

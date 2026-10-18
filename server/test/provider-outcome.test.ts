@@ -8,6 +8,7 @@ import {
   AblinerProviderError,
   type AblinerClient,
 } from '../src/abliner/abliner.client.js';
+import type { ClickPesaClient } from '../src/clickpesa/clickpesa.client.js';
 import type { AuthService } from '../src/auth/auth.service.js';
 import type { AppConfigService } from '../src/config/app-config.service.js';
 import type { FeesService } from '../src/payments/fees.service.js';
@@ -123,6 +124,7 @@ describe('provider request outcomes', () => {
       feePercentage: 0.025,
       total: 10_250,
       providerAvailable: true,
+      provider: 'abliner',
     });
     assert.deepEqual(providerPreview, { method: 'mobile', amount: 10_000 });
   });
@@ -156,6 +158,7 @@ describe('provider request outcomes', () => {
       total: 10_250,
       providerAvailable: false,
       availabilityMessage: 'This payment method is not available right now.',
+      provider: 'abliner',
     });
   });
 
@@ -247,6 +250,94 @@ describe('provider request outcomes', () => {
     assert.equal(providerAmount, 10_250);
     assert.equal(result.transaction.amount, 10_000);
     assert.equal(result.transaction.fee, 250);
+  });
+
+  it('initiates ClickPesa using a compliant order reference and fee-inclusive amount', async () => {
+    let createdData: Record<string, unknown> | undefined;
+    let previewRequest: Record<string, unknown> | undefined;
+    let initiationRequest: Record<string, unknown> | undefined;
+    const transactionRow = {
+      id: 'clickpesa-mobile-transaction-id',
+      userId: 'user-id',
+      reference: 'DEP-CLICKPESA-REFERENCE',
+      type: 'deposit',
+      status: 'pending',
+      category: 'topUp',
+      channel: 'mobileMoney',
+      direction: 'credit',
+      amount: 10_000n,
+      fee: 250n,
+      feeFlat: 0n,
+      feePercentage: 0.025,
+      total: 10_250n,
+      currency: 'TZS',
+      counterparty: mobileTopup.mobileNumber,
+      counterpartyDetail: 'M-Pesa',
+      note: null,
+      provider: 'clickpesa',
+      providerRef: null,
+      internalReference: null,
+      createdAt: new Date('2026-10-11T10:00:00.000Z'),
+    };
+    const service = new TopUpsService(
+      {
+        $transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
+          callback({
+            notificationPreference: { findUnique: async () => null },
+            notification: { create: async () => undefined },
+            transaction: {
+              create: async ({ data }: { data: Record<string, unknown> }) => {
+                createdData = data;
+                return { ...transactionRow, ...data };
+              },
+            },
+          }),
+        transaction: {
+          update: async ({ data }: { data: Record<string, unknown> }) => ({
+            ...transactionRow,
+            ...data,
+          }),
+        },
+      } as unknown as PrismaService,
+      {} as AblinerClient,
+      {} as AppConfigService,
+      {
+        resolveFeeDetail: async () => ({
+          fee: 250n,
+          flat: 0n,
+          percentage: 0.025,
+          ruleId: 'mobile-deposit-fee',
+        }),
+      } as unknown as FeesService,
+      {
+        previewUssdPush: async (request: Record<string, unknown>) => {
+          previewRequest = request;
+          return { activeMethods: [{ name: 'M-PESA', status: 'AVAILABLE' }] };
+        },
+        initiateUssdPush: async (request: Record<string, unknown>) => {
+          initiationRequest = request;
+          return {
+            id: 'clickpesa-payment-1',
+            status: 'PROCESSING',
+            orderReference: request.orderReference,
+          };
+        },
+      } as unknown as ClickPesaClient,
+    );
+
+    const result = await service.initiateMobileMoney(
+      'user-id',
+      mobileTopup,
+      'clickpesa',
+    );
+
+    assert.equal(createdData?.provider, 'clickpesa');
+    assert.equal(createdData?.total, 5_250n);
+    assert.deepEqual(previewRequest, initiationRequest);
+    assert.equal(previewRequest?.amount, 5_250);
+    assert.equal(previewRequest?.phoneNumber, mobileTopup.mobileNumber);
+    assert.match(String(previewRequest?.orderReference), /^[a-z0-9]{1,20}$/i);
+    assert.equal(result.transaction.status, 'pending');
   });
 
   it('charges the disclosed card top-up total while crediting the selected amount', async () => {

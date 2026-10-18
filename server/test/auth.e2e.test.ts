@@ -168,6 +168,14 @@ describe(
         .post(`/${API_PREFIX}/auth/pin/login`)
         .send({ email: email.toUpperCase(), pin: '246810', device })
         .expect(200);
+      await request(server)
+        .post(`/${API_PREFIX}/auth/logout`)
+        .send({ refreshToken: repeatedLogin.body.tokens.refreshToken })
+        .expect(204);
+      await request(server)
+        .post(`/${API_PREFIX}/auth/email/login`)
+        .send({ email, password, device })
+        .expect(200);
       const trustedDevices = await request(server)
         .get(`/${API_PREFIX}/account/devices`)
         .set('Authorization', `Bearer ${repeatedLogin.body.tokens.accessToken}`)

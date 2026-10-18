@@ -3,6 +3,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  Optional,
 } from '@nestjs/common';
 
 import {
@@ -19,6 +20,10 @@ import {
   AblinerClient,
   AblinerProviderError,
 } from '../abliner/abliner.client.js';
+import {
+  ClickPesaClient,
+  ClickPesaProviderError,
+} from '../clickpesa/clickpesa.client.js';
 import { generateReference } from '../common/crypto.js';
 import { ProviderError } from '../common/errors.js';
 import { decryptPaymentMethodPhone } from '../common/payment-method-crypto.js';
@@ -29,15 +34,20 @@ import {
 import { AppConfigService } from '../config/app-config.service.js';
 import { Prisma, type Transaction } from '../generated/prisma/client.js';
 import { FeesService, type FeeDetail } from '../payments/fees.service.js';
+import {
+  PaymentProviderSettingsService,
+  type PaymentProviderId,
+} from '../payments/payment-provider-settings.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { toTransaction } from '../wallet/wallet.mapper.js';
 
 /**
- * Initiates wallet top-ups through Abliner. The user's balance is only
- * credited once the provider confirms success via webhook reconciliation.
+ * Initiates wallet top-ups through the selected backend payment provider.
+ * The user's balance is only credited after provider confirmation.
  *
  * The database row is created first so its id can be used as the Abliner
- * `Idempotency-Key`: a retried request never charges the customer twice.
+ * `Idempotency-Key` for Abliner; ClickPesa uses its unique order reference
+ * for the same retry-safety guarantee.
  */
 @Injectable()
 export class TopUpsService {
@@ -48,6 +58,9 @@ export class TopUpsService {
     private readonly abliner: AblinerClient,
     private readonly config: AppConfigService,
     private readonly fees: FeesService,
+    @Optional() private readonly clickpesa?: ClickPesaClient,
+    @Optional()
+    private readonly paymentProviderSettings?: PaymentProviderSettingsService,
   ) {}
 
   async previewCard(amount: bigint): Promise<FeePreview> {
@@ -78,6 +91,7 @@ export class TopUpsService {
   async initiateMobileMoney(
     userId: string,
     input: TopupMobileMoneyInput,
+    requestedProvider?: PaymentProviderId,
   ): Promise<TopupInitResult> {
     const amount = BigInt(input.amount);
     let mobileNumber = input.mobileNumber;
@@ -120,11 +134,30 @@ export class TopUpsService {
           },
         })
       : null;
+    const provider: PaymentProviderId =
+      requestedProvider ??
+      (previous?.provider === 'clickpesa' || previous?.provider === 'abliner'
+        ? previous.provider
+        : (await this.paymentProviderSettings?.getSettings())
+            ?.primaryProvider ?? 'abliner');
+
+    if (previous && requestedProvider && previous.provider !== requestedProvider) {
+      throw new BadRequestException(
+        'This payment retry does not match the original payment provider.',
+      );
+    }
+    if (
+      this.paymentProviderSettings &&
+      (!previous || requestedProvider !== undefined)
+    ) {
+      await this.paymentProviderSettings.assertEnabled(provider);
+    }
 
     if (previous) {
       if (
         previous.type !== 'deposit' ||
         previous.channel !== 'mobileMoney' ||
+        previous.provider !== provider ||
         previous.amount !== amount ||
         previous.counterparty !== mobileNumber
       ) {
@@ -163,6 +196,7 @@ export class TopUpsService {
             if (
               existing.type !== 'deposit' ||
               existing.channel !== 'mobileMoney' ||
+              existing.provider !== provider ||
               existing.amount !== amount ||
               existing.counterparty !== mobileNumber
             ) {
@@ -200,7 +234,7 @@ export class TopUpsService {
             counterpartyDetail: network
               ? mobileNetworkDisplayName(network)
               : 'Mobile money',
-            provider: 'abliner',
+            provider,
             providerStatus: 'pending',
             idempotencyKey: input.idempotencyKey ?? null,
             metadata: { network: network ?? null },
@@ -229,6 +263,7 @@ export class TopUpsService {
       if (
         existing.type !== 'deposit' ||
         existing.channel !== 'mobileMoney' ||
+        existing.provider !== provider ||
         existing.amount !== amount ||
         existing.counterparty !== mobileNumber
       ) {
@@ -259,22 +294,101 @@ export class TopUpsService {
         instructions: 'This payment has already been completed.',
       };
     }
+    if (
+      !result.isNew &&
+      provider === 'clickpesa' &&
+      transaction.internalReference
+    ) {
+      return {
+        transaction: toTransaction(transaction),
+        instructions:
+          'Approve the payment prompt sent to your phone or check your payment status.',
+      };
+    }
+    if (!result.isNew && !requestedProvider && this.paymentProviderSettings) {
+      const settings = await this.paymentProviderSettings.getSettings();
+      const stillEnabled =
+        provider === 'abliner'
+          ? settings.ablinerEnabled
+          : settings.clickpesaEnabled;
+      if (!stillEnabled) {
+        return {
+          transaction: toTransaction(transaction),
+          instructions:
+            'This payment was started with a provider that is now disabled. Check its payment status or start a new payment.',
+        };
+      }
+    }
 
-    let deposit: AblinerDepositData;
+    let providerReference: string;
+    let providerStatus: string;
+    let instructions: string | undefined;
+    let ablinerReference: string | undefined;
+    const clickPesaOrderReference = transaction.reference
+      .replace(/[^a-z0-9]/gi, '')
+      .slice(0, 20);
     try {
-      deposit = await this.abliner.createDeposit({
-        amount: Number(transaction.total),
-        method: 'mobile',
-        currency: 'TZS',
-        phone: mobileNumber,
-        reference: transaction.reference,
-        callbackUrl: this.config.abliner.callbackUrl,
-        idempotencyKey: transaction.id,
-      });
+      if (provider === 'clickpesa') {
+        if (!this.clickpesa) {
+          throw new ProviderError('The payment service is not configured.');
+        }
+        const request = {
+          amount: Number(transaction.total),
+          currency: 'TZS' as const,
+          orderReference: clickPesaOrderReference,
+          phoneNumber: mobileNumber,
+        };
+        let payment;
+        try {
+          const preview = await this.clickpesa.previewUssdPush(request);
+          if (!preview.activeMethods.some((method) => method.status === 'AVAILABLE')) {
+            throw new ProviderError('This payment method is not available right now.');
+          }
+          payment = await this.clickpesa.initiateUssdPush(request);
+        } catch (error) {
+          if (
+            !(error instanceof ClickPesaProviderError) ||
+            error.statusCode !== 409
+          ) {
+            throw error;
+          }
+          try {
+            payment = await this.clickpesa.getPayment(clickPesaOrderReference);
+          } catch {
+            throw new ClickPesaProviderError(true, 409);
+          }
+          if (!payment) throw new ClickPesaProviderError(true, 409);
+        }
+        providerReference = payment.id;
+        providerStatus = payment.status;
+        instructions =
+          payment.message ??
+          'Approve the payment prompt sent to your phone to complete the top-up.';
+      } else {
+        const deposit: AblinerDepositData = await this.abliner.createDeposit({
+          amount: Number(transaction.total),
+          method: 'mobile',
+          currency: 'TZS',
+          phone: mobileNumber,
+          reference: transaction.reference,
+          callbackUrl: this.config.abliner.callbackUrl,
+          idempotencyKey: transaction.id,
+        });
+        providerReference = deposit.id;
+        providerStatus = deposit.status;
+        ablinerReference = deposit.reference;
+        instructions =
+          deposit.message ??
+          'Approve the payment prompt sent to your phone to complete the top-up.';
+      }
     } catch (error) {
-      if (error instanceof AblinerProviderError && error.retryable) {
+      const retryable =
+        (error instanceof AblinerProviderError ||
+          error instanceof ClickPesaProviderError) &&
+        error.retryable;
+      if (retryable) {
         this.logger.warn(
-          `Abliner outcome is unknown for deposit ${transaction.reference}; leaving it pending for reconciliation`,
+          `${provider} outcome is unknown for deposit ${transaction.reference}; leaving it pending for reconciliation`,
         );
       } else {
         await this.prisma.$transaction(async (tx) => {
@@ -291,20 +405,29 @@ export class TopUpsService {
     const updated = await this.prisma.transaction.update({
       where: { id: transaction.id },
       data: {
-        providerRef: deposit.id,
-        internalReference: deposit.id,
-        providerStatus: deposit.status,
-        metadata: {
-          network: input.network ?? null,
-          ablinerReference: deposit.reference,
-        },
+        providerRef: providerReference,
+        internalReference:
+          provider === 'clickpesa'
+            ? clickPesaOrderReference
+            : providerReference,
+        providerStatus,
+        metadata:
+          provider === 'clickpesa'
+            ? {
+                network: network ?? null,
+                clickpesaOrderReference: clickPesaOrderReference,
+              }
+            : {
+                network: network ?? null,
+                ablinerReference,
+              },
       },
     });
 
     return {
       transaction: toTransaction(updated),
       instructions:
-        deposit.message ??
+        instructions ??
         'Approve the payment prompt sent to your phone to complete the top-up.',
     };
   }
@@ -313,6 +436,7 @@ export class TopUpsService {
     userId: string,
     input: TopupCardInput,
   ): Promise<CardTopupResult> {
+    await this.paymentProviderSettings?.assertEnabled('abliner');
     const amount = BigInt(input.amount);
     const existing = input.idempotencyKey
       ? await this.prisma.transaction.findUnique({

@@ -368,6 +368,18 @@ model MerchantConfiguration {
   updatedAt             DateTime @updatedAt
 }
 
+model PaymentProviderSettings {
+  id                    String    @id @default("payment-provider-settings")
+  ablinerEnabled        Boolean   @default(true)
+  clickpesaEnabled      Boolean   @default(false)
+  primaryProvider       String    @default("abliner")
+  mobileMoneyEnabled    Boolean   @default(true)
+  bankEnabled           Boolean   @default(true)
+  cardEnabled           Boolean   @default(true)
+  clickpesaLastPayoutAt DateTime?
+  updatedAt             DateTime  @updatedAt
+}
+
 model SavedPaymentMethod {
   id                   String   @id @default(cuid())
   userId               String

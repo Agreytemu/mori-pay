@@ -285,7 +285,45 @@ test('system settings expose effective operational configuration without secrets
     abliner: { baseUrl: 'https://provider.example', apiKey: 'api-secret', webhookSecret: 'webhook-secret' },
     email: { apiKey: 'email-secret', smtp: { host: '', user: '', pass: '' } },
     sms: { provider: 'console', apiKey: 'sms-secret' },
-  } as never, {} as never);
+    clickpesa: {
+      baseUrl: 'https://clickpesa.example',
+      clientId: 'click-client-secret',
+      apiKey: 'click-api-secret',
+      checksumKey: 'click-checksum-secret',
+    },
+  } as never, {} as never, {
+    getConfiguration: async () => ({
+      primaryProvider: 'abliner',
+      providers: [
+        {
+          id: 'abliner',
+          name: 'Abliner',
+          configured: true,
+          enabled: true,
+          primary: true,
+          services: [
+            {
+              id: 'mobile_money_collection',
+              name: 'Mobile-money collection',
+              status: 'active',
+              networks: [
+                { id: 'mpesa', name: 'M-Pesa', image: 'mpesa', status: 'active' },
+              ],
+            },
+          ],
+        },
+        {
+          id: 'clickpesa',
+          name: 'ClickPesa',
+          configured: true,
+          enabled: false,
+          primary: false,
+          services: [],
+        },
+      ],
+    }),
+    isConfigured: (provider: string) => provider === 'abliner' || provider === 'clickpesa',
+  } as never);
 
   const result = await service.systemSettings();
   const serialized = JSON.stringify(result);
@@ -293,6 +331,8 @@ test('system settings expose effective operational configuration without secrets
   assert.equal(result.feeRules[0]?.flat, '1000');
   assert.equal(result.tierLimits.standard.dailyOutflow, '1000000');
   assert.equal(result.reconciliation.enabled, true);
+  assert.equal(result.paymentProviders.primaryProvider, 'abliner');
+  assert.equal(result.paymentProviders.providers[1]?.configured, true);
   assert.deepEqual(result.integrations.map(({ configuration }) => configuration), [
     'configured',
     'configured',
@@ -302,6 +342,96 @@ test('system settings expose effective operational configuration without secrets
   assert.equal(serialized.includes('webhook-secret'), false);
   assert.equal(serialized.includes('email-secret'), false);
   assert.equal(serialized.includes('sms-secret'), false);
+  assert.equal(serialized.includes('click-client-secret'), false);
+  assert.equal(serialized.includes('click-api-secret'), false);
+  assert.equal(serialized.includes('click-checksum-secret'), false);
+});
+
+test('payment provider updates require configured credentials and audit changes atomically', async () => {
+  const auditEntries: unknown[] = [];
+  let saved: Record<string, unknown> | null = {
+    id: 'payment-provider-settings',
+    ablinerEnabled: true,
+    clickpesaEnabled: false,
+    primaryProvider: 'abliner',
+    mobileMoneyEnabled: true,
+    bankEnabled: true,
+    cardEnabled: true,
+  };
+  const service = new AdminService(
+    {
+      $transaction: async (callback: (tx: unknown) => Promise<unknown>) =>
+        callback({
+          paymentProviderSettings: {
+            findUnique: async () => saved,
+            upsert: async ({ create, update }: {
+              create: Record<string, unknown>;
+              update: Record<string, unknown>;
+            }) => {
+              saved = { ...saved, ...create, ...update };
+              return saved;
+            },
+          },
+          auditLog: {
+            create: async (record: unknown) => {
+              auditEntries.push(record);
+            },
+          },
+        }),
+    } as never,
+    {} as never,
+    {} as never,
+    {
+      isConfigured: (provider: string) => provider === 'abliner',
+      getConfiguration: async () => ({ primaryProvider: 'abliner', providers: [] }),
+    } as never,
+  );
+
+  await assert.rejects(
+    () =>
+      service.updatePaymentProviders(
+        {
+          ablinerEnabled: true,
+          clickpesaEnabled: true,
+          primaryProvider: 'clickpesa',
+        },
+        'admin-1',
+        {},
+      ),
+    /ClickPesa credentials are incomplete/,
+  );
+  assert.equal(saved?.clickpesaEnabled, false);
+  assert.equal(auditEntries.length, 0);
+
+  await service.updatePaymentProviders(
+    {
+      ablinerEnabled: false,
+      clickpesaEnabled: false,
+      primaryProvider: 'abliner',
+    },
+    'admin-1',
+    { ip: '127.0.0.1', userAgent: 'test-agent' },
+  );
+  assert.equal(saved?.ablinerEnabled, false);
+  assert.equal(auditEntries.length, 1);
+
+  await service.updatePaymentMethodVisibility(
+    {
+      mobileMoneyEnabled: false,
+      bankEnabled: false,
+      cardEnabled: false,
+    },
+    'admin-1',
+    { ip: '127.0.0.1', userAgent: 'test-agent' },
+  );
+  assert.equal(saved?.mobileMoneyEnabled, false);
+  assert.equal(saved?.bankEnabled, false);
+  assert.equal(saved?.cardEnabled, false);
+  assert.equal(auditEntries.length, 2);
+  assert.equal(
+    (auditEntries[1] as { data: { action: string } }).data.action,
+    'admin.paymentMethods.update',
+  );
 });
 
 test('overview reports transaction channels and webhook error counts', async () => {

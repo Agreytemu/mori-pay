@@ -33,6 +33,8 @@ import {
   promotionUpdateSchema,
   adminFeeRuleInputSchema,
   adminFeeRuleUpdateSchema,
+  adminPaymentMethodVisibilitySchema,
+  adminPaymentProviderUpdateSchema,
   capabilitiesForAdminRole,
   type AdminAuditQuery,
   type AdminCapability,
@@ -53,6 +55,8 @@ import {
   type PromotionUpdate,
   type AdminFeeRuleInput,
   type AdminFeeRuleUpdate,
+  type AdminPaymentMethodVisibility,
+  type AdminPaymentProviderUpdate,
 } from '@mori-pay/contracts';
 
 import type { AuthenticatedUser } from '../auth/auth.types.js';
@@ -103,6 +107,36 @@ export class AdminController {
   @RequireAdminCapabilities('admin:settings:read')
   settings() {
     return this.admin.systemSettings();
+  }
+
+  @Patch('payment-providers')
+  @UseGuards(AdminRoleGuard)
+  @RequireAdminCapabilities('admin:settings:write')
+  updatePaymentProviders(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+    @Body(new ZodValidationPipe(adminPaymentProviderUpdateSchema))
+    input: AdminPaymentProviderUpdate,
+  ) {
+    return this.admin.updatePaymentProviders(input, user.userId, {
+      ip: request.ip,
+      userAgent: request.get('user-agent'),
+    });
+  }
+
+  @Patch('payment-methods')
+  @UseGuards(AdminRoleGuard)
+  @RequireAdminCapabilities('admin:settings:write')
+  updatePaymentMethodVisibility(
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() request: Request,
+    @Body(new ZodValidationPipe(adminPaymentMethodVisibilitySchema))
+    input: AdminPaymentMethodVisibility,
+  ) {
+    return this.admin.updatePaymentMethodVisibility(input, user.userId, {
+      ip: request.ip,
+      userAgent: request.get('user-agent'),
+    });
   }
 
   @Get('audit')

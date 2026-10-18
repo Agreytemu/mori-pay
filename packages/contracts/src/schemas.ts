@@ -267,6 +267,28 @@ export const withdrawalPreviewQuerySchema = z.object({
     .max(Number.MAX_SAFE_INTEGER, 'Amount is too large'),
 });
 
+export const withdrawalPreviewSchema = z.discriminatedUnion('rail', [
+  z.object({
+    amount: amountSchema,
+    rail: z.literal('mobileMoney'),
+    phoneNumber: tzPhoneSchema,
+  }),
+  z.object({
+    amount: amountSchema,
+    rail: z.literal('bank'),
+    bankBic: z.string().trim().min(1).max(20),
+    accountNumber: z.string().trim().min(4).max(34).regex(/^[A-Za-z0-9-]+$/),
+    accountName: z.string().trim().min(2).max(120),
+  }),
+]);
+
+export const withdrawalRailSchema = z.enum(['mobileMoney', 'bank']);
+
+export const bankListItemSchema = z.object({
+  name: z.string().min(1).max(120),
+  bic: z.string().min(1).max(20),
+});
+
 export const topupDepositPreviewQuerySchema = z.object({
   amount: z.coerce
     .number()
@@ -304,13 +326,36 @@ export const topupCardSchema = z.object({
 
 export const withdrawalSchema = z.object({
   amount: amountSchema,
-  phoneNumber: tzPhoneSchema,
+  rail: withdrawalRailSchema.optional(),
+  phoneNumber: tzPhoneSchema.optional(),
+  bankBic: z.string().trim().min(1).max(20).optional(),
+  bankName: z.string().trim().min(1).max(120).optional(),
+  accountNumber: z.string().trim().min(4).max(34).regex(/^[A-Za-z0-9-]+$/).optional(),
   /** Display-only Abliner lookup result; Abliner routes the rail automatically. */
   network: z.string().trim().min(1).max(40).optional(),
-  accountName: z.string().max(120).optional(),
+  accountName: z.string().trim().min(1).max(120).optional(),
   pin: pinSchema,
   idempotencyKey: z.string().min(1).max(120).optional(),
   expectedFee: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
+}).superRefine((input, context) => {
+  const rail = input.rail ?? 'mobileMoney';
+  if (rail === 'mobileMoney' && !input.phoneNumber) {
+    context.addIssue({
+      code: 'custom',
+      message: 'A mobile-money number is required.',
+      path: ['phoneNumber'],
+    });
+  }
+  if (
+    rail === 'bank' &&
+    (!input.bankBic || !input.bankName || !input.accountNumber || !input.accountName)
+  ) {
+    context.addIssue({
+      code: 'custom',
+      message: 'Bank, account number and account name are required.',
+      path: ['bankBic'],
+    });
+  }
 });
 
 export const ablinerWebhookSchema = z.object({
@@ -362,6 +407,8 @@ export type MerchantPaymentPreviewInput = z.infer<typeof merchantPaymentPreviewS
 export type RecipientLookupInput = z.infer<typeof recipientLookupSchema>;
 export type VerifyReceiveCodeInput = z.infer<typeof verifyReceiveCodeSchema>;
 export type WithdrawalPreviewQuery = z.infer<typeof withdrawalPreviewQuerySchema>;
+export type WithdrawalPreviewInput = z.infer<typeof withdrawalPreviewSchema>;
+export type BankListItem = z.infer<typeof bankListItemSchema>;
 export type TopupCardPreviewQuery = z.infer<typeof topupCardPreviewQuerySchema>;
 export type TopupDepositPreviewQuery = z.infer<typeof topupDepositPreviewQuerySchema>;
 export type TopupMobileMoneyInput = z.infer<typeof topupMobileMoneySchema>;

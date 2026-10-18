@@ -1,4 +1,5 @@
-import { useState, type ComponentProps, type ReactNode } from 'react';
+import { useEffect, useState, type ComponentProps, type ReactNode } from 'react';
+import { Image } from 'expo-image';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -20,6 +21,7 @@ import { AppText } from '@/components/ui/AppText';
 import { Button } from '@/components/ui/button';
 import { PaymentMethodSelector } from '@/components/payment/payment-components';
 import { PAYMENT_METHOD_TYPES, type SavedPaymentMethod } from '@/data/mock-payment-methods';
+import { mobileNetworkLogo } from '@/constants/mobile-network-logos';
 import { getTzPhoneInputDigits, normalizeTzPhone } from '@/lib/phone';
 import {
   removePaymentMethod,
@@ -29,12 +31,13 @@ import {
 } from '@/data/payment-method-store';
 import { useAppTheme } from '@/theme';
 import { typography } from '@/theme/typography';
+import { getPaymentMethodVisibility, type PaymentMethodVisibility } from '@/lib/mori-api';
 
 type MethodKind = SavedPaymentMethod['kind'];
 type MethodFields = { provider: string; personName: string; identifier: string; expiry: string; cvv: string };
 
 const EMPTY_FIELDS: MethodFields = { provider: '', personName: '', identifier: '', expiry: '', cvv: '' };
-const PROVIDERS = ['M-Pesa', 'Airtel Money', 'Mixx by Yas'] as const;
+const PROVIDERS = ['M-Pesa', 'Airtel Money', 'Mixx by Yas', 'HaloPesa'] as const;
 
 function methodIcon(kind: MethodKind) {
   return kind === 'mobile-money' ? 'phone' : 'payments';
@@ -42,6 +45,14 @@ function methodIcon(kind: MethodKind) {
 
 function kindLabel(kind: MethodKind) {
   return kind === 'mobile-money' ? 'Mobile Money' : kind === 'bank' ? 'Bank Account' : 'Card';
+}
+
+function isMethodVisible(visibility: PaymentMethodVisibility, kind: MethodKind) {
+  return kind === 'mobile-money'
+    ? visibility.mobileMoneyEnabled
+    : kind === 'bank'
+      ? visibility.bankEnabled
+      : visibility.cardEnabled;
 }
 
 function Header({ title, subtitle, onBack, right }: {
@@ -88,9 +99,7 @@ function MethodTile({ item, onPress }: { item: SavedPaymentMethod; onPress: () =
           padding: space.base,
         },
       ]}>
-      <View style={[styles.methodIcon, { backgroundColor: colors.primarySoft, borderRadius: radius.md }]}>
-        <AppIcon name={methodIcon(item.kind)} size={20} color={colors.primary} />
-      </View>
+      <MethodIcon kind={item.kind} provider={item.provider} />
       <View style={styles.methodCopy}>
         <View style={styles.methodTitleRow}>
           <AppText variant="bodyStrong" numberOfLines={1}>{item.name}</AppText>
@@ -171,15 +180,56 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
   const [isDefault, setIsDefault] = useState(original?.isDefault ?? methods.length === 0);
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [methodVisibility, setMethodVisibility] =
+    useState<PaymentMethodVisibility | null>(null);
+  const [visibilityError, setVisibilityError] = useState('');
+  const [loadingVisibility, setLoadingVisibility] = useState(!edit);
   const { colors, space } = useAppTheme();
 
-  const currentKind = edit && original ? original.kind : kind;
+  useEffect(() => {
+    if (edit) return;
+    let mounted = true;
+    void getPaymentMethodVisibility()
+      .then((availability) => {
+        if (mounted) setMethodVisibility(availability);
+      })
+      .catch((failure: unknown) => {
+        if (mounted) {
+          setVisibilityError(
+            failure instanceof Error
+              ? failure.message
+              : 'Could not load available payment methods.',
+          );
+        }
+      })
+      .finally(() => {
+        if (mounted) setLoadingVisibility(false);
+      });
+    return () => { mounted = false; };
+  }, [edit]);
+
+  const availableMethodTypes = methodVisibility
+    ? PAYMENT_METHOD_TYPES.filter((method) =>
+        isMethodVisible(methodVisibility, method.id),
+      )
+    : [];
+  const currentKind = edit && original
+    ? original.kind
+    : methodVisibility && !isMethodVisible(methodVisibility, kind)
+      ? availableMethodTypes[0]?.id ?? kind
+      : kind;
   const currentFields = edit && original
     ? { ...fields, provider: fields.provider || original.provider, identifier: fields.identifier || original.identifier }
     : fields;
   const currentDefault = edit && original ? isDefault || original.isDefault : isDefault;
+  const currentKindVisible =
+    edit || Boolean(methodVisibility && isMethodVisible(methodVisibility, currentKind));
 
   const setField = (key: keyof MethodFields, value: string) => setFields((current) => ({ ...current, [key]: value }));
+  const selectProvider = (provider: string) => {
+    setFields((current) => ({ ...current, provider, identifier: '' }));
+    setErrors([]);
+  };
 
   const submit = async () => {
     if (saving) return;
@@ -291,11 +341,21 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
             <AppText variant="bodySmall" color={colors.error}>{error.message}</AppText>
           ) : null}
           {edit ? null : (
-          <PaymentMethodSelector
-            methods={PAYMENT_METHOD_TYPES}
-            selectedId={kind}
-            onSelect={(method) => { setKind(method.id); setErrors([]); }}
-          />
+            loadingVisibility ? (
+              <AppText variant="bodySmall" color={colors.textSecondary}>Loading available payment methods…</AppText>
+            ) : visibilityError ? (
+              <AppText variant="bodySmall" color={colors.error}>{visibilityError}</AppText>
+            ) : availableMethodTypes.length ? (
+              <PaymentMethodSelector
+                methods={availableMethodTypes}
+                selectedId={currentKind}
+                onSelect={(method) => { setKind(method.id); setErrors([]); }}
+              />
+            ) : (
+              <AppText variant="bodySmall" color={colors.textSecondary}>
+                Payment methods are temporarily unavailable. Please contact support.
+              </AppText>
+            )
           )}
           {!edit ? (
             <AppIllustration
@@ -304,7 +364,7 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
               height={116}
             />
           ) : null}
-          <View style={styles.form}>
+          {currentKindVisible ? <View style={styles.form}>
             {edit && original ? (
               <>
                 <AppText variant="bodySmall" color={colors.textSecondary}>
@@ -315,7 +375,7 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
                     <AppText variant="bodySmallStrong">Provider</AppText>
                     <View style={styles.providerOptions}>
                       {PROVIDERS.map((provider) => (
-                        <ChoiceChip key={provider} label={provider} selected={currentFields.provider === provider} onPress={() => setField('provider', provider)} />
+                        <ProviderOption key={provider} provider={provider} selected={currentFields.provider === provider} onPress={() => setField('provider', provider)} />
                       ))}
                     </View>
                   </>
@@ -335,23 +395,29 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
                 <AppText variant="bodySmallStrong">Provider</AppText>
                 <View style={styles.providerOptions}>
                   {PROVIDERS.map((provider) => (
-                    <ChoiceChip key={provider} label={provider} selected={fields.provider === provider} onPress={() => setField('provider', provider)} />
+                    <ProviderOption key={provider} provider={provider} selected={fields.provider === provider} onPress={() => selectProvider(provider)} />
                   ))}
                 </View>
-                <FormField
-                  label="Phone number"
-                  placeholder="712 345 678"
-                  value={fields.identifier}
-                  onChangeText={(value) => setField('identifier', getTzPhoneInputDigits(value))}
-                  keyboardType="phone-pad"
-                  maxLength={9}
-                  leadingContent={
-                    <View style={styles.phonePrefix} accessible accessibilityLabel="Tanzania, country code plus 255">
-                      <AppText variant="bodySmall">🇹🇿</AppText>
-                      <AppText variant="bodySmallStrong" color={colors.textSecondary}>+255</AppText>
-                    </View>
-                  }
-                />
+                {fields.provider ? (
+                  <FormField
+                    label={`${fields.provider} phone number`}
+                    placeholder="712 345 678"
+                    value={fields.identifier}
+                    onChangeText={(value) => setField('identifier', getTzPhoneInputDigits(value))}
+                    keyboardType="phone-pad"
+                    maxLength={9}
+                    leadingContent={
+                      <View style={styles.phonePrefix} accessible accessibilityLabel="Tanzania, country code plus 255">
+                        <AppText variant="bodySmall">🇹🇿</AppText>
+                        <AppText variant="bodySmallStrong" color={colors.textSecondary}>+255</AppText>
+                      </View>
+                    }
+                  />
+                ) : (
+                  <AppText variant="caption" color={colors.textSecondary}>
+                    Choose a mobile network above to enter its phone number.
+                  </AppText>
+                )}
               </>
             ) : currentKind === 'bank' ? (
               <>
@@ -369,8 +435,8 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
                 </View>
               </>
             )}
-          </View>
-          <View style={[styles.defaultRow, { borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 14 }]}>
+          </View> : null}
+          {currentKindVisible ? <View style={[styles.defaultRow, { borderColor: colors.border, backgroundColor: colors.surface, borderRadius: 14 }]}>
             <View style={styles.defaultCopy}>
               <AppText variant="bodyStrong">Set as default</AppText>
               <AppText variant="caption" color={colors.textSecondary}>Use this method first when paying</AppText>
@@ -381,16 +447,16 @@ export function PaymentMethodFormScreen({ edit = false }: { edit?: boolean }) {
               disabled={Boolean(edit && original?.isDefault)}
               trackColor={{ true: colors.primary }}
             />
-          </View>
-          {errors.length ? (
+          </View> : null}
+          {currentKindVisible && errors.length ? (
             <View style={[styles.errorBox, { backgroundColor: colors.errorSoft }]}>
               {errors.map((error) => <AppText key={error} variant="caption" color={colors.error}>{error}</AppText>)}
             </View>
           ) : null}
-          <AppText variant="caption" color={colors.textTertiary}>
+          {currentKindVisible ? <AppText variant="caption" color={colors.textTertiary}>
             Only the provider and last four digits are stored. Card numbers, expiry dates, and security codes are never saved.
-          </AppText>
-          <Button label={edit ? 'Save changes' : 'Add payment method'} loading={saving} onPress={() => void submit()} />
+          </AppText> : null}
+          {currentKindVisible ? <Button label={edit ? 'Save changes' : 'Add payment method'} loading={saving} onPress={() => void submit()} /> : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -434,9 +500,7 @@ export function PaymentMethodDetailsScreen() {
       <ScrollView contentContainerStyle={[styles.content, { padding: space.base, gap: space.lg }]} showsVerticalScrollIndicator={false}>
         <Header title="Payment Method" subtitle="Method details" onBack={() => router.back()} />
         <View style={[styles.detailHero, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={[styles.detailIcon, { backgroundColor: colors.primarySoft }]}>
-            <AppIcon name={methodIcon(item.kind)} size={24} color={colors.primary} />
-          </View>
+          <MethodIcon kind={item.kind} provider={item.provider} large />
           <AppText variant="title3" align="center">{item.name}</AppText>
           <AppText variant="bodySmall" color={colors.textSecondary}>{item.identifier}</AppText>
           <View style={styles.badges}>
@@ -480,6 +544,76 @@ export function PaymentMethodDetailsScreen() {
   );
 }
 
+function MethodIcon({
+  kind,
+  provider,
+  large = false,
+}: {
+  kind: MethodKind;
+  provider: string;
+  large?: boolean;
+}) {
+  const { colors, radius } = useAppTheme();
+  const logo = kind === 'mobile-money' ? mobileNetworkLogo(provider) : undefined;
+  return (
+    <View
+      style={[
+        large ? styles.detailIcon : styles.methodIcon,
+        { backgroundColor: colors.primarySoft, borderRadius: large ? radius.lg : radius.md },
+      ]}>
+      {logo ? (
+        <Image
+          source={logo}
+          contentFit="contain"
+          accessibilityLabel={`${provider} logo`}
+          style={large ? styles.detailNetworkLogo : styles.networkLogo}
+        />
+      ) : (
+        <AppIcon
+          name={methodIcon(kind)}
+          size={large ? 24 : 20}
+          color={colors.primary}
+        />
+      )}
+    </View>
+  );
+}
+
+function ProviderOption({
+  provider,
+  selected,
+  onPress,
+}: {
+  provider: (typeof PROVIDERS)[number];
+  selected: boolean;
+  onPress: () => void;
+}) {
+  const { colors, radius } = useAppTheme();
+  const logo = mobileNetworkLogo(provider);
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={provider}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.providerOption,
+        {
+          backgroundColor: selected ? colors.primarySoft : pressed ? colors.surfacePressed : colors.surface,
+          borderColor: selected ? colors.primary : colors.border,
+          borderRadius: radius.md,
+        },
+      ]}>
+      {logo ? (
+        <Image source={logo} contentFit="contain" accessibilityLabel={`${provider} logo`} style={styles.providerLogo} />
+      ) : null}
+      <AppText variant="caption" color={selected ? colors.primary : colors.text} numberOfLines={2}>
+        {provider}
+      </AppText>
+    </Pressable>
+  );
+}
+
 function FormField({
   label,
   leadingContent,
@@ -517,26 +651,6 @@ function FormField({
   );
 }
 
-function ChoiceChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  const { colors, radius } = useAppTheme();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.choiceChip,
-        {
-          backgroundColor: selected ? colors.primarySoft : pressed ? colors.surfacePressed : colors.surface,
-          borderColor: selected ? colors.primary : colors.border,
-          borderRadius: radius.pill,
-        },
-      ]}>
-      <AppText variant="caption" color={selected ? colors.primary : colors.text}>{label}</AppText>
-    </Pressable>
-  );
-}
-
 function DetailRow({ label, value, last = false }: { label: string; value: string; last?: boolean }) {
   const { colors } = useAppTheme();
   return (
@@ -570,7 +684,10 @@ const styles = StyleSheet.create({
   inputWithPrefixText: { flex: 1, minWidth: 0, paddingVertical: 0, ...typography.input },
   phonePrefix: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   providerOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  choiceChip: { minHeight: 38, paddingHorizontal: 12, borderWidth: 1, justifyContent: 'center' },
+  providerOption: { width: '48%', minHeight: 58, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  providerLogo: { width: 42, height: 36, flexShrink: 0 },
+  networkLogo: { width: 36, height: 36 },
+  detailNetworkLogo: { width: 48, height: 48 },
   inlineFields: { flexDirection: 'row', gap: 12 },
   inlineField: { flex: 1 },
   defaultRow: { minHeight: 66, padding: 14, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 12 },

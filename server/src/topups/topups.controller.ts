@@ -59,6 +59,16 @@ export class TopUpsController {
     return this.topups.initiateMobileMoney(user.userId, input);
   }
 
+  @Post('clickpesa/mobile-money')
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
+  @HttpCode(HttpStatus.OK)
+  clickPesaMobileMoney(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(topupMobileMoneySchema)) input: TopupMobileMoneyInput,
+  ): Promise<TopupInitResult> {
+    return this.topups.initiateMobileMoney(user.userId, input, 'clickpesa');
+  }
+
   @Post('card')
   @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)

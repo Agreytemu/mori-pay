@@ -96,6 +96,15 @@ export class AppConfigService {
     };
   }
 
+  get clickpesa() {
+    return {
+      baseUrl: this.get('CLICKPESA_BASE_URL'),
+      clientId: this.get('CLICKPESA_CLIENT_ID'),
+      apiKey: this.get('CLICKPESA_API_KEY'),
+      checksumKey: this.get('CLICKPESA_CHECKSUM_KEY'),
+    };
+  }
+
   get reconciliation() {
     return {
       enabled: this.get('RECONCILIATION_ENABLED'),

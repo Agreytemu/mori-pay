@@ -1,4 +1,5 @@
 import type {
+  BankListItem,
   CardTopupResult,
   FeePreview,
   AuthSession,
@@ -67,6 +68,7 @@ import type {
   VerifyPinInput,
   WalletAccount,
   WithdrawalInput,
+  WithdrawalPreviewInput,
   WithdrawalResult,
 } from '@mori-pay/contracts';
 
@@ -226,6 +228,16 @@ export function listSavedPaymentMethods(): Promise<SavedPaymentMethod[]> {
   return request<SavedPaymentMethod[]>('/account/payment-methods');
 }
 
+export type PaymentMethodVisibility = {
+  mobileMoneyEnabled: boolean;
+  bankEnabled: boolean;
+  cardEnabled: boolean;
+};
+
+export function getPaymentMethodVisibility(): Promise<PaymentMethodVisibility> {
+  return request<PaymentMethodVisibility>('/payment-methods/availability');
+}
+
 export function savePaymentMethod(input: SavePaymentMethodInput): Promise<SavedPaymentMethod> {
   return request<SavedPaymentMethod>('/account/payment-methods', { method: 'POST', body: input });
 }
@@ -373,8 +385,22 @@ export function topupMobileMoneyPreview(amount: number): Promise<FeePreview> {
 
 /* ---------------------------------------------------------------- withdrawals */
 
-export function withdrawalPreview(amount: number): Promise<WithdrawalPreview> {
-  return request<WithdrawalPreview>('/withdrawals/preview', { query: { amount } });
+export function withdrawalPreview(
+  input: number | WithdrawalPreviewInput,
+): Promise<WithdrawalPreview> {
+  if (typeof input === 'number') {
+    return request<WithdrawalPreview>('/withdrawals/preview', {
+      query: { amount: input },
+    });
+  }
+  return request<WithdrawalPreview>('/withdrawals/preview', {
+    method: 'POST',
+    body: input,
+  });
+}
+
+export function getWithdrawalBanks(): Promise<BankListItem[]> {
+  return request<BankListItem[]>('/withdrawals/banks');
 }
 
 export function withdrawalLookup(phone: string): Promise<PayoutLookup> {

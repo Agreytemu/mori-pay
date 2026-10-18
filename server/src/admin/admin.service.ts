@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 
 import type {
@@ -48,6 +49,8 @@ import type {
   AdminFeeRule,
   AdminFeeRuleInput,
   AdminFeeRuleUpdate,
+  AdminPaymentMethodVisibility,
+  AdminPaymentProviderUpdate,
 } from '@mori-pay/contracts';
 
 import { Prisma } from '../generated/prisma/client.js';
@@ -58,6 +61,7 @@ import type {
 import { decryptField } from '../common/field-encryption.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AppConfigService } from '../config/app-config.service.js';
+import { PaymentProviderSettingsService } from '../payments/payment-provider-settings.service.js';
 import { ReconciliationSweeper } from '../webhooks/reconciliation.sweeper.js';
 
 export type AdminAuditContext = { ip?: string; userAgent?: string };
@@ -84,6 +88,8 @@ export class AdminService {
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
     private readonly sweeper: ReconciliationSweeper,
+    @Optional()
+    private readonly paymentProviderSettings?: PaymentProviderSettingsService,
   ) {}
 
   async staffRole(userId: string): Promise<AdminStaffRole> {
@@ -330,6 +336,9 @@ export class AdminService {
   }
 
   async systemSettings(): Promise<AdminSystemSettings> {
+    if (!this.paymentProviderSettings) {
+      throw new Error('Payment provider settings service is not registered');
+    }
     const [merchantConfiguration, feeRules] = await Promise.all([
       this.prisma.merchantConfiguration.findUnique({
         where: { id: 'merchant-registration' },
@@ -382,6 +391,8 @@ export class AdminService {
         },
       },
       reconciliation: this.config.reconciliation,
+      paymentProviders:
+        await this.paymentProviderSettings.getConfiguration(),
       integrations: [
         {
           name: 'Abliner',
@@ -401,6 +412,122 @@ export class AdminService {
         },
       ],
     };
+  }
+
+  async updatePaymentProviders(
+    input: AdminPaymentProviderUpdate,
+    actorId: string,
+    context: AdminAuditContext,
+  ) {
+    if (!this.paymentProviderSettings) {
+      throw new Error('Payment provider settings service is not registered');
+    }
+    if (
+      input.ablinerEnabled &&
+      !this.paymentProviderSettings.isConfigured('abliner')
+    ) {
+      throw new BadRequestException(
+        'Abliner credentials are incomplete. Configure them before enabling this provider.',
+      );
+    }
+    if (
+      input.clickpesaEnabled &&
+      !this.paymentProviderSettings.isConfigured('clickpesa')
+    ) {
+      throw new BadRequestException(
+        'ClickPesa credentials are incomplete. Configure them before enabling this provider.',
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const previous = await tx.paymentProviderSettings.findUnique({
+        where: { id: 'payment-provider-settings' },
+      });
+      const updated = await tx.paymentProviderSettings.upsert({
+        where: { id: 'payment-provider-settings' },
+        create: {
+          id: 'payment-provider-settings',
+          ablinerEnabled: input.ablinerEnabled,
+          clickpesaEnabled: input.clickpesaEnabled,
+          primaryProvider: input.primaryProvider,
+        },
+        update: {
+          ablinerEnabled: input.ablinerEnabled,
+          clickpesaEnabled: input.clickpesaEnabled,
+          primaryProvider: input.primaryProvider,
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.paymentProviders.update',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: {
+            previous: previous
+              ? {
+                  ablinerEnabled: previous.ablinerEnabled,
+                  clickpesaEnabled: previous.clickpesaEnabled,
+                  primaryProvider: previous.primaryProvider,
+                }
+              : null,
+            updated: {
+              ablinerEnabled: updated.ablinerEnabled,
+              clickpesaEnabled: updated.clickpesaEnabled,
+              primaryProvider: updated.primaryProvider,
+            },
+          },
+        },
+      });
+    });
+    return this.paymentProviderSettings.getConfiguration();
+  }
+
+  async updatePaymentMethodVisibility(
+    input: AdminPaymentMethodVisibility,
+    actorId: string,
+    context: AdminAuditContext,
+  ) {
+    if (!this.paymentProviderSettings) {
+      throw new Error('Payment provider settings service is not registered');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const previous = await tx.paymentProviderSettings.findUnique({
+        where: { id: 'payment-provider-settings' },
+      });
+      const updated = await tx.paymentProviderSettings.upsert({
+        where: { id: 'payment-provider-settings' },
+        create: {
+          id: 'payment-provider-settings',
+          ...input,
+        },
+        update: input,
+      });
+      await tx.auditLog.create({
+        data: {
+          userId: actorId,
+          action: 'admin.paymentMethods.update',
+          ip: context.ip ?? null,
+          userAgent: context.userAgent ?? null,
+          metadata: {
+            previous: previous
+              ? {
+                  mobileMoneyEnabled: previous.mobileMoneyEnabled,
+                  bankEnabled: previous.bankEnabled,
+                  cardEnabled: previous.cardEnabled,
+                }
+              : null,
+            updated: {
+              mobileMoneyEnabled: updated.mobileMoneyEnabled,
+              bankEnabled: updated.bankEnabled,
+              cardEnabled: updated.cardEnabled,
+            },
+          },
+        },
+      });
+    });
+    return this.paymentProviderSettings.getConfiguration();
   }
 
   async audit(query: AdminAuditQuery): Promise<AdminAuditPage> {

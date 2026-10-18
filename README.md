@@ -129,12 +129,12 @@ This ledger-based model is a strong foundation for reconciliation, reporting, an
 The current fee rules are stored in `FeeRule` and are created by the approved-fees migration:
 
 - Card top-up: 4.5% added to the selected wallet credit amount. That gross total is sent to Abliner; the wallet receives the selected amount. Review the checkout page for any additional card-provider charges.
-- Mobile-money withdrawal: 2.5% or Abliner's higher quoted payout fee. The app displays the final fee and total debit before PIN confirmation; if Abliner cannot provide a fee quote or the quote changes, the withdrawal must be retried after a fresh quote.
+- Mobile-money withdrawal: the configured withdrawal fee is shown before PIN confirmation. ClickPesa payout fees are provider costs and are not passed through to the customer; bank payouts use a matching `withdrawal:bank` fee rule when configured.
 - Wallet transfers and merchant payments: no fee unless a matching active rule is configured.
 
 Fee totals are disclosed before confirmation and saved on each transaction. Outflow limits include both the transaction amount and its fee. Standard defaults are TZS 1,000,000 per rolling 24 hours and TZS 500,000 per transaction; Verified defaults are TZS 5,000,000 and TZS 3,000,000. These limits can be overridden using the `LIMIT_*` variables in `server/.env`.
 
-Deposits can use a saved mobile-money number or a one-time custom number. Saved mobile numbers are encrypted at rest with `PAYMENT_METHOD_ENCRYPTION_KEY`; configure a unique 32-byte base64 key and keep a secure backup. Saved cards are not charged directly: card deposits continue through Abliner's hosted checkout, where the payer enters card details.
+Deposits can use a saved mobile-money number or a one-time custom number. Saved mobile numbers and bank payout account details are encrypted at rest with `PAYMENT_METHOD_ENCRYPTION_KEY`; configure a unique 32-byte base64 key and keep a secure backup. Saved cards are not charged directly: card deposits continue through Abliner's hosted checkout, where the payer enters card details.
 
 ### Transaction feedback
 
@@ -388,7 +388,9 @@ the API, a managed Postgres database and a Render Key Value (Redis) instance.
    | `ABLINER_API_KEY` | Enabled Abliner key, starts with `tsl_live_`. |
    | `ABLINER_WEBHOOK_SECRET` | Exact webhook signing secret generated in Abliner Dashboard (starts with `whsec_`); do not use or prepend the API key. |
    | `ABLINER_CALLBACK_URL` | `https://<public-api-host>/api/v1/webhooks/abliner` (set to the deployed API host and register the exact URL with Abliner). |
-   | `PAYMENT_METHOD_ENCRYPTION_KEY` | Unique base64-encoded 32-byte key used to encrypt saved mobile-money numbers; keep it stable and back it up securely. |
+   | `CLICKPESA_CLIENT_ID` / `CLICKPESA_API_KEY` | Optional ClickPesa application credentials. |
+   | `CLICKPESA_CHECKSUM_KEY` | ClickPesa checksum key used to validate application webhook callbacks. |
+   | `PAYMENT_METHOD_ENCRYPTION_KEY` | Unique base64-encoded 32-byte key used to encrypt saved mobile-money numbers and bank payout details; keep it stable and back it up securely. |
    | `RESEND_API_KEY` / `EMAIL_FROM` | Transactional email; required in production. Verify the sender domain in Resend first; use an address such as `noreply@agreyflix.online`. |
    | `SMS_API_KEY` | Credentials for the configured `SMS_PROVIDER`. |
    | `SENTRY_DSN` | Optional error reporting. |
@@ -411,6 +413,43 @@ the API, a managed Postgres database and a Render Key Value (Redis) instance.
 
 6. After the first deploy, register the exact public HTTPS `ABLINER_CALLBACK_URL`
    in the Abliner dashboard and confirm the health checks below are reachable.
+
+#### ClickPesa collections and payouts
+
+ClickPesa is optional. Configure
+`CLICKPESA_CLIENT_ID`, `CLICKPESA_API_KEY`, and `CLICKPESA_CHECKSUM_KEY` together
+to enable it in the administrator’s **System settings → Payment providers and
+services** panel. The admin can independently enable both gateways and select
+one primary provider for new mobile-money collections and mobile-money payouts.
+Bank payouts use ClickPesa when it is enabled; Abliner bank payouts are not
+implemented. The primary selection and enable flags are stored in PostgreSQL
+and audited. Disabling a provider stops new requests on its flows without
+deleting or changing existing transactions.
+
+Under **System settings → Payment methods**, administrators can independently
+show or hide mobile money, bank accounts, and cards in the app, including hiding
+all three. The selection is audited and enforced by the API when a customer adds
+or edits a method. Mobile-money forms ask customers to select a network before
+showing the phone-number input.
+
+In the ClickPesa application dashboard, configure the application webhook URL
+as `https://<public-api-host>/api/v1/webhooks/clickpesa` for collections and
+payouts, and enable webhook checksums with the matching checksum key. The
+endpoint validates HMAC-SHA256 checksums and reconciles only transactions whose
+reference, amount, currency, channel, and final status match. ClickPesa limits
+create-payout requests to one per merchant every 60 seconds; Mori Pay reserves
+that interval in PostgreSQL and does not release a wallet hold while the
+provider result is uncertain. Bank account number and account-holder name are
+encrypted at rest using `PAYMENT_METHOD_ENCRYPTION_KEY`; keep that key stable
+and backed up, or existing bank payouts cannot be recovered after key loss.
+
+The admin panel reports configured/enabled service status without polling
+gateways. Current network assets are in `assets/images/` for M-Pesa, Airtel
+Money, Mixx by Yas, and HaloPesa. There are no bank logos in the project assets;
+the bank picker uses the supported-bank list returned by ClickPesa, so logos
+are not required for the payout flow. ClickPesa does not provide a sandbox:
+API calls against its production service can move real money, so automated
+tests use stubs and do not call ClickPesa.
 
 #### Abliner payment testing
 
@@ -482,6 +521,9 @@ ABLINER_BASE_URL="https://abliner.net"
 ABLINER_API_KEY="your-live-key"
 ABLINER_WEBHOOK_SECRET="your-whsec-secret"
 ABLINER_CALLBACK_URL="https://your-api.example.com/api/v1/webhooks/abliner"
+CLICKPESA_CLIENT_ID="your-clickpesa-client-id"
+CLICKPESA_API_KEY="your-clickpesa-api-key"
+CLICKPESA_CHECKSUM_KEY="your-clickpesa-checksum-key"
 PAYMENT_METHOD_ENCRYPTION_KEY="generate-a-unique-base64-32-byte-key"
 SMS_PROVIDER="abliner"
 ```
@@ -535,6 +577,9 @@ ABLINER_BASE_URL="https://abliner.net"
 ABLINER_API_KEY="your-live-key"
 ABLINER_WEBHOOK_SECRET="your-whsec-secret"
 ABLINER_CALLBACK_URL="https://your-api.example.com/api/v1/webhooks/abliner"
+CLICKPESA_CLIENT_ID="your-clickpesa-client-id"
+CLICKPESA_API_KEY="your-clickpesa-api-key"
+CLICKPESA_CHECKSUM_KEY="your-clickpesa-checksum-key"
 PAYMENT_METHOD_ENCRYPTION_KEY="generate-a-unique-base64-32-byte-key"
 SMS_PROVIDER="abliner"
 ```

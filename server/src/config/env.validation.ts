@@ -88,6 +88,15 @@ export const envSchema = z.object({
   /** Approved Abliner Sender ID for outbound SMS (optional). */
   ABLINER_SMS_SENDER_ID: z.string().optional(),
 
+  /** Optional ClickPesa API credentials; the gateway stays inactive until configured. */
+  CLICKPESA_BASE_URL: z
+    .string()
+    .url()
+    .default('https://api.clickpesa.com/third-parties'),
+  CLICKPESA_CLIENT_ID: z.string().trim().optional(),
+  CLICKPESA_API_KEY: z.string().trim().optional(),
+  CLICKPESA_CHECKSUM_KEY: z.string().trim().optional(),
+
   /** Background settlement of gateway transactions whose webhook never arrived. */
   RECONCILIATION_ENABLED: z
     .enum(['true', 'false'])
@@ -274,6 +283,25 @@ export function validateEnv(config: Record<string, unknown>): Env {
     );
   }
 
+  const clickPesaConfigured = Boolean(
+    result.data.CLICKPESA_CLIENT_ID ||
+      result.data.CLICKPESA_API_KEY ||
+      result.data.CLICKPESA_CHECKSUM_KEY,
+  );
+  if (clickPesaConfigured) {
+    const missing = [
+      ['CLICKPESA_CLIENT_ID', result.data.CLICKPESA_CLIENT_ID],
+      ['CLICKPESA_API_KEY', result.data.CLICKPESA_API_KEY],
+      ['CLICKPESA_CHECKSUM_KEY', result.data.CLICKPESA_CHECKSUM_KEY],
+    ]
+      .filter(([, value]) => !value)
+      .map(([key]) => `  - ${key}: required when configuring ClickPesa`)
+      .join('\n');
+    if (missing) {
+      throw new Error(`Invalid environment configuration:\n${missing}`);
+    }
+  }
+
   if (result.data.NODE_ENV === 'production') {
     const missing: string[] = [];
     if (!result.data.ABLINER_API_KEY) missing.push('ABLINER_API_KEY');
@@ -307,6 +335,12 @@ export function validateEnv(config: Record<string, unknown>): Env {
     if (!callback.startsWith('https://') || isLocal) {
       throw new Error(
         'Invalid environment configuration:\n  - ABLINER_CALLBACK_URL: must be a public HTTPS URL in production',
+      );
+    }
+
+    if (clickPesaConfigured && !result.data.CLICKPESA_BASE_URL.startsWith('https://')) {
+      throw new Error(
+        'Invalid environment configuration:\n  - CLICKPESA_BASE_URL: must use HTTPS in production',
       );
     }
   }

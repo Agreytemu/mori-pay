@@ -26,9 +26,17 @@ export type FeePreview = {
   total: Amount;
 };
 
+export type PaymentMethodVisibility = {
+  mobileMoneyEnabled: boolean;
+  bankEnabled: boolean;
+  cardEnabled: boolean;
+};
+
 export type WithdrawalPreview = FeePreview & {
   providerAvailable: boolean;
   availabilityMessage?: string;
+  provider: 'abliner' | 'clickpesa';
+  recipientName?: string;
 };
 
 export type SendMoneyResult = {

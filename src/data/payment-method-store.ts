@@ -20,6 +20,7 @@ type StoreState = {
 
 let state: StoreState = { userId: null, methods: [], loading: false, error: null };
 const listeners = new Set<() => void>();
+let loadGeneration = 0;
 
 function notify() {
   listeners.forEach((listener) => listener());
@@ -64,7 +65,8 @@ export async function loadPaymentMethods(
   options?: { force?: boolean },
 ): Promise<void> {
   if (!userId) return;
-  if (state.loading && !options?.force) return;
+  if (state.loading && state.userId === userId && !options?.force) return;
+  const generation = ++loadGeneration;
   setState({
     userId,
     methods: state.userId === userId ? state.methods : [],
@@ -73,11 +75,11 @@ export async function loadPaymentMethods(
   });
   try {
     const result = await fetchMethods();
-    if (state.userId === userId) {
+    if (generation === loadGeneration && state.userId === userId) {
       setState({ userId, methods: result.map(toSavedPaymentMethod), loading: false, error: null });
     }
   } catch (error) {
-    if (state.userId === userId) {
+    if (generation === loadGeneration && state.userId === userId) {
       setState({
         ...state,
         loading: false,

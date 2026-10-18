@@ -12,6 +12,7 @@ import { AdminModule } from './admin/admin.module.js';
 import { validateEnv } from './config/env.validation.js';
 import { serializeRequest } from './common/redact.js';
 import { AblinerModule } from './abliner/abliner.module.js';
+import { ClickPesaModule } from './clickpesa/clickpesa.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { HealthModule } from './health/health.module.js';
 import { KycModule } from './kyc/kyc.module.js';
@@ -88,6 +89,7 @@ const isProduction = process.env.NODE_ENV === 'production';
     KycModule,
     SettlementModule,
     AblinerModule,
+    ClickPesaModule,
     AuthModule,
     WalletModule,
     TransfersModule,

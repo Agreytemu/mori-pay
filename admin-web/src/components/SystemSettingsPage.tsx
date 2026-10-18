@@ -7,9 +7,27 @@ import {
   getAdminSystemSettings,
   updateAdminFeeRule,
   updateRegistrationFee,
+  updatePaymentMethodVisibility,
+  updatePaymentProviders,
 } from '../api';
 import { Alert } from './Alert';
-import type { AdminFeeRule, AdminSystemSettings } from '../types';
+import type {
+  AdminFeeRule,
+  AdminPaymentMethodVisibility,
+  AdminPaymentProviderUpdate,
+  AdminSystemSettings,
+} from '../types';
+import mpesaLogo from '../../../assets/images/M-PESA logo vector (svg, pdf) free download - Brandlogos_net.jpg';
+import airtelLogo from '../../../assets/images/airtellmoney.jpg';
+import mixxLogo from '../../../assets/images/mixx by yas.jpg';
+import haloLogo from '../../../assets/images/halopesa.jpg';
+
+const NETWORK_LOGOS = {
+  mpesa: mpesaLogo,
+  airtel: airtelLogo,
+  mixx: mixxLogo,
+  halopesa: haloLogo,
+} as const;
 
 function money(value: string | null): string {
   return value === null ? 'Not configured' : `TZS ${BigInt(value).toLocaleString()}`;
@@ -70,6 +88,12 @@ export function SystemSettingsPage({ canEdit }: { canEdit: boolean }) {
   const [savingRule, setSavingRule] = useState(false);
   const [ruleError, setRuleError] = useState('');
   const [busyRuleId, setBusyRuleId] = useState('');
+  const [providerDraft, setProviderDraft] =
+    useState<AdminPaymentProviderUpdate | null>(null);
+  const [savingProviders, setSavingProviders] = useState(false);
+  const [methodVisibilityDraft, setMethodVisibilityDraft] =
+    useState<AdminPaymentMethodVisibility | null>(null);
+  const [savingMethodVisibility, setSavingMethodVisibility] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -78,6 +102,18 @@ export function SystemSettingsPage({ canEdit }: { canEdit: boolean }) {
       const current = await getAdminSystemSettings();
       setSettings(current);
       setFeeInput(current.merchantRegistrationFee ?? '');
+      setMethodVisibilityDraft(current.paymentProviders.paymentMethods);
+      setProviderDraft({
+        ablinerEnabled:
+          current.paymentProviders.providers.find(
+            (provider) => provider.id === 'abliner',
+          )?.enabled ?? false,
+        clickpesaEnabled:
+          current.paymentProviders.providers.find(
+            (provider) => provider.id === 'clickpesa',
+          )?.enabled ?? false,
+        primaryProvider: current.paymentProviders.primaryProvider,
+      });
     } catch (failure) {
       setError(failure instanceof AdminApiError && failure.status === 403
         ? 'Your account is not authorized to view system settings.'
@@ -195,6 +231,59 @@ export function SystemSettingsPage({ canEdit }: { canEdit: boolean }) {
     }
   }
 
+  function setProviderEnabled(
+    provider: 'abliner' | 'clickpesa',
+    enabled: boolean,
+  ) {
+    if (!providerDraft) return;
+    const updated = {
+      ...providerDraft,
+      [provider === 'abliner' ? 'ablinerEnabled' : 'clickpesaEnabled']: enabled,
+    };
+    if (enabled && !providerDraft.ablinerEnabled && !providerDraft.clickpesaEnabled) {
+      updated.primaryProvider = provider;
+    } else if (
+      !enabled &&
+      providerDraft.primaryProvider === provider &&
+      (provider === 'abliner'
+        ? providerDraft.clickpesaEnabled
+        : providerDraft.ablinerEnabled)
+    ) {
+      updated.primaryProvider = provider === 'abliner' ? 'clickpesa' : 'abliner';
+    }
+    setProviderDraft(updated);
+  }
+
+  async function saveProviders() {
+    if (!providerDraft || savingProviders) return;
+    setSavingProviders(true);
+    setError('');
+    try {
+      await updatePaymentProviders(providerDraft);
+      setNotice('Payment provider settings updated. New transactions will use the selected primary provider.');
+      await load();
+    } catch (failure) {
+      setError(settingsError(failure, 'update payment provider settings'));
+    } finally {
+      setSavingProviders(false);
+    }
+  }
+
+  async function savePaymentMethodVisibility() {
+    if (!methodVisibilityDraft || savingMethodVisibility) return;
+    setSavingMethodVisibility(true);
+    setError('');
+    try {
+      await updatePaymentMethodVisibility(methodVisibilityDraft);
+      setNotice('Customer payment method visibility updated.');
+      await load();
+    } catch (failure) {
+      setError(settingsError(failure, 'update customer payment methods'));
+    } finally {
+      setSavingMethodVisibility(false);
+    }
+  }
+
   if (loading) return <div className="page-loading" role="status">Loading system settings…</div>;
   if (error && !settings) {
     return <section className="page-error" role="alert"><p>{error}</p><button type="button" className="button button-secondary" onClick={() => void load()}>Retry</button></section>;
@@ -228,6 +317,161 @@ export function SystemSettingsPage({ canEdit }: { canEdit: boolean }) {
           <small>New merchant applications only. Existing application fees remain unchanged.</small>
         </article>
         <article className="settings-card"><p className="eyebrow">RECONCILIATION</p><h2>{settings.reconciliation.enabled ? 'Enabled' : 'Disabled'}</h2><strong>{settings.reconciliation.intervalSeconds}s interval</strong><small>Stale transaction threshold: {settings.reconciliation.staleSeconds}s. This is configuration state, not a live provider health check.</small></article>
+      </section>
+
+      <section className="data-panel settings-section payment-providers-panel">
+        <div className="panel-heading">
+          <div>
+            <h2>Payment providers and services</h2>
+            <p>Enable providers independently. The primary provider routes new mobile-money top-ups and payouts; ClickPesa bank payouts are available whenever ClickPesa is enabled.</p>
+          </div>
+        </div>
+        {methodVisibilityDraft ? (
+          <section className="payment-method-visibility" aria-labelledby="payment-method-visibility-heading">
+            <div className="payment-method-visibility-heading">
+              <div>
+                <h3 id="payment-method-visibility-heading">Customer payment methods</h3>
+                <p>Choose which method types customers can see and add in the app. You can enable any combination, including none.</p>
+              </div>
+            </div>
+            <div className="payment-method-visibility-cards">
+              {([
+                ['mobileMoneyEnabled', 'Mobile money', 'Customers can add supported mobile network accounts.'],
+                ['bankEnabled', 'Bank account', 'Customers can add bank account payment methods.'],
+                ['cardEnabled', 'Card', 'Customers can add card payment methods.'],
+              ] as const).map(([key, title, description]) => {
+                const visible = methodVisibilityDraft[key];
+                return (
+                  <article className="payment-method-visibility-card" key={key}>
+                    <div className="payment-method-visibility-copy">
+                      <span className={`record-status status-${visible ? 'active' : 'revoked'}`}>
+                        {visible ? 'Visible' : 'Hidden'}
+                      </span>
+                      <h4>{title}</h4>
+                      <p>{description}</p>
+                    </div>
+                    <label className="provider-switch">
+                      <input
+                        type="checkbox"
+                        checked={visible}
+                        disabled={!canEdit || savingMethodVisibility}
+                        onChange={(event) => setMethodVisibilityDraft({
+                          ...methodVisibilityDraft,
+                          [key]: event.target.checked,
+                        })}
+                      />
+                      <span>{visible ? 'Shown in app' : 'Hidden in app'}</span>
+                    </label>
+                  </article>
+                );
+              })}
+            </div>
+            {canEdit ? (
+              <div className="provider-save-row payment-method-save-row">
+                <p className="muted-text">Changes apply to new method additions immediately. Existing saved methods remain in customers’ accounts.</p>
+                <button
+                  className="button button-primary"
+                  type="button"
+                  disabled={savingMethodVisibility}
+                  onClick={() => void savePaymentMethodVisibility()}
+                >
+                  {savingMethodVisibility ? 'Saving…' : 'Save payment methods'}
+                </button>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+        {providerDraft ? (
+          <>
+            <div className="provider-cards">
+              {settings.paymentProviders.providers.map((provider) => {
+                const enabled =
+                  provider.id === 'abliner'
+                    ? providerDraft.ablinerEnabled
+                    : providerDraft.clickpesaEnabled;
+                const active = enabled && provider.configured;
+                const nextPrimary = providerDraft.primaryProvider === provider.id;
+                return (
+                  <article className="provider-card" key={provider.id}>
+                    <div className="provider-card-heading">
+                      <div>
+                        <p className="eyebrow">PAYMENT GATEWAY</p>
+                        <h3>{provider.name}</h3>
+                      </div>
+                      <span className={`record-status status-${active ? 'active' : 'revoked'}`}>
+                        {active ? (nextPrimary ? 'Primary · enabled' : 'Enabled') : provider.configured ? 'Disabled' : 'Not configured'}
+                      </span>
+                    </div>
+                    <label className={`provider-switch ${!provider.configured && !enabled ? 'is-disabled' : ''}`}>
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        disabled={!canEdit || savingProviders || (!provider.configured && !enabled)}
+                        onChange={(event) => setProviderEnabled(provider.id, event.target.checked)}
+                      />
+                      <span>{enabled ? 'Provider enabled' : 'Provider disabled'}</span>
+                    </label>
+                    {!provider.configured ? (
+                      <p className="provider-help">Set this gateway’s credentials in the deployment environment before enabling it. Secrets are never shown here.</p>
+                    ) : null}
+                    <label className="provider-primary">
+                      <input
+                        type="radio"
+                        name="primaryPaymentProvider"
+                        checked={nextPrimary}
+                        disabled={!canEdit || savingProviders || !enabled || !provider.configured}
+                        onChange={() => setProviderDraft({ ...providerDraft, primaryProvider: provider.id })}
+                      />
+                      Use for new mobile-money top-ups and payouts
+                    </label>
+                    <div className="provider-services">
+                      {provider.services.map((service) => (
+                        <div className="provider-service" key={service.id}>
+                          <div className="provider-service-title">
+                            <strong>{service.name}</strong>
+                            <span className={`record-status status-${service.status === 'active' && active ? 'active' : service.status === 'not_implemented' ? 'pending_payment' : 'revoked'}`}>
+                              {service.status === 'not_implemented' ? 'Not implemented' : active && service.status === 'active' ? 'Active' : 'Inactive'}
+                            </span>
+                          </div>
+                          {service.networks ? (
+                            <div className="provider-networks">
+                              {service.networks.map((network) => (
+                                <div className="provider-network" key={network.id}>
+                                  <img src={NETWORK_LOGOS[network.image]} alt="" />
+                                  <span>{network.name}</span>
+                                  <span className={`record-status status-${active && network.status === 'active' ? 'active' : 'revoked'}`}>
+                                    {active && network.status === 'active' ? 'Active' : 'Inactive'}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="provider-save-row">
+              <p className="muted-text">Service and network states reflect provider configuration and admin enablement only; live availability is not queried. Both providers may be enabled, but only the selected primary handles new mobile-money collections and payouts.</p>
+              {canEdit ? (
+                <button
+                  className="button button-primary"
+                  type="button"
+                  disabled={savingProviders || !providerDraft}
+                  onClick={() => void saveProviders()}
+                >
+                  {savingProviders ? 'Saving…' : 'Save provider settings'}
+                </button>
+              ) : null}
+            </div>
+            <div className="bank-service-note">
+              <strong>Bank payouts</strong>
+              <span>ClickPesa provides bank payouts when enabled and configured. The mobile app uses ClickPesa’s supported-bank list; no bank logos are present in the project assets.</span>
+            </div>
+          </>
+        ) : null}
       </section>
 
       <section className="data-panel settings-section">

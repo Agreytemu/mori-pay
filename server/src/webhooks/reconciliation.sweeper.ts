@@ -60,7 +60,7 @@ export class ReconciliationSweeper implements OnModuleInit, OnModuleDestroy {
       );
       const stale = await this.prisma.transaction.findMany({
         where: {
-          provider: 'abliner',
+          provider: { in: ['abliner', 'clickpesa'] },
           status: { in: ['pending', 'processing'] },
           createdAt: { lt: cutoff },
         },

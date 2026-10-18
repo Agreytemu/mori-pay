@@ -31,7 +31,7 @@ import { reloadNotifications } from '@/data/notification-store';
 import {
   mobileNetworkDisplayName,
   resolveMobileNetwork,
-  type MobileNetwork,
+  type BankListItem,
   type Transaction,
 } from '@mori-pay/contracts';
 
@@ -43,6 +43,7 @@ import {
 } from '@/data/payment-method-store';
 import {
   createWithdrawal,
+  getWithdrawalBanks,
   getTransaction,
   topupCard,
   topupCardPreview,
@@ -58,9 +59,11 @@ import { useAppTheme } from '@/theme';
 import { typography } from '@/theme/typography';
 import { formatAmount, formatDateTime } from '@/utils/format';
 import { getTransactionOutcomeReason } from '@/utils/transaction-outcome';
+import { MOBILE_NETWORK_LOGOS } from '@/constants/mobile-network-logos';
 
 type WalletOperation = 'deposit' | 'withdraw';
 type FeePreviewMethod = 'mobile' | 'card' | 'withdraw';
+type WithdrawalRail = 'mobileMoney' | 'bank';
 
 type Step = 'form' | 'pin' | 'busy' | 'done' | 'pending' | 'failed';
 
@@ -92,13 +95,6 @@ function getUserFacingError(error: unknown, fallback: string): string {
 
 const MIN_AMOUNT = 500;
 const MAX_DEPOSIT_AMOUNT = 3_000_000;
-
-const MOBILE_NETWORK_LOGOS: Record<MobileNetwork, number> = {
-  Mpesa: require('../../../assets/images/M-PESA logo vector (svg, pdf) free download - Brandlogos_net.jpg'),
-  AirtelMoney: require('../../../assets/images/airtellmoney.jpg'),
-  TigoPesa: require('../../../assets/images/mixx by yas.jpg'),
-  HaloPesa: require('../../../assets/images/halopesa.jpg'),
-};
 
 const DEPOSIT_METHODS = [
   { id: 'mobile', name: 'Mobile money', description: 'M-Pesa, Airtel Money and more', icon: 'receive' as const },
@@ -140,6 +136,16 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
 
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<'mobile' | 'card'>('mobile');
+  const [withdrawalRail, setWithdrawalRail] =
+    useState<WithdrawalRail>('mobileMoney');
+  const [banks, setBanks] = useState<BankListItem[]>([]);
+  const [banksLoading, setBanksLoading] = useState(false);
+  const [banksError, setBanksError] = useState(false);
+  const [bankLoadAttempt, setBankLoadAttempt] = useState(0);
+  const [bankSearch, setBankSearch] = useState('');
+  const [bankBic, setBankBic] = useState('');
+  const [accountNumber, setAccountNumber] = useState('');
+  const [accountName, setAccountName] = useState('');
   const [mobilePaymentSource, setMobilePaymentSource] = useState<'saved' | 'custom'>('custom');
   const [savedMobileMethodId, setSavedMobileMethodId] = useState<string | null>(null);
   const [mobileNumber, setMobileNumber] = useState('');
@@ -161,15 +167,19 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const [preview, setPreview] = useState<{
     forAmount: number;
     forMethod: FeePreviewMethod;
+    forDestination?: string;
     amount: number;
     fee: number;
     feePercentage: number;
     total: number;
     providerAvailable?: boolean;
+    provider?: 'abliner' | 'clickpesa';
+    recipientName?: string;
   } | null>(null);
   const [previewError, setPreviewError] = useState<{
     forAmount: number;
     forMethod: FeePreviewMethod;
+    forDestination?: string;
     message: string;
   } | null>(null);
   const [previewAttempt, setPreviewAttempt] = useState(0);
@@ -189,10 +199,21 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
   const depositAmountOverLimit =
     isDeposit && numericAmount > MAX_DEPOSIT_AMOUNT;
   const normalizedPhone = normalizeTzPhone(mobileNumber);
+  const withdrawalDestination =
+    withdrawalRail === 'bank'
+      ? `${bankBic}:${accountNumber.trim()}:${accountName.trim()}`
+      : normalizedPhone ?? '';
+  const bankOptions = useMemo(() => {
+    const query = bankSearch.trim().toLocaleLowerCase();
+    return banks
+      .filter((bank) => !query || bank.name.toLocaleLowerCase().includes(query))
+      .slice(0, 8);
+  }, [bankSearch, banks]);
   const activeLookup =
     lookup && normalizedPhone && lookup.phone === normalizedPhone ? lookup : null;
   const needsNumberLookup =
-    (!isDeposit || method === 'mobile' && mobilePaymentSource === 'custom') &&
+    (!isDeposit && withdrawalRail === 'mobileMoney' ||
+      isDeposit && method === 'mobile' && mobilePaymentSource === 'custom') &&
     Boolean(normalizedPhone) &&
     !activeLookup;
   const usingSavedMobileMethod = useMemo(
@@ -203,23 +224,38 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       savedMobileMethods.some((savedMethod) => savedMethod.id === savedMobileMethodId),
     [isDeposit, method, mobilePaymentSource, savedMobileMethodId, savedMobileMethods],
   );
-  const showCustomLookup = !isDeposit || mobilePaymentSource === 'custom';
+  const showCustomLookup = !isDeposit
+    ? withdrawalRail === 'mobileMoney'
+    : mobilePaymentSource === 'custom';
   const detectedNetwork = resolveMobileNetwork(activeLookup?.network);
   const previewMethod: FeePreviewMethod = isDeposit ? method : 'withdraw';
   const activePreview =
     preview &&
     preview.forAmount === numericAmount &&
-    preview.forMethod === previewMethod
+    preview.forMethod === previewMethod &&
+    (isDeposit || preview.forDestination === withdrawalDestination)
       ? preview
       : null;
+  const verifiedBankNameMatches =
+    !activePreview?.recipientName ||
+    activePreview.recipientName.trim().replace(/\s+/g, ' ').toLocaleLowerCase() ===
+      accountName.trim().replace(/\s+/g, ' ').toLocaleLowerCase();
   const needsFeePreview =
     amountValid &&
-    !depositAmountOverLimit;
+    !depositAmountOverLimit &&
+    (isDeposit ||
+      withdrawalRail === 'mobileMoney' && Boolean(normalizedPhone) ||
+      withdrawalRail === 'bank' &&
+        Boolean(bankBic && accountNumber.trim() && accountName.trim()));
   const requiresNumberVerification = !isDeposit || method === 'mobile';
   const numberVerified =
-    usingSavedMobileMethod ||
-    !requiresNumberVerification ||
-    activeLookup?.found === true;
+    isDeposit
+      ? usingSavedMobileMethod || !requiresNumberVerification || activeLookup?.found === true
+      : withdrawalRail === 'bank'
+        ? Boolean(activePreview?.providerAvailable && verifiedBankNameMatches)
+        : activeLookup?.found === true ||
+          activePreview?.provider === 'clickpesa' &&
+            activePreview.providerAvailable === true;
   const canContinue =
     amountValid &&
     !depositAmountOverLimit &&
@@ -228,7 +264,8 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     (isDeposit || activePreview?.providerAvailable === true);
   const activePreviewError =
     previewError?.forAmount === numericAmount &&
-    previewError.forMethod === previewMethod
+    previewError.forMethod === previewMethod &&
+    (isDeposit || previewError.forDestination === withdrawalDestination)
       ? previewError.message
       : null;
 
@@ -254,6 +291,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       isDeposit &&
       (method === 'card' || mobilePaymentSource === 'saved')
     ) return;
+    if (!isDeposit && withdrawalRail !== 'mobileMoney') return;
 
     const normalized = normalizeTzPhone(mobileNumber);
     if (!normalized) return;
@@ -273,13 +311,29 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     return () => {
       if (lookupTimer.current) clearTimeout(lookupTimer.current);
     };
-  }, [mobileNumber, isDeposit, method, mobilePaymentSource]);
+  }, [mobileNumber, isDeposit, method, mobilePaymentSource, withdrawalRail]);
 
   useEffect(() => {
-    if (
-      !amountValid ||
-      depositAmountOverLimit
-    ) {
+    if (isDeposit || withdrawalRail !== 'bank') return;
+    let cancelled = false;
+    void getWithdrawalBanks()
+      .then((result) => {
+        if (cancelled) return;
+        setBanks(result);
+      })
+      .catch(() => {
+        if (!cancelled) setBanksError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setBanksLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isDeposit, withdrawalRail, bankLoadAttempt]);
+
+  useEffect(() => {
+    if (!needsFeePreview) {
       return;
     }
     let cancelled = false;
@@ -290,9 +344,26 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
             ? previewMethod === 'card'
               ? await topupCardPreview(numericAmount)
               : await topupMobileMoneyPreview(numericAmount)
-            : await withdrawalPreview(numericAmount);
+            : withdrawalRail === 'bank'
+              ? await withdrawalPreview({
+                  amount: numericAmount,
+                  rail: 'bank',
+                  bankBic,
+                  accountNumber: accountNumber.trim(),
+                  accountName: accountName.trim(),
+                })
+              : await withdrawalPreview({
+                  amount: numericAmount,
+                  rail: 'mobileMoney',
+                  phoneNumber: normalizedPhone!,
+                });
           if (!cancelled) {
-            setPreview({ forAmount: numericAmount, forMethod: previewMethod, ...result });
+            setPreview({
+              forAmount: numericAmount,
+              forMethod: previewMethod,
+              ...(!isDeposit ? { forDestination: withdrawalDestination } : {}),
+              ...result,
+            });
             setPreviewError(null);
             setError(null);
           }
@@ -302,6 +373,7 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
             setPreviewError({
               forAmount: numericAmount,
               forMethod: previewMethod,
+              ...(!isDeposit ? { forDestination: withdrawalDestination } : {}),
               message:
                 getUserFacingError(err, 'Could not calculate the fee. Please try again.'),
             });
@@ -319,6 +391,13 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
     amountValid,
     depositAmountOverLimit,
     numericAmount,
+    withdrawalRail,
+    withdrawalDestination,
+    normalizedPhone,
+    bankBic,
+    accountNumber,
+    accountName,
+    needsFeePreview,
     previewAttempt,
   ]);
 
@@ -511,12 +590,38 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
 
   const submitWithdrawal = useCallback(
     async (value: number, pinValue: string) => {
-      const normalized = normalizeTzPhone(mobileNumber);
-      if (!normalized) throw new Error('Enter a valid payout number.');
-      const intent = `withdrawal:${value}:${normalized}`;
+      const normalized =
+        withdrawalRail === 'mobileMoney'
+          ? normalizeTzPhone(mobileNumber)
+          : null;
+      if (
+        withdrawalRail === 'mobileMoney' &&
+        !normalized
+      ) throw new Error('Enter a valid payout number.');
+      if (
+        withdrawalRail === 'bank' &&
+        (!bankBic || !accountNumber.trim() || !accountName.trim())
+      ) throw new Error('Complete the bank account details.');
+      const selectedBank = banks.find((bank) => bank.bic === bankBic);
+      if (withdrawalRail === 'bank' && !selectedBank) {
+        throw new Error('Choose a bank from the list.');
+      }
+      const intent =
+        withdrawalRail === 'bank'
+          ? `withdrawal:bank:${value}:${bankBic}:${accountNumber.trim()}:${accountName.trim().toLocaleLowerCase()}`
+          : `withdrawal:mobile:${value}:${normalized}`;
       const result = await createWithdrawal({
         amount: value,
-        phoneNumber: normalized,
+        rail: withdrawalRail,
+        ...(normalized ? { phoneNumber: normalized } : {}),
+        ...(withdrawalRail === 'bank'
+          ? {
+              bankBic,
+              bankName: selectedBank!.name,
+              accountNumber: accountNumber.trim(),
+              accountName: accountName.trim(),
+            }
+          : {}),
         network: activeLookup?.network,
         pin: pinValue,
         expectedFee: activePreview?.fee,
@@ -554,9 +659,14 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       activeLookup?.network,
       activePreview?.fee,
       announceCompletedTransaction,
+      accountName,
+      accountNumber,
+      bankBic,
+      banks,
       mobileNumber,
       pollUntilSettled,
       refreshWallet,
+      withdrawalRail,
       setError,
       setResultTransaction,
       setStep,
@@ -619,13 +729,27 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       return;
     }
 
-    const normalized = normalizeTzPhone(mobileNumber);
-    if (!normalized) {
-      setError('Enter a valid payout number.');
-      return;
-    }
-    if (!activeLookup) {
-      setError('Wait for the mobile number lookup to finish before continuing.');
+    if (withdrawalRail === 'mobileMoney') {
+      const normalized = normalizeTzPhone(mobileNumber);
+      if (!normalized) {
+        setError('Enter a valid payout number.');
+        return;
+      }
+      if (
+        activeLookup?.found !== true &&
+        !(activePreview?.provider === 'clickpesa' &&
+          activePreview.providerAvailable === true)
+      ) {
+        setError('Wait for the payout provider to verify the mobile number.');
+        return;
+      }
+    } else if (
+      !bankBic ||
+      !banks.some((bank) => bank.bic === bankBic) ||
+      !accountNumber.trim() ||
+      !accountName.trim()
+    ) {
+      setError('Choose a bank and enter the account name and number.');
       return;
     }
     if (!activePreview) {
@@ -635,6 +759,14 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
       } else {
         setError('Wait for the withdrawal fee and total to load before continuing.');
       }
+      return;
+    }
+    if (!activePreview.providerAvailable) {
+      setError('This withdrawal method is unavailable. Check the details and try again.');
+      return;
+    }
+    if (withdrawalRail === 'bank' && !verifiedBankNameMatches) {
+      setError('The account name does not match ClickPesa’s verified bank account name.');
       return;
     }
     Keyboard.dismiss();
@@ -929,7 +1061,8 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                 accessibilityLabel={isDeposit ? 'Amount to add' : 'Amount to withdraw'}
                 value={amount}
                 onChangeText={(value) => setAmount(value.replace(/[^0-9]/g, ''))}
-                keyboardType="number-pad"
+                autoCorrect={false}
+                autoCapitalize="none"
                 returnKeyType="done"
                 selectionColor={colors.primary}
                 style={[styles.amountInput, { color: colors.text }]}
@@ -981,6 +1114,53 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
 
           {!isDeposit || method === 'mobile' ? (
             <View style={styles.fields}>
+              {!isDeposit ? (
+                <View style={styles.methods}>
+                  <AppText variant="bodySmallStrong">Withdrawal method</AppText>
+                  {([
+                    { id: 'mobileMoney', label: 'Mobile money', detail: 'Send to a Tanzanian mobile number' },
+                    { id: 'bank', label: 'Bank account', detail: 'Send to a supported bank account' },
+                  ] as const).map((rail) => {
+                    const selected = withdrawalRail === rail.id;
+                    return (
+                      <Pressable
+                        key={rail.id}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: selected }}
+                        onPress={() => {
+                          if (rail.id === 'bank') {
+                            setBanksLoading(true);
+                            setBanksError(false);
+                          }
+                          setWithdrawalRail(rail.id);
+                          setPreview(null);
+                          setPreviewError(null);
+                          setError(null);
+                        }}
+                        style={({ pressed }) => [
+                          styles.methodRow,
+                          {
+                            backgroundColor: pressed ? colors.surfacePressed : colors.surface,
+                            borderColor: selected ? colors.primary : colors.border,
+                            borderWidth: selected ? 1.5 : 1,
+                            borderRadius: radius.md,
+                            padding: space.base,
+                          },
+                        ]}>
+                        <View style={[styles.methodIcon, { backgroundColor: colors.primarySoft, borderRadius: radius.md }]}>
+                          <AppIcon name={rail.id === 'bank' ? 'payments' : 'phone'} size={20} color={colors.primary} />
+                        </View>
+                        <View style={styles.methodCopy}>
+                          <AppText variant="bodySmallStrong">{rail.label}</AppText>
+                          <AppText variant="caption" color={colors.textSecondary}>{rail.detail}</AppText>
+                        </View>
+                        {selected ? <AppIcon name="check" size={18} color={colors.primary} /> : null}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+
               {isDeposit ? (
                 <View style={styles.methods}>
                   <AppText variant="bodySmallStrong">Mobile-money number</AppText>
@@ -1110,7 +1290,9 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                 </View>
               ) : null}
 
-              {!isDeposit || mobilePaymentSource === 'custom' ? (
+              {(isDeposit
+                ? mobilePaymentSource === 'custom'
+                : withdrawalRail === 'mobileMoney') ? (
                 <ProfileField
                   label={isDeposit ? 'Mobile money number' : 'Payout number'}
                   value={mobileNumber}
@@ -1131,6 +1313,109 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                       : 'Double-check the number — payouts cannot be reversed.'
                   }
                 />
+              ) : null}
+
+              {!isDeposit && withdrawalRail === 'bank' ? (
+                <View style={styles.fields}>
+                  <ProfileField
+                    label="Search for your bank"
+                    value={bankSearch}
+                    onChangeText={setBankSearch}
+                    floatingLabel={false}
+                    autoCapitalize="words"
+                    placeholder="Type bank name"
+                  />
+                  {banksLoading ? (
+                    <AppText variant="caption" color={colors.textSecondary}>Loading supported banks…</AppText>
+                  ) : banksError ? (
+                    <View style={styles.noSavedMethods}>
+                      <StatusBanner
+                        tone="error"
+                        title="Could not load supported banks"
+                        message="ClickPesa bank payouts may be disabled. Check your connection or contact support."
+                      />
+                      <SecondaryButton
+                        label="Try again"
+                        size="sm"
+                        onPress={() => {
+                          setBanksLoading(true);
+                          setBanksError(false);
+                          setBankLoadAttempt((attempt) => attempt + 1);
+                        }}
+                      />
+                    </View>
+                  ) : (
+                    <View style={styles.bankOptions}>
+                      {bankOptions.map((bank) => {
+                        const selected = bank.bic === bankBic;
+                        return (
+                          <Pressable
+                            key={bank.bic}
+                            accessibilityRole="radio"
+                            accessibilityState={{ checked: selected }}
+                            onPress={() => {
+                              setBankBic(bank.bic);
+                              setBankSearch(bank.name);
+                            }}
+                            style={({ pressed }) => [
+                              styles.savedMethod,
+                              {
+                                backgroundColor: pressed ? colors.surfacePressed : colors.surface,
+                                borderColor: selected ? colors.primary : colors.border,
+                                borderWidth: selected ? 1.5 : 1,
+                                borderRadius: radius.md,
+                              },
+                            ]}>
+                            <AppText variant="bodySmallStrong">{bank.name}</AppText>
+                            {selected ? <AppIcon name="check" size={18} color={colors.primary} /> : null}
+                          </Pressable>
+                        );
+                      })}
+                      {banks.length > 0 && bankOptions.length === 0 ? (
+                        <AppText variant="caption" color={colors.textSecondary}>No matching banks found.</AppText>
+                      ) : null}
+                      {banks.length === 0 && !banksLoading ? (
+                        <AppText variant="caption" color={colors.textSecondary}>No supported banks are currently available.</AppText>
+                      ) : null}
+                    </View>
+                  )}
+                  <ProfileField
+                    label="Bank account number"
+                    value={accountNumber}
+                    onChangeText={setAccountNumber}
+                    floatingLabel={false}
+                    keyboardType="number-pad"
+                    autoComplete="off"
+                    placeholder="Enter account number"
+                  />
+                  <ProfileField
+                    label="Account holder name"
+                    value={accountName}
+                    onChangeText={setAccountName}
+                    floatingLabel={false}
+                    autoCapitalize="words"
+                    autoComplete="name"
+                    placeholder="As registered with the bank"
+                  />
+                  {activePreview?.recipientName ? (
+                    verifiedBankNameMatches ? (
+                      <StatusBanner
+                        tone="info"
+                        title="Verified account name"
+                        message={activePreview.recipientName}
+                      />
+                    ) : (
+                      <StatusBanner
+                        tone="error"
+                        title="Account name does not match"
+                        message={`ClickPesa verified this account as ${activePreview.recipientName}. Update the name before continuing.`}
+                      />
+                    )
+                  ) : null}
+                  <AppText variant="caption" color={colors.textTertiary}>
+                    Bank details are encrypted before storage and are not shown in transaction history.
+                  </AppText>
+                </View>
               ) : null}
 
               {showCustomLookup && needsNumberLookup ? (
@@ -1191,7 +1476,10 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
                 </View>
               ) : null}
 
-              {showCustomLookup && activeLookup && !activeLookup.found ? (
+              {showCustomLookup &&
+              activeLookup &&
+              !activeLookup.found &&
+              activePreview?.provider !== 'clickpesa' ? (
                 <StatusBanner
                   tone="info"
                   title="Network not identified"
@@ -1249,7 +1537,11 @@ export function WalletOperationScreen({ operation }: { operation: WalletOperatio
               <StatusBanner
                 tone="error"
                 title="Withdrawal method unavailable"
-                message="Mobile withdrawals are temporarily unavailable. Please check again."
+                message={
+                  withdrawalRail === 'bank'
+                    ? 'Bank payouts are temporarily unavailable. Please check the account details or try again.'
+                    : 'Mobile withdrawals are temporarily unavailable. Please check again.'
+                }
               />
               <SecondaryButton
                 label="Check availability again"
@@ -1345,6 +1637,7 @@ const styles = StyleSheet.create({
   methodCopy: { flex: 1, gap: 2 },
   fields: { gap: 16 },
   savedMethods: { gap: 8 },
+  bankOptions: { gap: 6, maxHeight: 340 },
   savedMethod: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12 },
   noSavedMethods: { gap: 8, padding: 12 },
   phonePrefix: { flexDirection: 'row', alignItems: 'center', gap: 6 },

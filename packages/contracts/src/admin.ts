@@ -455,11 +455,67 @@ export type AdminSystemSettings = {
     intervalSeconds: number;
     staleSeconds: number;
   };
+  paymentProviders: {
+    primaryProvider: 'abliner' | 'clickpesa';
+    paymentMethods: {
+      mobileMoneyEnabled: boolean;
+      bankEnabled: boolean;
+      cardEnabled: boolean;
+    };
+    providers: Array<{
+      id: 'abliner' | 'clickpesa';
+      name: string;
+      configured: boolean;
+      enabled: boolean;
+      primary: boolean;
+      services: Array<{
+        id: string;
+        name: string;
+        status: 'active' | 'inactive' | 'not_implemented';
+        networks?: Array<{
+          id: string;
+          name: string;
+          image: 'mpesa' | 'airtel' | 'mixx' | 'halopesa';
+          status: 'active' | 'inactive';
+        }>;
+      }>;
+    }>;
+  };
   integrations: Array<{
     name: string;
     configuration: 'configured' | 'incomplete';
   }>;
 };
+
+export const adminPaymentProviderUpdateSchema = z
+  .object({
+    ablinerEnabled: z.boolean(),
+    clickpesaEnabled: z.boolean(),
+    primaryProvider: z.enum(['abliner', 'clickpesa']),
+  })
+  .refine(
+    (settings) =>
+      (!settings.ablinerEnabled && !settings.clickpesaEnabled) ||
+      (settings.primaryProvider === 'abliner'
+        ? settings.ablinerEnabled
+        : settings.clickpesaEnabled),
+    {
+      message: 'The primary payment provider must be enabled.',
+      path: ['primaryProvider'],
+    },
+  );
+export type AdminPaymentProviderUpdate = z.infer<
+  typeof adminPaymentProviderUpdateSchema
+>;
+
+export const adminPaymentMethodVisibilitySchema = z.object({
+  mobileMoneyEnabled: z.boolean(),
+  bankEnabled: z.boolean(),
+  cardEnabled: z.boolean(),
+});
+export type AdminPaymentMethodVisibility = z.infer<
+  typeof adminPaymentMethodVisibilitySchema
+>;
 
 /* ------------------------------------------------------------------ */
 /* Sessions & devices                                                 */

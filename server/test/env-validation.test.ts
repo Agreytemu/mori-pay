@@ -72,6 +72,25 @@ describe('environment validation', () => {
     );
   });
 
+  it('allows ClickPesa to remain unconfigured and requires its credentials together', () => {
+    assert.equal(validateEnv(productionConfig).CLICKPESA_CLIENT_ID, undefined);
+    assert.throws(
+      () =>
+        validateEnv({
+          ...productionConfig,
+          CLICKPESA_CLIENT_ID: 'clickpesa-client',
+        }),
+      /CLICKPESA_API_KEY: required when configuring ClickPesa/,
+    );
+    const env = validateEnv({
+      ...productionConfig,
+      CLICKPESA_CLIENT_ID: 'clickpesa-client',
+      CLICKPESA_API_KEY: 'clickpesa-api-key',
+      CLICKPESA_CHECKSUM_KEY: 'clickpesa-checksum-key',
+    });
+    assert.equal(env.CLICKPESA_CLIENT_ID, 'clickpesa-client');
+  });
+
   it('requires complete server and portal configuration when FCM is enabled', () => {
     assert.throws(
       () => validateEnv({ ...productionConfig, FCM_ENABLED: 'true' }),

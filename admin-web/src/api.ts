@@ -17,6 +17,8 @@ import type {
   AdminOverview,
   AdminSession,
   AdminSystemSettings,
+  AdminPaymentProviderUpdate,
+  AdminPaymentMethodVisibility,
   AdminTransactionDetail,
   AdminTransactionSearchPage,
   AdminUserDetail,
@@ -208,6 +210,24 @@ export function getOverview(): Promise<AdminOverview> {
 
 export function getAdminSystemSettings(): Promise<AdminSystemSettings> {
   return fetchJson<AdminSystemSettings>('/admin/settings');
+}
+
+export function updatePaymentProviders(
+  settings: AdminPaymentProviderUpdate,
+): Promise<AdminSystemSettings['paymentProviders']> {
+  return fetchJson<AdminSystemSettings['paymentProviders']>(
+    '/admin/payment-providers',
+    { method: 'PATCH', body: settings },
+  );
+}
+
+export function updatePaymentMethodVisibility(
+  visibility: AdminPaymentMethodVisibility,
+): Promise<AdminSystemSettings['paymentProviders']> {
+  return fetchJson<AdminSystemSettings['paymentProviders']>(
+    '/admin/payment-methods',
+    { method: 'PATCH', body: visibility },
+  );
 }
 
 export function listAudit(

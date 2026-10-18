@@ -4,8 +4,10 @@ import { Throttle } from '@nestjs/throttler';
 
 import {
   recipientLookupSchema,
+  withdrawalPreviewSchema,
   withdrawalPreviewQuerySchema,
   withdrawalSchema,
+  type WithdrawalPreviewInput,
   type RecipientLookupInput,
   type WithdrawalInput,
   type WithdrawalPreview,
@@ -42,6 +44,19 @@ export class WithdrawalsController {
     query: WithdrawalPreviewQuery,
   ): Promise<WithdrawalPreview> {
     return this.withdrawals.preview(BigInt(query.amount));
+  }
+
+  @Post('preview')
+  previewDestination(
+    @Body(new ZodValidationPipe(withdrawalPreviewSchema))
+    input: WithdrawalPreviewInput,
+  ): Promise<WithdrawalPreview> {
+    return this.withdrawals.previewDestination(input);
+  }
+
+  @Get('banks')
+  banks() {
+    return this.withdrawals.listBanks();
   }
 
   @Get('lookup')

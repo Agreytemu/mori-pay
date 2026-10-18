@@ -16,17 +16,20 @@ import type {
   UpdateAccountProfileInput,
   UpdateNotificationPreferencesInput,
 } from '@mori-pay/contracts';
+import { resolveMobileNetwork } from '@mori-pay/contracts';
 
 import type { SavedPaymentMethod as SavedPaymentMethodRow } from '../generated/prisma/client.js';
 import { encryptPaymentMethodPhone } from '../common/payment-method-crypto.js';
 import { AppConfigService } from '../config/app-config.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { PaymentProviderSettingsService } from '../payments/payment-provider-settings.service.js';
 
 @Injectable()
 export class AccountService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: AppConfigService,
+    private readonly paymentProviderSettings: PaymentProviderSettingsService,
   ) {}
 
   async getProfile(userId: string): Promise<AccountProfile> {
@@ -159,6 +162,8 @@ export class AccountService {
     userId: string,
     input: SavePaymentMethodInput,
   ): Promise<SavedPaymentMethod> {
+    await this.paymentProviderSettings.assertPaymentMethodEnabled(input.kind);
+    const network = this.resolvePaymentMethodNetwork(input);
     const encryptedPhoneNumber = this.encryptPhoneNumber(input);
     const count = await this.prisma.savedPaymentMethod.count({
       where: { userId },
@@ -179,6 +184,7 @@ export class AccountService {
           provider: input.provider,
           identifier: input.lastFour,
           encryptedPhoneNumber,
+          network,
           isDefault,
         },
       });
@@ -191,11 +197,13 @@ export class AccountService {
     id: string,
     input: SavePaymentMethodInput,
   ): Promise<SavedPaymentMethod> {
+    await this.paymentProviderSettings.assertPaymentMethodEnabled(input.kind);
     const existing = await this.prisma.savedPaymentMethod.findFirst({
       where: { id, userId },
       select: { id: true, identifier: true },
     });
     if (!existing) throw new NotFoundException('Payment method not found');
+    const network = this.resolvePaymentMethodNetwork(input);
     if (
       input.kind === 'mobile-money' &&
       !input.phoneNumber &&
@@ -220,6 +228,7 @@ export class AccountService {
           kind: input.kind,
           provider: input.provider,
           identifier: input.lastFour,
+          network,
           ...(input.kind === 'mobile-money'
             ? encryptedPhoneNumber
               ? { encryptedPhoneNumber }
@@ -471,6 +480,17 @@ export class AccountService {
       }
       throw error;
     }
+  }
+
+  private resolvePaymentMethodNetwork(
+    input: SavePaymentMethodInput,
+  ): string | null {
+    if (input.kind !== 'mobile-money') return null;
+    const network = resolveMobileNetwork(input.provider);
+    if (!network) {
+      throw new BadRequestException('Choose a supported mobile-money network.');
+    }
+    return network;
   }
 
   private toPaymentMethodKind(

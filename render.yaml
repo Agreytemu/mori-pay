@@ -85,6 +85,15 @@ services:
       # URL plus /api/v1/webhooks/abliner (boot fails on a local/insecure URL).
       - key: ABLINER_CALLBACK_URL
         sync: false
+      # ClickPesa is optional; configure all credentials to enable its backend route.
+      - key: CLICKPESA_BASE_URL
+        value: https://api.clickpesa.com/third-parties
+      - key: CLICKPESA_CLIENT_ID
+        sync: false
+      - key: CLICKPESA_API_KEY
+        sync: false
+      - key: CLICKPESA_CHECKSUM_KEY
+        sync: false
       # Transactional email (Resend) — required in production.
       - key: RESEND_API_KEY
         sync: false
