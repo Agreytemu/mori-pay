@@ -3,7 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import * as Network from 'expo-network';
 
 import { AppText } from '@/components/ui/AppText';
-import { NoInternetIllustration } from '@/components/ui/NoInternetIllustration';
+import { ProvidedNoInternetIllustration } from '@/components/ui/ProvidedNoInternetIllustration';
 import { useAppTheme } from '@/theme';
 
 type NetworkState = {
@@ -54,7 +54,7 @@ export function NetworkBanner() {
 
   return (
     <View style={[styles.banner, { backgroundColor: colors.error }]}>
-      <NoInternetIllustration size={72} />
+      <ProvidedNoInternetIllustration size={96} />
       <AppText variant="bodySmall" color={colors.textInverse} style={styles.text}>
         You are not connected to internet
       </AppText>

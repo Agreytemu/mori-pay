@@ -12,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import * as Network from 'expo-network';
 import {
   SafeAreaProvider,
   useSafeAreaInsets,
@@ -24,6 +25,7 @@ import {
 } from '@expo-google-fonts/inter';
 
 import { AppLockPrompt } from '@/components/auth/AppLockPrompt';
+import { OfflineScreen } from '@/components/auth/OfflineScreen';
 import { TransactionNotificationObserver } from '@/components/notifications/TransactionNotificationObserver';
 import { OnboardingScreen } from '@/components/onboarding/OnboardingScreen';
 import { AppText } from '@/components/ui/AppText';
@@ -194,6 +196,28 @@ function GuardedStack({ minimumSplashElapsed }: { minimumSplashElapsed: boolean 
     'loading' | 'needed' | 'complete' | 'error'
   >('loading');
   const [onboardingAttempt, setOnboardingAttempt] = useState(0);
+  const [offline, setOffline] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const update = async () => {
+      try {
+        const current = await Network.getNetworkStateAsync();
+        if (active) setOffline(!(current.isConnected ?? true) || current.isInternetReachable === false);
+      } catch {
+        if (active) setOffline(false);
+      }
+    };
+    void update();
+    const subscription = Network.addNetworkStateListener((current) => {
+      if (!active) return;
+      setOffline(!(current.isConnected ?? true) || current.isInternetReachable === false);
+    });
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, []);
   useAuthGuard(onboardingStatus === 'complete');
 
   useEffect(() => {
@@ -258,6 +282,18 @@ function GuardedStack({ minimumSplashElapsed }: { minimumSplashElapsed: boolean 
 
   if (onboardingStatus === 'needed') {
     return <OnboardingScreen onComplete={completeOnboarding} />;
+  }
+
+  if (offline && status !== 'authenticated') {
+    return (
+      <OfflineScreen
+        onRetry={() => {
+          void Network.getNetworkStateAsync().then((current) => {
+            setOffline(!(current.isConnected ?? true) || current.isInternetReachable === false);
+          });
+        }}
+      />
+    );
   }
 
   return <ThemedStack />;
